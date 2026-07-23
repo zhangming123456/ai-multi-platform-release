@@ -1,4 +1,5 @@
 from app.models.account import Account, AccountStatus, Platform
+from app.models.ai_generation import AIGenerationRecord
 from app.models.content import Content, ContentStatus
 from app.models.model_config import ModelConfig
 from app.models.publish_task import PublishTask, PublishTaskStatus
@@ -17,4 +18,5 @@ __all__ = [
     "PublishTask",
     "PublishTaskStatus",
     "Template",
+    "AIGenerationRecord",
 ]

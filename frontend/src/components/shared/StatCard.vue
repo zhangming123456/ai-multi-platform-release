@@ -58,4 +58,17 @@ defineProps<{
     transform: translateY(0);
   }
 }
+
+@media (max-width: 248px) {
+  .stat-card :deep(.arco-card-body) {
+    padding: 10px !important;
+  }
+  .stat-card .w-10 {
+    width: 32px !important;
+    height: 32px !important;
+  }
+  .stat-card .w-10 svg {
+    font-size: 15px !important;
+  }
+}
 </style>

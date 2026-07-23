@@ -78,3 +78,13 @@ const breadcrumbs = computed(() => {
     </div>
   </header>
 </template>
+
+<style scoped>
+@media (max-width: 248px) {
+  header {
+    height: 44px !important;
+    padding-left: 10px !important;
+    padding-right: 10px !important;
+  }
+}
+</style>

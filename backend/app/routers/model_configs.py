@@ -22,7 +22,7 @@ class ModelConfigCreate(BaseModel):
     api_key: Optional[str] = Field(default=None, max_length=500)
     base_url: Optional[str] = Field(default=None, max_length=500)
     full_url: bool = False
-    model: str = Field(..., max_length=100)
+    model: str = Field(..., max_length=2000)
     multimodal: bool = False
     model_series: str = Field(default="default", max_length=50)
     context_input: int = Field(default=128000)
@@ -42,7 +42,7 @@ class ModelConfigUpdate(BaseModel):
     api_key: Optional[str] = Field(default=None, max_length=500)
     base_url: Optional[str] = Field(default=None, max_length=500)
     full_url: Optional[bool] = None
-    model: Optional[str] = Field(default=None, max_length=100)
+    model: Optional[str] = Field(default=None, max_length=2000)
     multimodal: Optional[bool] = None
     model_series: Optional[str] = Field(default=None, max_length=50)
     context_input: Optional[int] = None

@@ -241,3 +241,31 @@ onMounted(() => {
     </Modal>
   </div>
 </template>
+
+<style scoped>
+@media (max-width: 248px) {
+  :deep(.arco-card-header) {
+    padding: 8px 10px !important;
+  }
+  :deep(.arco-card-body) {
+    padding: 10px !important;
+  }
+  :deep(.arco-card-header-title) {
+    font-size: 13px !important;
+  }
+  :deep(.arco-table-th),
+  :deep(.arco-table-td) {
+    padding: 6px 8px !important;
+    font-size: 11px !important;
+  }
+  :deep(.arco-table-cell) {
+    font-size: 11px !important;
+  }
+  :deep(.arco-pagination-item) {
+    min-width: 24px !important;
+    height: 24px !important;
+    line-height: 22px !important;
+    font-size: 11px !important;
+  }
+}
+</style>

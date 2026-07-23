@@ -12,6 +12,17 @@ dist
 dist-ssr
 *.local
 
+# Debug and test files
+debug-*.mjs
+test-*.mjs
+check-page.mjs
+final-test.mjs
+*.png
+!src/assets/*.png
+!public/*.png
+test-results*.json
+final-test-results.json
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

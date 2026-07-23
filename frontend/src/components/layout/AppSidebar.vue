@@ -159,3 +159,18 @@ function onMenuItemClick(key: string) {
     </div>
   </div>
 </template>
+
+<style scoped>
+@media (max-width: 248px) {
+  :deep(.arco-menu-item) {
+    height: 32px !important;
+    line-height: 32px !important;
+    font-size: 12px !important;
+    padding-left: 10px !important;
+    padding-right: 10px !important;
+  }
+  :deep(.arco-menu-icon) {
+    font-size: 14px !important;
+  }
+}
+</style>
