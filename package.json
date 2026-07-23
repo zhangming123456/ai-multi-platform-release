@@ -1,0 +1,19 @@
+{
+  "name": "ai-multi-platform-release",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently -n backend,frontend -c blue,green \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev:frontend": "cd frontend && npm run dev",
+    "dev:backend": "cd backend && python3 -m uvicorn app.main:app --reload --port 8000",
+    "build": "cd frontend && npm run build",
+    "install:all": "cd frontend && npm install && cd ../backend && pip install -r requirements.txt",
+    "lint": "cd frontend && npm run lint",
+    "lint:fix": "cd frontend && npm run lint:fix",
+    "format": "prettier --write \"*.{json,yml,yaml,md}\" \".trae/documents/*.md\" && cd frontend && npm run format && cd ../backend && python3 -m ruff format . && python3 -m ruff check --fix .",
+    "format:check": "prettier --check \"*.{json,yml,yaml,md}\" \".trae/documents/*.md\" && cd frontend && npm run format:check && cd ../backend && python3 -m ruff format --check . && python3 -m ruff check ."
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0",
+    "prettier": "^3.9.6"
+  }
+}

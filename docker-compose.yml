@@ -1,0 +1,74 @@
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: .
+      dockerfile: docker/backend/Dockerfile
+    ports:
+      - '8000:8000'
+    volumes:
+      - ./backend:/app
+      - sqlite_data:/app/data
+    environment:
+      - DATABASE_URL=sqlite+aiosqlite:///./data/app.db
+      - REDIS_URL=redis://redis:6379/0
+      - SECRET_KEY=your-secret-key-change-in-production
+      - CORS_ORIGINS=["*"]
+      - AI_API_KEY=
+      - AI_API_BASE_URL=https://api.openai.com/v1
+      - AI_MODEL=gpt-3.5-turbo
+      - WATCHFILES_FORCE_POLLING=true
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  celery-worker:
+    build:
+      context: .
+      dockerfile: docker/backend/Dockerfile
+    command: celery -A app.celery_app worker --loglevel=info
+    volumes:
+      - ./backend:/app
+      - sqlite_data:/app/data
+    environment:
+      - DATABASE_URL=sqlite+aiosqlite:///./data/app.db
+      - REDIS_URL=redis://redis:6379/0
+      - SECRET_KEY=your-secret-key-change-in-production
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/frontend/Dockerfile
+    ports:
+      - '5173:5173'
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      - VITE_API_BASE_URL=http://localhost:8000
+      - VITE_API_PROXY_TARGET=http://backend:8000
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  redis_data:
+  sqlite_data:
