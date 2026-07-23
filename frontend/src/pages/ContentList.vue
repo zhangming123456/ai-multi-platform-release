@@ -80,7 +80,7 @@ async function removeContent(id: number) {
 </script>
 
 <template>
-  <div>
+  <div class="content-list">
     <PageHeader title="内容工坊" subtitle="创作并管理适配各平台的内容">
       <template #actions>
         <a-button type="primary" @click="router.push('/content/create')">
@@ -161,3 +161,11 @@ async function removeContent(id: number) {
     </a-spin>
   </div>
 </template>
+
+<style scoped lang="scss">
+.content-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+</style>

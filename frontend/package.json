@@ -13,7 +13,7 @@
     "format:check": "prettier --check \"src/**/*.{ts,vue,css,scss}\""
   },
   "dependencies": {
-    "@arco-design/web-vue": "latest",
+    "@arco-design/web-vue": "^2.58.0",
     "axios": "^1.18.1",
     "lucide-vue-next": "^1.0.0",
     "pinia": "^4.0.2",

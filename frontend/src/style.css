@@ -180,6 +180,14 @@ body {
   pointer-events: none;
   overflow: hidden;
 }
+.arco-modal-wrapper.arco-modal-wrapper-align-center::after {
+  height: inherit;
+}
+
+.arco-modal-wrapper.arco-modal-wrapper-align-center .arco-modal {
+  top: 50vh;
+  transform: translateY(-50%);
+}
 
 /* 响应式工具 */
 @media (max-width: 768px) {

@@ -157,7 +157,7 @@ async function copyContent() {
 </script>
 
 <template>
-  <div>
+  <div class="space-y-6">
     <PageHeader title="AI 内容创建" subtitle="输入主题，一键生成适配各平台风格的内容变体">
       <template #actions>
         <a-tag
@@ -178,8 +178,8 @@ async function copyContent() {
       </template>
     </PageHeader>
 
-    <a-row :gutter="24">
-      <a-col :xs="24" :sm="24" :lg="10">
+    <div class="flex flex-col lg:flex-row gap-6">
+      <div class="lg:w-[42%] flex-shrink-0">
         <a-card :bordered="false" title="创作输入" style="padding: 20px">
           <a-form :model="{}" layout="vertical">
             <a-form-item label="内容主题">
@@ -190,10 +190,10 @@ async function copyContent() {
             </a-form-item>
             <a-form-item label="目标平台">
               <a-checkbox-group v-model="selectedPlatforms">
-                <a-row :gutter="[8, 8]">
-                  <a-col :span="12" v-for="choice in platformChoices" :key="choice.value">
-                    <a-checkbox :value="choice.value">
-                      <a-space :size="6" align="center">
+                <div class="grid grid-cols-2 gap-2">
+                  <div v-for="choice in platformChoices" :key="choice.value" class="flex items-center">
+                    <a-checkbox :value="choice.value" class="flex items-center w-full">
+                      <a-space :size="6" align="center" class="w-full">
                         <PlatformIcon
                           :platform="
                             choice.value as 'wechat_mp' | 'xiaohongshu' | 'douyin' | 'wechat_video'
@@ -203,8 +203,8 @@ async function copyContent() {
                         {{ choice.label }}
                       </a-space>
                     </a-checkbox>
-                  </a-col>
-                </a-row>
+                  </div>
+                </div>
               </a-checkbox-group>
             </a-form-item>
             <a-form-item>
@@ -220,14 +220,14 @@ async function copyContent() {
               </a-button>
             </a-form-item>
           </a-form>
-          <a-typography-text type="secondary" class="text-[11px] block text-center">
+          <a-typography-text type="secondary" class="text-[11px] block text-center mt-3">
             AI 将根据各平台的推荐算法与用户偏好调整文案风格
           </a-typography-text>
         </a-card>
-      </a-col>
+      </div>
 
-      <a-col :xs="24" :sm="24" :lg="14">
-        <a-card :bordered="false" title="生成预览" style="padding: 20px">
+      <div class="flex-1 min-w-0">
+        <a-card :bordered="false" title="生成预览" style="padding: 20px; height: 100%">
           <template v-if="hasGenerated" #extra>
             <a-tabs
               :active-key="activePreview"
@@ -315,7 +315,7 @@ async function copyContent() {
             </div>
           </div>
         </a-card>
-      </a-col>
-    </a-row>
+      </div>
+    </div>
   </div>
 </template>
