@@ -268,3 +268,17 @@ onMounted(() => {
     </Modal>
   </div>
 </template>
+
+<style scoped>
+@media (max-width: 248px) {
+  :deep(.arco-card-header) {
+    padding: 8px 10px !important;
+  }
+  :deep(.arco-card-body) {
+    padding: 10px !important;
+  }
+  :deep(.arco-card-header-title) {
+    font-size: 13px !important;
+  }
+}
+</style>

@@ -1,10 +1,95 @@
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { Message } from '@arco-design/web-vue'
 import api from '@/utils/api'
 
 export type PlanProvider = 'openai' | 'deepseek' | 'moonshot' | 'zhipu' | 'custom'
 export type PlanMode = 'provider' | 'custom'
+export type ModelType = 'text' | 'reasoning' | 'vision' | 'image' | 'video'
+
+export interface ModelEntry {
+  id: string
+  types: ModelType[]
+  contextInput?: number | null
+  contextOutput?: number | null
+}
+
+export const MODEL_TYPE_LABELS: Record<ModelType, string> = {
+  text: '文本生成',
+  reasoning: '推理模型',
+  vision: '视觉理解',
+  image: '图片生成',
+  video: '视频生成',
+}
+
+export const MODEL_TYPE_COLORS: Record<ModelType, string> = {
+  text: '#007AFF',
+  reasoning: '#5856D6',
+  vision: '#FF9500',
+  image: '#34C759',
+  video: '#FF2D55',
+}
+
+export const MODEL_TYPE_ICONS: Record<ModelType, string> = {
+  text: 'IconEdit',
+  reasoning: 'IconMindMapping',
+  vision: 'IconEye',
+  image: 'IconImage',
+  video: 'IconVideoCamera',
+}
+
+export const MODEL_TYPE_OPTIONS = [
+  { value: 'text', label: '文本生成' },
+  { value: 'reasoning', label: '推理模型' },
+  { value: 'vision', label: '视觉理解' },
+  { value: 'image', label: '图片生成' },
+  { value: 'video', label: '视频生成' },
+] as const
+
+export function parseModelField(raw: string): ModelEntry[] {
+  if (!raw || !raw.trim()) return []
+  const trimmed = raw.trim()
+  if (trimmed.startsWith('[')) {
+    try {
+      const data = JSON.parse(trimmed)
+      if (Array.isArray(data)) {
+        return data
+          .filter((item: unknown) => typeof item === 'object' && item !== null && (item as Record<string, unknown>).id)
+          .map((item: unknown) => {
+            const obj = item as Record<string, unknown>
+            const rawType = obj.types || obj.type || 'text'
+            const types: ModelType[] = Array.isArray(rawType)
+              ? rawType as ModelType[]
+              : [rawType as ModelType]
+            return {
+              id: obj.id as string,
+              types,
+              contextInput: (obj.contextInput as number | null) ?? null,
+              contextOutput: (obj.contextOutput as number | null) ?? null,
+            }
+          })
+      }
+    } catch {
+      // fall through to comma-separated
+    }
+  }
+  return trimmed
+    .split(',')
+    .map((m) => m.trim())
+    .filter(Boolean)
+    .map((id) => ({ id, types: ['text'] as ModelType[], contextInput: null, contextOutput: null }))
+}
+
+export function serializeModelField(entries: ModelEntry[]): string {
+  return JSON.stringify(
+    entries.map((e) => ({
+      id: e.id,
+      types: e.types,
+      contextInput: e.contextInput ?? null,
+      contextOutput: e.contextOutput ?? null,
+    })),
+  )
+}
 
 export interface TokenPlan {
   id: string
@@ -63,6 +148,7 @@ function camelToSnake(obj: Record<string, unknown>): Record<string, unknown> {
 export const useTokenPlanStore = defineStore('tokenPlan', () => {
   const plans = ref<TokenPlan[]>([])
   const activePlanId = ref('')
+  const selectedModelId = ref('')
   const loaded = ref(false)
 
   const activePlan = computed(() => {
@@ -70,6 +156,32 @@ export const useTokenPlanStore = defineStore('tokenPlan', () => {
   })
 
   const enabledPlans = computed(() => plans.value.filter((p) => p.enabled))
+
+  const activeModelList = computed(() => {
+    if (!activePlan.value) return []
+    return parseModelField(activePlan.value.model)
+  })
+
+  const selectedModelEntry = computed(() => {
+    return activeModelList.value.find((e) => e.id === selectedModelId.value) || null
+  })
+
+  const selectedModelSupportsFiles = computed(() => {
+    if (!selectedModelEntry.value) return false
+    const types = selectedModelEntry.value.types
+    return types.includes('vision') || types.includes('image') || types.includes('video')
+  })
+
+  watch(
+    activeModelList,
+    (list) => {
+      const ids = list.map((e) => e.id)
+      if (ids.length > 0 && !ids.includes(selectedModelId.value)) {
+        selectedModelId.value = ids[0]
+      }
+    },
+    { immediate: true },
+  )
 
   let nextId = 1
   function generateId() {
@@ -86,6 +198,9 @@ export const useTokenPlanStore = defineStore('tokenPlan', () => {
       plans.value = list
       if (list.length > 0 && !activePlan.value) {
         activePlanId.value = enabledPlans.value[0]?.id || list[0].id
+      }
+      if (activeModelList.value.length > 0 && !selectedModelId.value) {
+        selectedModelId.value = activeModelList.value[0]
       }
       loaded.value = true
     } catch (e) {
@@ -206,8 +321,12 @@ export const useTokenPlanStore = defineStore('tokenPlan', () => {
   return {
     plans,
     activePlanId,
+    selectedModelId,
+    selectedModelEntry,
+    selectedModelSupportsFiles,
     activePlan,
     enabledPlans,
+    activeModelList,
     loaded,
     loadPlans,
     addPlan,

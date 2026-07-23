@@ -197,4 +197,18 @@ async function handleLogin() {
   font-size: 12px;
   color: #a1a1a6;
 }
+
+@media (max-width: 248px) {
+  .login-card {
+    width: calc(100vw - 24px) !important;
+    max-width: calc(100vw - 24px) !important;
+    height: auto !important;
+  }
+  .login-card__title {
+    font-size: 18px !important;
+  }
+  .login-card__subtitle {
+    font-size: 12px !important;
+  }
+}
 </style>

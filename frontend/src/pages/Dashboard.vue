@@ -134,7 +134,7 @@ onMounted(loadDashboard)
       <div v-if="loading" style="min-height: 240px"></div>
       <a-empty v-else-if="isEmpty" description="暂无数据" style="margin: 80px 0" />
       <template v-else>
-        <a-row :gutter="16" class="mb-6">
+        <a-row :gutter="[16, 16]" class="mb-6">
           <a-col v-for="(stat, index) in stats" :key="stat.title" :xs="24" :md="12" :lg="6">
             <StatCard
               :title="stat.title"
@@ -147,7 +147,7 @@ onMounted(loadDashboard)
           </a-col>
         </a-row>
 
-        <a-row :gutter="24" class="mb-6">
+        <a-row :gutter="[24, 16]" class="mb-6">
           <a-col :xs="24" :lg="10">
             <a-card :bordered="false" title="账号健康度" style="padding: 20px">
               <template #extra>
@@ -255,6 +255,27 @@ onMounted(loadDashboard)
   }
   50% {
     opacity: 0.5;
+  }
+}
+
+@media (max-width: 248px) {
+  :deep(.arco-card-header) {
+    padding: 8px 10px !important;
+  }
+  :deep(.arco-card-body) {
+    padding: 10px !important;
+  }
+  :deep(.arco-card-header-title) {
+    font-size: 13px !important;
+  }
+  :deep(.arco-list-item) {
+    padding: 8px 0 !important;
+  }
+  :deep(.arco-list-item-meta-title) {
+    font-size: 12px !important;
+  }
+  :deep(.arco-list-item-meta-description) {
+    font-size: 11px !important;
   }
 }
 </style>

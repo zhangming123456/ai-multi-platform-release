@@ -48,4 +48,31 @@ onMounted(async () => {
   background: #fafafa;
   border-radius: 12px;
 }
+
+@media (max-width: 248px) {
+  #swagger-ui-container .swagger-ui {
+    font-size: 11px !important;
+  }
+  #swagger-ui-container .swagger-ui .info {
+    margin: 10px 0 !important;
+  }
+  #swagger-ui-container .swagger-ui .info h2 {
+    font-size: 14px !important;
+  }
+  #swagger-ui-container .swagger-ui .opblock-tag {
+    font-size: 12px !important;
+    padding: 6px 8px !important;
+  }
+  #swagger-ui-container .swagger-ui .opblock-summary {
+    padding: 6px 8px !important;
+  }
+  #swagger-ui-container .swagger-ui .opblock-summary-method {
+    font-size: 10px !important;
+    padding: 2px 4px !important;
+    min-width: 36px !important;
+  }
+  #swagger-ui-container .swagger-ui .opblock-summary-path {
+    font-size: 11px !important;
+  }
+}
 </style>

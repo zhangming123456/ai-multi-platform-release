@@ -19,7 +19,7 @@ class ModelConfig(Base):
     api_key: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     base_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     full_url: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    model: Mapped[str] = mapped_column(String(100), nullable=False)
+    model: Mapped[str] = mapped_column(String(2000), nullable=False)
     multimodal: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     model_series: Mapped[str] = mapped_column(String(50), nullable=False, default="default")
     context_input: Mapped[int] = mapped_column(Integer, default=128000, nullable=False)

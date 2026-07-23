@@ -36,7 +36,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="min-h-screen bg-[#F5F5F7]">
+  <div class="min-h-screen bg-[#F5F5F7] overflow-x-hidden">
     <div class="fixed inset-0 -z-10 pointer-events-none overflow-hidden">
       <div
         class="absolute -top-48 -right-32 w-[700px] h-[700px] rounded-full blur-[120px] opacity-[0.12]"
@@ -54,19 +54,19 @@ onUnmounted(() => {
 
     <div
       v-if="isMobileSidebarOpen"
-      class="fixed inset-0 bg-black/20 backdrop-blur-sm z-40 md:hidden animate-fade-in"
+      class="fixed inset-0 bg-black/20 backdrop-blur-sm z-30 md:hidden animate-fade-in"
       @click="closeMobileSidebar"
     ></div>
 
     <div class="flex min-h-screen">
       <aside
         :class="[
-          'flex flex-col transition-all duration-350 ease-out z-30',
+          'flex flex-col transition-all duration-350 ease-out z-50',
           isSidebarCollapsed ? 'w-16' : 'w-[248px]',
           isMobileSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0',
           'fixed inset-y-0 left-0',
         ]"
-        :style="{ width: `${siderWidth}px` }"
+        :style="{ width: `${siderWidth}px`, maxWidth: `70vw` }"
       >
         <div class="h-full bg-white/80 backdrop-blur-xl border-r border-black/[0.05]">
           <AppSidebar
@@ -79,7 +79,8 @@ onUnmounted(() => {
 
       <div
         class="flex-1 flex flex-col transition-all duration-350 ease-out"
-        :style="{ marginLeft: `${isMobileSidebarOpen ? 0 : siderWidth}px` }"
+        style="max-width: 100vw;"
+        :style="{ marginLeft: isMobile ? '0px' : `${isMobileSidebarOpen ? 0 : siderWidth}px` }"
       >
         <AppHeader :collapsed="isSidebarCollapsed" @toggle-sidebar="toggleSidebar" />
 
@@ -92,3 +93,11 @@ onUnmounted(() => {
     </div>
   </div>
 </template>
+
+<style scoped>
+@media (max-width: 248px) {
+  main {
+    padding: 8px 10px !important;
+  }
+}
+</style>

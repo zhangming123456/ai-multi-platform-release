@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime
 
-from pydantic import BaseModel
-from typing import Optional
+from pydantic import BaseModel, field_validator
+from typing import Optional, List
 
 
 class ContentCreate(BaseModel):
@@ -47,6 +48,21 @@ class AIGenerateRequest(BaseModel):
     plan_id: Optional[str] = None
 
 
+class UploadedFile(BaseModel):
+    data: str
+    mime_type: str
+
+
+class AIGenerateStreamRequest(BaseModel):
+    topic: str
+    platforms: list[str]
+    style: Optional[str] = None
+    keywords: Optional[list[str]] = None
+    plan_id: Optional[str] = None
+    model_id: Optional[str] = None
+    files: Optional[List[UploadedFile]] = None
+
+
 class AIVariant(BaseModel):
     title: str
     body: str
@@ -55,3 +71,28 @@ class AIVariant(BaseModel):
 
 class AIGenerateResponse(BaseModel):
     variants: list[AIVariant]
+
+
+class AIGenerationRecordResponse(BaseModel):
+    id: int
+    user_id: int
+    topic: str
+    platform: str
+    plan_id: Optional[str] = None
+    model: Optional[str] = None
+    title: str
+    body: str
+    hashtags: list[str] = []
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+    @field_validator("hashtags", mode="before")
+    @classmethod
+    def parse_hashtags(cls, v):
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except json.JSONDecodeError:
+                return []
+        return v or []

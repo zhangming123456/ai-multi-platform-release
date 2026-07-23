@@ -1,6 +1,18 @@
 <script setup lang="ts">
 import { ref, computed, watch, onBeforeUnmount, onMounted } from 'vue'
-import { useTokenPlanStore, providerLabel, type PlanProvider } from '@/stores/tokenPlan'
+import {
+  useTokenPlanStore,
+  providerLabel,
+  parseModelField,
+  serializeModelField,
+  MODEL_TYPE_OPTIONS,
+  MODEL_TYPE_LABELS,
+  MODEL_TYPE_COLORS,
+  MODEL_TYPE_ICONS,
+  type PlanProvider,
+  type ModelEntry,
+  type ModelType,
+} from '@/stores/tokenPlan'
 import {
   IconCheckCircle,
   IconUpCircle,
@@ -12,6 +24,10 @@ import {
   IconInfoCircleFill,
   IconLink,
   IconEdit,
+  IconMindMapping,
+  IconEye,
+  IconImage,
+  IconVideoCamera,
 } from '@arco-design/web-vue/es/icon'
 import { Message } from '@arco-design/web-vue'
 import PageHeader from '@/components/layout/PageHeader.vue'
@@ -26,7 +42,7 @@ interface FormState {
   apiKey: string
   baseUrl: string
   fullUrl: boolean
-  model: string
+  models: ModelEntry[]
   multimodal: boolean
   modelSeries: string
   displayName: string
@@ -44,7 +60,7 @@ function blankForm(): FormState {
     apiKey: '',
     baseUrl: '',
     fullUrl: false,
-    model: 'gpt-4o-mini',
+    models: [{ id: 'gpt-4o-mini', types: ['text'], contextInput: null, contextOutput: null }],
     multimodal: false,
     modelSeries: 'default',
     displayName: '',
@@ -165,17 +181,19 @@ async function doFetch(url: string, target: 'provider' | 'custom') {
     const models: string[] = res.data.models || []
     fetchedModels.value = models
     if (models.length === 0) {
-      Message.warning('未获取到模型列表')
-    } else {
-      Message.success(`获取到 ${models.length} 个模型`)
-      if (target === 'custom' && !form.value.model) {
-        form.value.model = models[0]
-        applyContext(models[0])
+        Message.warning('未获取到模型列表')
+      } else {
+        Message.success(`获取到 ${models.length} 个模型`)
+        if (form.value.models.length === 0) {
+          form.value.models = [{ id: models[0], types: ['text'], contextInput: null, contextOutput: null }]
+          applyContext(models[0])
+        }
       }
-    }
   } catch (e: unknown) {
     const msg =
-      e instanceof Error ? e.message : (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail || '未知错误'
+      e instanceof Error
+        ? e.message
+        : (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail || '未知错误'
     Message.error(`拉取失败：${msg}`)
   } finally {
     fetching.value = false
@@ -191,28 +209,36 @@ function fetchCustomModels() {
 }
 
 function onProviderChange() {
-  form.value.model = providerDefaultModel[form.value.provider] || ''
+  const defaultModel = providerDefaultModel[form.value.provider] || ''
+  form.value.models = defaultModel ? [{ id: defaultModel, types: ['text'], contextInput: null, contextOutput: null }] : []
   fetchedModels.value = []
-  if (form.value.model) applyContext(form.value.model)
-}
-
-function onModelChange(val: unknown) {
-  if (typeof val === 'string' && val) applyContext(val)
+  if (defaultModel) applyContext(defaultModel)
 }
 
 function setMode(m: 'provider' | 'custom') {
   form.value.mode = m
   if (m === 'custom') {
     form.value.provider = 'custom'
+    form.value.models = []
   } else if (form.value.provider === 'custom') {
     form.value.provider = 'openai'
-    form.value.model = providerDefaultModel.openai
-    applyContext(form.value.model)
-  }
-  if (m === 'custom') {
-    form.value.model = ''
+    form.value.models = [{ id: providerDefaultModel.openai, types: ['text'], contextInput: null, contextOutput: null }]
+    applyContext(providerDefaultModel.openai)
   }
   fetchedModels.value = []
+}
+
+function addModelEntry() {
+  form.value.models.push({ id: '', types: ['text'], contextInput: null, contextOutput: null })
+}
+
+function removeModelEntry(idx: number) {
+  form.value.models.splice(idx, 1)
+}
+
+function onModelIdInput(entry: ModelEntry, val: string) {
+  entry.id = val
+  if (val) applyContext(val)
 }
 
 function openAdd() {
@@ -234,7 +260,7 @@ function openEdit(id: string) {
     apiKey: p.apiKey,
     baseUrl: p.baseUrl,
     fullUrl: p.fullUrl,
-    model: p.model,
+    models: parseModelField(p.model),
     multimodal: p.multimodal,
     modelSeries: p.modelSeries,
     displayName: p.displayName,
@@ -245,7 +271,7 @@ function openEdit(id: string) {
   }
   isEdit.value = true
   editingId.value = id
-  advanced.value = true
+  advanced.value = false
   fetchedModels.value = []
   showModal.value = true
 }
@@ -257,10 +283,6 @@ function validate(): boolean {
       Message.warning('请选择服务商')
       return false
     }
-    if (!f.model) {
-      Message.warning('请选择或输入模型')
-      return false
-    }
   } else {
     if (!f.apiFormat) {
       Message.warning('请选择 API 格式')
@@ -270,10 +292,11 @@ function validate(): boolean {
       Message.warning('请填写自定义请求地址')
       return false
     }
-    if (!f.model.trim()) {
-      Message.warning('请填写模型 ID')
-      return false
-    }
+  }
+  const validModels = f.models.filter((m) => m.id.trim())
+  if (validModels.length === 0) {
+    Message.warning('请至少添加一个模型 ID')
+    return false
   }
   if (!f.apiKey.trim()) {
     Message.warning('请填写 API 密钥')
@@ -285,8 +308,11 @@ function validate(): boolean {
 function save() {
   if (!validate()) return
   const f = form.value
-  const name = f.displayName || f.model || providerLabel(f.provider)
-  const payload = { ...f, name }
+  const validModels = f.models.filter((m) => m.id.trim())
+  const modelStr = serializeModelField(validModels)
+  const firstModelId = validModels[0]?.id || ''
+  const name = f.displayName || firstModelId || providerLabel(f.provider)
+  const payload = { ...f, model: modelStr, name }
   if (isEdit.value) {
     store.updatePlan(editingId.value, payload)
     Message.success('配置已保存')
@@ -331,6 +357,18 @@ function providerColor(p: PlanProvider) {
   }
 }
 
+const MODEL_ICON_MAP: Record<string, typeof IconEdit> = {
+  IconEdit,
+  IconMindMapping,
+  IconEye,
+  IconImage,
+  IconVideoCamera,
+}
+
+function modelTypeIcon(type: ModelType) {
+  return MODEL_ICON_MAP[MODEL_TYPE_ICONS[type]] || IconEdit
+}
+
 function providerLetter(p: PlanProvider) {
   switch (p) {
     case 'openai':
@@ -360,7 +398,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div>
+  <div class="page-main">
     <PageHeader title="模型管理" subtitle="配置 AI 模型服务商与自定义接入，统一管理调用配额">
       <template #actions>
         <a-tag :color="store.activePlan ? 'green' : 'red'" size="small">
@@ -376,7 +414,7 @@ onBeforeUnmount(() => {
       </template>
     </PageHeader>
 
-    <a-row :gutter="24" class="mb-6">
+    <a-row :gutter="[24, 10]" class="mb-6">
       <a-col :xs="24" :lg="16">
         <a-space direction="vertical" :size="14" fill>
           <div
@@ -423,7 +461,27 @@ onBeforeUnmount(() => {
               </div>
             </div>
             <div class="plan-info">
-              <span class="info-chip"><b>模型</b>{{ plan.model || '—' }}</span>
+              <span class="info-chip info-chip--models">
+                <b>模型</b>
+                <template v-for="m in parseModelField(plan.model)" :key="m.id">
+                  <span
+                    class="model-tag"
+                    :style="{ background: ((m.types && m.types[0]) ? (MODEL_TYPE_COLORS[m.types[0]] || '#007AFF') : '#007AFF') + '15', color: (m.types && m.types[0]) ? (MODEL_TYPE_COLORS[m.types[0]] || '#0062CC') : '#0062CC' }"
+                  >
+                    <span v-if="m.types && m.types.length" class="model-tag__icons">
+                      <component
+                        v-for="t in m.types"
+                        :key="t"
+                        :is="modelTypeIcon(t)"
+                        :size="11"
+                        :style="{ color: MODEL_TYPE_COLORS[t] || '#007AFF' }"
+                      />
+                    </span>
+                    {{ m.id }}
+                  </span>
+                </template>
+                <span v-if="!plan.model">—</span>
+              </span>
               <span class="info-chip"
                 ><b>上下文</b>{{ fmtK(plan.contextInput) }} / {{ fmtK(plan.contextOutput) }}</span
               >
@@ -513,7 +571,6 @@ onBeforeUnmount(() => {
       v-model:visible="showModal"
       modal-class="tp-cabin-modal"
       body-class="tp-cabin-body-modal"
-      :width="480"
       align-center
       :mask-closable="false"
       :esc-to-close="true"
@@ -554,48 +611,6 @@ onBeforeUnmount(() => {
               @change="onProviderChange"
             />
           </div>
-
-          <div class="tp-row">
-            <label class="tp-label"><i class="tp-req">*</i>模型</label>
-            <a-select
-              v-model="form.model"
-              placeholder="选择模型"
-              allow-search
-              allow-create
-              @change="onModelChange"
-            >
-              <a-select-opt-group v-if="presetModels[form.provider].length" label="预设模型">
-                <a-option v-for="m in presetModels[form.provider]" :key="m" :value="m">
-                  {{ m
-                  }}<span class="tp-opt-meta"
-                    >{{ getModelContext(m).i.toLocaleString() }} tokens</span
-                  >
-                </a-option>
-              </a-select-opt-group>
-              <a-select-opt-group v-if="fetchedModels.length" label="API 拉取">
-                <a-option v-for="m in fetchedModels" :key="m" :value="m">
-                  {{ m
-                  }}<span class="tp-opt-meta"
-                    >{{ getModelContext(m).i.toLocaleString() }} tokens</span
-                  >
-                </a-option>
-              </a-select-opt-group>
-            </a-select>
-            <div class="tp-aux">
-              <span class="tp-aux-hint">支持搜索，未列出的模型可直接输入 ID 创建</span>
-              <button
-                v-if="form.apiKey"
-                type="button"
-                class="tp-aux-link"
-                :disabled="fetching"
-                @click="fetchProviderModels"
-              >
-                <IconRefresh :class="{ 'tp-spin': fetching }" />{{
-                  fetching ? '拉取中' : '拉取列表'
-                }}
-              </button>
-            </div>
-          </div>
         </template>
 
         <template v-else>
@@ -631,55 +646,6 @@ onBeforeUnmount(() => {
               <p>{{ bannerText }}</p>
             </div>
           </div>
-
-          <div class="tp-row">
-            <div class="tp-labelrow">
-              <label class="tp-label"><i class="tp-req">*</i>模型 ID</label>
-              <span class="tp-inline">
-                多模态
-                <button
-                  type="button"
-                  role="switch"
-                  class="tp-toggle"
-                  :class="{ on: form.multimodal }"
-                  :aria-checked="form.multimodal"
-                  @click="form.multimodal = !form.multimodal"
-                >
-                  <span class="tp-knob" />
-                </button>
-              </span>
-            </div>
-            <a-select
-              v-model="form.model"
-              placeholder="直接输入模型 ID，或拉取列表后选择"
-              allow-search
-              allow-create
-              @change="onModelChange"
-            >
-              <a-select-opt-group v-if="fetchedModels.length" label="API 拉取">
-                <a-option v-for="m in fetchedModels" :key="m" :value="m">
-                  {{ m
-                  }}<span class="tp-opt-meta"
-                    >{{ getModelContext(m).i.toLocaleString() }} tokens</span
-                  >
-                </a-option>
-              </a-select-opt-group>
-            </a-select>
-            <div class="tp-aux">
-              <span class="tp-aux-hint">支持直接输入任意模型 ID，也可通过 API 密钥拉取后选择</span>
-              <button
-                v-if="form.apiKey && form.baseUrl"
-                type="button"
-                class="tp-aux-link"
-                :disabled="fetching"
-                @click="fetchCustomModels"
-              >
-                <IconRefresh :class="{ 'tp-spin': fetching }" />{{
-                  fetching ? '拉取中' : '拉取列表'
-                }}
-              </button>
-            </div>
-          </div>
         </template>
 
         <div class="tp-row">
@@ -690,6 +656,88 @@ onBeforeUnmount(() => {
             type="password"
             placeholder="输入 API 密钥"
           />
+        </div>
+
+        <div class="tp-row">
+          <label class="tp-label"><i class="tp-req">*</i>模型列表</label>
+          <div class="model-list">
+            <div v-for="(entry, idx) in form.models" :key="idx" class="model-entry">
+              <div class="model-entry__top">
+                <div class="model-entry__id">
+                  <a-select
+                    v-model="entry.id"
+                    placeholder="选择或输入模型 ID"
+                    allow-search
+                    allow-create
+                    size="mini"
+                    @change="(val: unknown) => onModelIdInput(entry, val as string)"
+                  >
+                    <a-select-opt-group v-if="form.mode === 'provider' && presetModels[form.provider].length" label="预设模型">
+                      <a-option v-for="m in presetModels[form.provider]" :key="m" :value="m">
+                        {{ m }}<span class="tp-opt-meta">{{ getModelContext(m).i.toLocaleString() }} tokens</span>
+                      </a-option>
+                    </a-select-opt-group>
+                    <a-select-opt-group v-if="fetchedModels.length" label="API 拉取">
+                      <a-option v-for="m in fetchedModels" :key="m" :value="m">
+                        {{ m }}<span class="tp-opt-meta">{{ getModelContext(m).i.toLocaleString() }} tokens</span>
+                      </a-option>
+                    </a-select-opt-group>
+                  </a-select>
+                </div>
+                <button
+                  v-if="form.models.length > 1"
+                  type="button"
+                  class="model-entry__del"
+                  title="删除"
+                  @click="removeModelEntry(idx)"
+                >
+                  <IconDelete :size="15" />
+                </button>
+              </div>
+              <div class="model-entry__bottom">
+                <div class="model-entry__types">
+                  <a-select
+                    v-model="entry.types"
+                    placeholder="模型类型（可多选）"
+                    multiple
+                    size="mini"
+                    :options="MODEL_TYPE_OPTIONS as unknown as {value: string; label: string}[]"
+                  />
+                </div>
+                <div class="model-entry__ctx">
+                  <input
+                    v-model.number="entry.contextInput"
+                    type="number"
+                    class="tp-field model-entry__ctx-input"
+                    placeholder="输入上下文"
+                  />
+                  <input
+                    v-model.number="entry.contextOutput"
+                    type="number"
+                    class="tp-field model-entry__ctx-input"
+                    placeholder="输出上下文"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+          <button type="button" class="model-add-btn" @click="addModelEntry">
+            <IconPlus :size="14" /> 添加模型
+          </button>
+          <div class="tp-aux">
+            <span class="tp-aux-hint">每个模型可配置多个类型与独立上下文窗口，留空则使用高级配置中的默认值</span>
+            <button
+              v-if="form.apiKey && (form.mode === 'provider' || form.baseUrl)"
+              type="button"
+              class="tp-aux-link"
+              :disabled="fetching"
+              @click="form.mode === 'provider' ? fetchProviderModels() : fetchCustomModels()"
+            >
+              <IconRefresh :class="{ 'tp-spin': fetching }" />{{
+                fetching ? '拉取中' : '拉取列表'
+              }}
+            </button>
+          </div>
         </div>
 
         <button type="button" class="tp-collapse-hd" @click="advanced = !advanced">
@@ -823,6 +871,17 @@ onBeforeUnmount(() => {
     border-color 0.18s,
     box-shadow 0.18s,
     background 0.18s;
+}
+.model-entry .arco-select-view {
+  height: 26px !important;
+  border-radius: 6px !important;
+  font-size: 12px !important;
+}
+.model-entry .arco-select-view-value {
+  font-size: 12px !important;
+}
+.model-entry .arco-select-view-input {
+  font-size: 12px !important;
 }
 .tp-cabin .arco-select-view:hover {
   border-color: rgba(0, 0, 0, 0.14);
@@ -1345,6 +1404,105 @@ body.tp-cabin-open .tp-opt-meta {
 .info-chip.right {
   margin-left: auto;
 }
+.info-chip--models {
+  flex-wrap: wrap;
+  gap: 4px;
+  width: 100%;
+  word-break: break-all;
+}
+.info-chip--models .model-tag {
+  padding: 1px 7px;
+  border-radius: 5px;
+  font-size: 11.5px;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.info-chip--models .model-tag__icons {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.model-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.model-entry {
+  padding: 10px;
+  background: #f5f5f7;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: 10px;
+}
+.model-entry__top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.model-entry__id {
+  flex: 1;
+  min-width: 0;
+}
+.model-entry__bottom {
+  display: flex;
+  gap: 6px;
+}
+.model-entry__types {
+  flex: 1;
+  min-width: 0;
+}
+.model-entry__ctx {
+  flex: none;
+  display: flex;
+  gap: 6px;
+}
+.model-entry__ctx-input {
+  width: 80px !important;
+  height: 26px !important;
+  font-size: 12px !important;
+  padding: 0 8px !important;
+}
+.model-entry__del {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #aeaeb2;
+  cursor: pointer;
+  transition: background 0.18s, color 0.18s;
+}
+.model-entry__del:hover {
+  background: rgba(255, 59, 48, 0.1);
+  color: #ff3b30;
+}
+.model-add-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 7px 14px;
+  border: 1px dashed rgba(0, 122, 255, 0.3);
+  border-radius: 10px;
+  background: rgba(0, 122, 255, 0.04);
+  color: #007aff;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.18s, border-color 0.18s;
+}
+.model-add-btn:hover {
+  background: rgba(0, 122, 255, 0.08);
+  border-color: rgba(0, 122, 255, 0.5);
+}
+
 .plan-bar {
   height: 4px;
   margin-top: 12px;
@@ -1387,5 +1545,174 @@ body.tp-cabin-open .tp-opt-meta {
   margin: 0;
   color: #86868b;
   font-size: 14px;
+}
+
+@media (max-width: 768px) {
+  .arco-modal.tp-cabin-modal {
+    width: calc(100vw - 24px) !important;
+    max-height: 92vh;
+    margin: 12px !important;
+    border-radius: 16px;
+  }
+  .arco-modal.tp-cabin-modal .arco-modal-header {
+    padding: 16px 18px 12px;
+  }
+  .arco-modal.tp-cabin-modal .arco-modal-footer {
+    padding: 12px 18px 16px;
+  }
+  .tp-cabin {
+    padding: 16px 18px 4px;
+  }
+  .tp-seg {
+    margin-bottom: 18px;
+  }
+  .tp-row {
+    margin-bottom: 14px;
+  }
+  .tp-field {
+    height: 40px;
+    font-size: 13.5px;
+  }
+  .tp-cabin .arco-select-view {
+    height: 40px;
+  }
+  .model-entry__bottom {
+    flex-direction: column;
+    gap: 8px;
+  }
+  .model-entry__ctx {
+    width: 100%;
+  }
+  .model-entry__ctx-input {
+    width: 100% !important;
+    flex: 1;
+  }
+  .plan-card {
+    padding: 14px 16px 12px 18px;
+  }
+  .plan-top {
+    gap: 10px;
+  }
+  .plan-badge {
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    font-size: 14px;
+  }
+  .plan-title {
+    font-size: 14px;
+    flex-wrap: wrap;
+  }
+  .plan-sub {
+    font-size: 11.5px;
+    flex-wrap: wrap;
+  }
+  .plan-acts {
+    gap: 4px;
+  }
+  .icon-btn {
+    width: 28px;
+    height: 28px;
+  }
+  .plan-info {
+    gap: 6px;
+    margin-top: 10px;
+  }
+  .info-chip {
+    font-size: 11px;
+    padding: 3px 8px;
+  }
+  .info-chip--models {
+    width: 100%;
+  }
+  .info-chip--models .model-tag {
+    font-size: 11px;
+    padding: 1px 6px;
+  }
+  .plan-bar {
+    margin-top: 10px;
+  }
+  .tp-ctx {
+    flex-wrap: wrap;
+  }
+  .tp-ctx-f {
+    min-width: 100px;
+  }
+}
+
+@media (max-width: 480px) {
+  .plan-acts {
+    flex-direction: column;
+  }
+  .platform-grid {
+    grid-template-columns: 1fr;
+  }
+  .tp-aux {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
+@media (max-width: 248px) {
+  .plan-card-top {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .plan-letter {
+    width: 32px;
+    height: 32px;
+    font-size: 14px;
+  }
+  .plan-name {
+    font-size: 14px;
+  }
+  .plan-badge {
+    font-size: 10px;
+    padding: 1px 6px;
+  }
+  .plan-info {
+    gap: 6px;
+  }
+  .info-chip b {
+    font-size: 11px;
+  }
+  .info-chip {
+    font-size: 11px;
+  }
+  .info-chip--models .model-tag {
+    font-size: 10px;
+    padding: 1px 5px;
+  }
+  .plan-bottom {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+  .plan-ctx {
+    font-size: 10.5px;
+  }
+  .model-entry__bottom {
+    flex-direction: column;
+    gap: 6px;
+  }
+  .model-entry__ctx-input {
+    width: 100%;
+  }
+  .tp-cabin-modal .arco-modal-header {
+    padding: 12px 14px !important;
+  }
+  .tp-cabin-modal .arco-modal-body {
+    padding: 12px 14px !important;
+  }
+  .tp-cabin-modal .arco-modal-footer {
+    padding: 10px 14px !important;
+  }
+  .model-entry {
+    padding: 8px 10px;
+  }
+  .model-entry__head {
+    font-size: 12px;
+  }
 }
 </style>
