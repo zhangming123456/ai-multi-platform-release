@@ -60,11 +60,23 @@ function hasPerm(key: string): boolean {
   return access ? access.read : false
 }
 
-const sysChildren = computed<MenuEntry[]>(() => {
+const rbacChildren = computed<MenuEntry[]>(() => {
   const items: MenuEntry[] = []
   if (hasPerm('accounts')) {
-    items.push({ key: 'accounts', name: '账号管理', path: '/accounts', icon: IconSafe, permKey: 'accounts' })
+    items.push({ key: 'accounts', name: '账号设置', path: '/accounts', icon: IconSafe, permKey: 'accounts' })
   }
+  const isAdmin = userStore.userInfo?.role === 'admin' || userStore.userInfo?.role === 'manager'
+  if (isAdmin && hasPerm('permission_manage')) {
+    items.push({ key: 'role-manage', name: '角色设置', path: '/settings/roles', icon: IconUser, permKey: 'permission_manage' })
+  }
+  if (isAdmin && hasPerm('permission_manage')) {
+    items.push({ key: 'permission-manage', name: '权限设置', path: '/settings/permissions', icon: IconUser, permKey: 'permission_manage' })
+  }
+  return items
+})
+
+const sysChildren = computed<MenuEntry[]>(() => {
+  const items: MenuEntry[] = []
   if (hasPerm('token_plan')) {
     items.push({ key: 'token-plan', name: 'Token 配置', path: '/settings/token-plan', icon: IconSettings, permKey: 'token_plan' })
   }
@@ -73,13 +85,6 @@ const sysChildren = computed<MenuEntry[]>(() => {
   }
   if (userStore.userInfo?.role === 'admin' && hasPerm('database')) {
     items.push({ key: 'database', name: '数据库管理', path: '/developer/database', icon: IconStorage, permKey: 'database' })
-  }
-  const isAdmin = userStore.userInfo?.role === 'admin' || userStore.userInfo?.role === 'manager'
-  if (isAdmin && hasPerm('permission_manage')) {
-    items.push({ key: 'role-manage', name: '角色管理', path: '/settings/roles', icon: IconUser, permKey: 'permission_manage' })
-  }
-  if (isAdmin && hasPerm('permission_manage')) {
-    items.push({ key: 'permission-manage', name: '权限管理', path: '/settings/permissions', icon: IconUser, permKey: 'permission_manage' })
   }
   return items
 })
@@ -134,10 +139,19 @@ const menuItems = computed<MenuItem[]>(() => {
     items.push({ key: 'platforms', name: '平台管理', path: '/platforms', icon: IconApps, permKey: 'platforms' })
   }
 
+  if (rbacChildren.value.length > 0) {
+    items.push({
+      key: 'rbac-group',
+      name: '权限管理',
+      icon: IconSafe,
+      children: rbacChildren.value,
+    })
+  }
+
   if (sysChildren.value.length > 0) {
     items.push({
       key: 'settings-group',
-      name: '系统设置',
+      name: '系统管理',
       icon: IconTool,
       children: sysChildren.value,
     })
