@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
-import { IconMenuFold, IconMenuUnfold, IconNotification } from '@arco-design/web-vue/es/icon'
+import { IconMenuFold, IconMenuUnfold } from '@arco-design/web-vue/es/icon'
+import RegionSwitcher from './RegionSwitcher.vue'
+import NotificationBell from '@/components/NotificationBell.vue'
 
 const props = defineProps<{
   collapsed: boolean
@@ -15,11 +17,16 @@ const route = useRoute()
 
 const breadcrumbMap: Record<string, string> = {
   '/': '仪表盘',
+  '/profile': '个人资料',
+  '/platforms': '平台管理',
   '/accounts': '账号管理',
   '/content': '内容工坊',
   '/content/create': '创建内容',
   '/publish': '发布管理',
+  '/review': '审核管理',
   '/templates': '模板中心',
+  '/settings/token-plan': 'Token 配置',
+  '/developer/docs': 'API 文档',
 }
 
 const breadcrumbs = computed(() => {
@@ -59,6 +66,8 @@ const breadcrumbs = computed(() => {
     </div>
 
     <div class="flex items-center gap-3">
+      <RegionSwitcher />
+
       <!-- 搜索框 -->
       <a-input-search
         placeholder="搜索..."
@@ -67,14 +76,8 @@ const breadcrumbs = computed(() => {
         allow-clear
       />
 
-      <!-- 通知按钮 -->
-      <a-badge :count="1" dot>
-        <a-button type="text" shape="circle" class="!text-[#636366]">
-          <template #icon>
-            <IconNotification :size="18" />
-          </template>
-        </a-button>
-      </a-badge>
+      <!-- 通知铃铛 -->
+      <NotificationBell />
     </div>
   </header>
 </template>

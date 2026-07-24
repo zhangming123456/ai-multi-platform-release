@@ -5,29 +5,58 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import select
 
 from app.config import settings
+from app.core.privacy_middleware import PrivacyMaskMiddleware
 from app.core.security import hash_password
 from app.database import Base, async_session_factory, engine
 from app.models import User, UserRole
-from app.routers import accounts, auth, contents, dashboard, model_configs, models, publish, templates
+from app.routers import accounts, auth, contents, dashboard, db, db_changes, model_configs, models, notifications, permissions, publish, reviews, roles, templates, users
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)
 
     async with async_session_factory() as session:
-        result = await session.execute(select(User).where(User.email == "admin@admin.com"))
+        result = await session.execute(select(User).where(User.username == "admin"))
         admin = result.scalar_one_or_none()
         if admin is None:
             admin = User(
+                username="admin",
                 email="admin@admin.com",
                 hashed_password=hash_password("admin123"),
                 nickname="管理员",
                 role=UserRole.admin,
             )
             session.add(admin)
-            await session.commit()
+        else:
+            admin.hashed_password = hash_password("admin123")
+            admin.email = "admin@admin.com"
+            admin.nickname = "管理员"
+            admin.role = UserRole.admin
+
+        op_result = await session.execute(select(User).where(User.username == "operator"))
+        if op_result.scalar_one_or_none() is None:
+            session.add(User(
+                username="operator",
+                email="operator@example.com",
+                hashed_password=hash_password("operator123"),
+                nickname="运营小二",
+                role=UserRole.operator,
+            ))
+
+        rev_result = await session.execute(select(User).where(User.username == "reviewer"))
+        if rev_result.scalar_one_or_none() is None:
+            session.add(User(
+                username="reviewer",
+                email="reviewer@example.com",
+                hashed_password=hash_password("reviewer123"),
+                nickname="审核专员",
+                role=UserRole.reviewer,
+            ))
+
+        await session.commit()
 
     yield
 
@@ -47,14 +76,23 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.add_middleware(PrivacyMaskMiddleware)
+
 app.include_router(auth.router)
 app.include_router(accounts.router)
 app.include_router(contents.router)
 app.include_router(dashboard.router)
 app.include_router(model_configs.router)
 app.include_router(models.router)
+app.include_router(notifications.router)
 app.include_router(publish.router)
+app.include_router(reviews.router)
 app.include_router(templates.router)
+app.include_router(users.router)
+app.include_router(db.router)
+app.include_router(db_changes.router)
+app.include_router(permissions.router)
+app.include_router(roles.router)
 
 
 @app.get("/")

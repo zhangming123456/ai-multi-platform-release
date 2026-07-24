@@ -8,6 +8,7 @@ import SegmentedControl from '@/components/shared/SegmentedControl.vue'
 import PlatformIcon from '@/components/shared/PlatformIcon.vue'
 import StatusBadge from '@/components/shared/StatusBadge.vue'
 import Modal from '@/components/shared/Modal.vue'
+import { formatDateTime } from '@/utils/time'
 
 type Platform = 'wechat_mp' | 'xiaohongshu' | 'douyin' | 'wechat_video'
 type TaskStatus = 'pending' | 'publishing' | 'published' | 'failed'
@@ -89,7 +90,7 @@ const columns = [
   { title: '平台', dataIndex: 'platform', slotName: 'platform' },
   { title: '目标账号', dataIndex: 'accountName' },
   { title: '状态', dataIndex: 'status', slotName: 'status' },
-  { title: '计划时间', dataIndex: 'scheduled_at' },
+  { title: '计划时间', dataIndex: 'scheduled_at', slotName: 'scheduled_at' },
   { title: '操作', slotName: 'actions', align: 'right' as const },
 ]
 
@@ -183,6 +184,9 @@ onMounted(() => {
         </template>
         <template #status="{ record }">
           <StatusBadge :status="record.status" />
+        </template>
+        <template #scheduled_at="{ record }">
+          <span class="tabular-nums text-[13px] text-secondary">{{ formatDateTime(record.scheduled_at) }}</span>
         </template>
         <template #actions="{ record }">
           <a-space :size="4">

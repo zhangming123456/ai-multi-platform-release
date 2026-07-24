@@ -1,10 +1,12 @@
 export interface UserInfo {
   id: number
-  email: string
+  username: string
+  email: string | null
   nickname: string
   role: string
   avatar_url: string | null
   created_at: string
+  permissions?: string[]
 }
 
 export interface Account {

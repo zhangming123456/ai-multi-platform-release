@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.deps import get_current_user
+from app.core.deps import get_current_user, require_permission
 from app.database import get_db
 from app.models.account import Account, AccountStatus
 from app.models.user import User
@@ -35,7 +35,7 @@ async def list_accounts(
 async def create_account(
     request: AccountCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission("account:create")),
 ):
     account = Account(
         user_id=current_user.id,
@@ -72,7 +72,7 @@ async def update_account(
     account_id: int,
     request: AccountUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission("account:update")),
 ):
     result = await db.execute(
         select(Account).where(Account.id == account_id, Account.user_id == current_user.id)
@@ -94,7 +94,7 @@ async def update_account(
 async def delete_account(
     account_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission("account:delete")),
 ):
     result = await db.execute(
         select(Account).where(Account.id == account_id, Account.user_id == current_user.id)
@@ -110,7 +110,7 @@ async def delete_account(
 async def check_account_status(
     account_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission("account:check")),
 ):
     result = await db.execute(
         select(Account).where(Account.id == account_id, Account.user_id == current_user.id)

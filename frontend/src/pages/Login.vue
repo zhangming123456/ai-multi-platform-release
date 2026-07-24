@@ -2,28 +2,28 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { Message } from '@arco-design/web-vue'
-import { IconLock, IconEmail } from '@arco-design/web-vue/es/icon'
+import { IconLock, IconUser } from '@arco-design/web-vue/es/icon'
 import { useUserStore } from '@/stores/user'
 
 const router = useRouter()
 const userStore = useUserStore()
 
-const email = ref('admin@admin.com')
+const username = ref('admin')
 const password = ref('admin123')
 const loading = ref(false)
 
 async function handleLogin() {
-  if (!email.value || !password.value) {
-    Message.warning('请输入邮箱和密码')
+  if (!username.value || !password.value) {
+    Message.warning('请输入用户名和密码')
     return
   }
   loading.value = true
   try {
-    await userStore.login(email.value, password.value)
+    await userStore.login(username.value, password.value)
     Message.success('登录成功')
     router.push('/')
   } catch (e: any) {
-    const msg = e.response?.data?.detail || '登录失败，请检查邮箱和密码'
+    const msg = e.response?.data?.detail || '登录失败，请检查用户名和密码'
     Message.error(msg)
   } finally {
     loading.value = false
@@ -54,10 +54,10 @@ async function handleLogin() {
       </div>
 
       <a-form layout="vertical" @submit.prevent="handleLogin">
-        <a-form-item field="email" label="邮箱">
-          <a-input v-model="email" placeholder="请输入邮箱" size="large" allow-clear>
+        <a-form-item field="username" label="用户名">
+          <a-input v-model="username" placeholder="用户名或邮箱" size="large" allow-clear>
             <template #prefix>
-              <IconEmail />
+              <IconUser />
             </template>
           </a-input>
         </a-form-item>
@@ -87,7 +87,7 @@ async function handleLogin() {
       </a-form>
 
       <div class="login-tip">
-        默认账号：admin@admin.com / admin123
+        默认账号：admin / admin123
       </div>
     </div>
   </div>

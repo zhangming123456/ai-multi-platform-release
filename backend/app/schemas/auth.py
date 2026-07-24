@@ -7,7 +7,7 @@ from typing import Optional
 
 
 class LoginRequest(BaseModel):
-    email: str
+    username: str
     password: str
 
 
@@ -18,13 +18,18 @@ class Token(BaseModel):
 
 class UserInfo(BaseModel):
     id: int
-    email: str
+    username: str
+    email: Optional[str] = None
     nickname: str
     role: str
     avatar_url: Optional[str] = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class UserInfoWithPermissions(UserInfo):
+    permissions: list[str] = []
 
 
 class LoginResponse(BaseModel):
@@ -34,8 +39,31 @@ class LoginResponse(BaseModel):
 
 
 class UserCreate(BaseModel):
-    email: str
+    username: str
     password: str
     nickname: str
+    email: Optional[str] = None
     role: str = "operator"
     avatar_url: Optional[str] = None
+
+
+class UserUpdate(BaseModel):
+    username: Optional[str] = None
+    email: Optional[str] = None
+    nickname: Optional[str] = None
+    role: Optional[str] = None
+    avatar_url: Optional[str] = None
+
+
+class UserPasswordChange(BaseModel):
+    new_password: str
+
+
+class ProfileUpdate(BaseModel):
+    nickname: Optional[str] = None
+    avatar_url: Optional[str] = None
+
+
+class PasswordChange(BaseModel):
+    old_password: str
+    new_password: str

@@ -196,6 +196,7 @@ body {
 .arco-modal-wrapper.arco-modal-wrapper-align-center .arco-modal {
   top: 50vh;
   transform: translateY(-50%);
+  max-width: 90vh;
 }
 .arco-modal {
   width: 90vw;

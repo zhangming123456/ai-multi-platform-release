@@ -13,11 +13,12 @@ export const useUserStore = defineStore('user', () => {
   const token = ref(localStorage.getItem('token') || '')
   const userInfo = ref<UserInfo | null>(null)
 
-  async function login(email: string, password: string) {
-    const res = await api.post<LoginResponse>('/auth/login', { email, password })
+  async function login(username: string, password: string) {
+    const res = await api.post<LoginResponse>('/auth/login', { username, password })
     token.value = res.data.access_token
     userInfo.value = res.data.user
     localStorage.setItem('token', res.data.access_token)
+    await fetchUserInfo()
   }
 
   function logout() {
@@ -31,5 +32,10 @@ export const useUserStore = defineStore('user', () => {
     userInfo.value = res.data
   }
 
-  return { token, userInfo, login, logout, fetchUserInfo }
+  function hasPermission(key: string): boolean {
+    if (!userInfo.value?.permissions) return true
+    return userInfo.value.permissions.includes(key)
+  }
+
+  return { token, userInfo, login, logout, fetchUserInfo, hasPermission }
 })

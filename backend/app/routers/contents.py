@@ -7,7 +7,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.deps import get_current_user
+from app.core.deps import get_current_user, require_permission
 from app.database import get_db
 from app.models.ai_generation import AIGenerationRecord
 from app.models.content import Content
@@ -63,7 +63,7 @@ async def list_contents(
 async def create_content(
     request: ContentCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission("content:create")),
 ):
     content = Content(
         user_id=current_user.id,
@@ -116,7 +116,7 @@ async def update_content(
     content_id: int,
     request: ContentUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission("content:update")),
 ):
     result = await db.execute(
         select(Content).where(Content.id == content_id, Content.user_id == current_user.id)
@@ -138,7 +138,7 @@ async def update_content(
 async def delete_content(
     content_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission("content:delete")),
 ):
     result = await db.execute(
         select(Content).where(Content.id == content_id, Content.user_id == current_user.id)
@@ -154,7 +154,7 @@ async def delete_content(
 async def ai_generate(
     request: AIGenerateRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission("content:ai_generate")),
 ):
     try:
         variants = await generate_content_variants(
@@ -205,7 +205,7 @@ async def ai_generate(
 async def ai_generate_stream(
     request: AIGenerateStreamRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission("content:ai_generate")),
 ):
     """SSE 流式生成端点：逐平台流式输出 LLM 内容，同时推送实时日志。"""
 

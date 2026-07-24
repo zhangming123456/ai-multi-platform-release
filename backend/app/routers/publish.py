@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.deps import get_current_user
+from app.core.deps import get_current_user, require_permission
 from app.database import get_db
 from app.models.publish_task import PublishTask
 from app.models.user import User
@@ -40,7 +40,7 @@ async def list_tasks(
 async def create_task(
     request: PublishTaskCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission("publish:create")),
 ):
     task = await create_publish_task(db, request)
     return task
@@ -63,7 +63,7 @@ async def get_task(
 async def retry_publish_task(
     task_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission("publish:retry")),
 ):
     task = await retry_task(db, task_id)
     if not task:

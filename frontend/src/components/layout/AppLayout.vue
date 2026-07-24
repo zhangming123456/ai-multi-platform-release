@@ -2,10 +2,12 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import AppSidebar from './AppSidebar.vue'
 import AppHeader from './AppHeader.vue'
+import { useUserStore } from '@/stores/user'
 
 const isSidebarCollapsed = ref(false)
 const isMobileSidebarOpen = ref(false)
 const isMobile = ref(false)
+const userStore = useUserStore()
 
 const siderWidth = computed(() => (isSidebarCollapsed.value ? 64 : 248))
 
@@ -28,6 +30,9 @@ function closeMobileSidebar() {
 onMounted(() => {
   checkMobile()
   window.addEventListener('resize', checkMobile)
+  if (!userStore.userInfo) {
+    userStore.fetchUserInfo().catch(() => {})
+  }
 })
 
 onUnmounted(() => {
@@ -79,14 +84,17 @@ onUnmounted(() => {
 
       <div
         class="flex-1 flex flex-col transition-all duration-350 ease-out"
-        style="max-width: 100vw;"
-        :style="{ marginLeft: isMobile ? '0px' : `${isMobileSidebarOpen ? 0 : siderWidth}px` }"
+        :style="{
+          marginLeft: isMobile ? '0px' : `${isMobileSidebarOpen ? 0 : siderWidth}px`,
+          maxWidth: `calc(100vw - ${isMobile ? 0 : siderWidth}px)`,
+        }"
       >
         <AppHeader :collapsed="isSidebarCollapsed" @toggle-sidebar="toggleSidebar" />
-
         <main
+          style="width: 100%; overflow: hidden"
           class="flex-1 px-4 md:px-6 lg:px-8 py-4 md:py-6 lg:py-7 w-full max-w-[1400px] mx-auto"
         >
+          <div style="width: 999999px"></div>
           <router-view />
         </main>
       </div>

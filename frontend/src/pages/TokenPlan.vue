@@ -79,6 +79,24 @@ const advanced = ref(false)
 const fetching = ref(false)
 const fetchedModels = ref<string[]>([])
 
+const dedupedFetchedModels = computed(() => {
+  const preset = form.value.mode === 'provider' ? (presetModels[form.value.provider] || []) : []
+  const presetSet = new Set(preset)
+  return fetchedModels.value.filter((m) => !presetSet.has(m))
+})
+
+function availableModelsForEntry(currentIdx: number): string[] {
+  const preset = form.value.mode === 'provider' ? (presetModels[form.value.provider] || []) : []
+  const allAvailable = [...preset, ...dedupedFetchedModels.value]
+  const selectedElsewhere = new Set(
+    form.value.models
+      .filter((_, idx) => idx !== currentIdx)
+      .map((m) => m.id)
+      .filter(Boolean),
+  )
+  return allAvailable.filter((m) => !selectedElsewhere.has(m))
+}
+
 const presetModels: Record<string, string[]> = {
   openai: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-4', 'gpt-3.5-turbo'],
   deepseek: ['deepseek-chat', 'deepseek-r1-chat', 'deepseek-coder'],
@@ -234,6 +252,46 @@ function addModelEntry() {
 
 function removeModelEntry(idx: number) {
   form.value.models.splice(idx, 1)
+}
+
+const dragIndex = ref<number | null>(null)
+const dragOverIndex = ref<number | null>(null)
+
+function onDragStart(idx: number, event: DragEvent) {
+  dragIndex.value = idx
+  if (event.dataTransfer) {
+    event.dataTransfer.effectAllowed = 'move'
+    event.dataTransfer.setData('text/plain', String(idx))
+  }
+  const el = event.target as HTMLElement
+  requestAnimationFrame(() => el.classList.add('dragging'))
+}
+
+function onDragEnd(event: DragEvent) {
+  dragIndex.value = null
+  dragOverIndex.value = null
+  const el = event.target as HTMLElement
+  el.classList.remove('dragging')
+}
+
+function onDragOver(idx: number, event: DragEvent) {
+  event.preventDefault()
+  if (event.dataTransfer) event.dataTransfer.dropEffect = 'move'
+  if (dragIndex.value === null || dragIndex.value === idx) return
+  dragOverIndex.value = idx
+}
+
+function onDragLeave() {
+  dragOverIndex.value = null
+}
+
+function onDrop(idx: number) {
+  if (dragIndex.value === null || dragIndex.value === idx) return
+  const models = form.value.models
+  const item = models.splice(dragIndex.value, 1)[0]
+  models.splice(idx, 0, item)
+  dragIndex.value = null
+  dragOverIndex.value = null
 }
 
 function onModelIdInput(entry: ModelEntry, val: string) {
@@ -661,8 +719,25 @@ onBeforeUnmount(() => {
         <div class="tp-row">
           <label class="tp-label"><i class="tp-req">*</i>模型列表</label>
           <div class="model-list">
-            <div v-for="(entry, idx) in form.models" :key="idx" class="model-entry">
+            <div
+              v-for="(entry, idx) in form.models"
+              :key="idx"
+              class="model-entry"
+              :class="{
+                dragging: dragIndex === idx,
+                'drag-over': dragOverIndex === idx && dragIndex !== idx,
+              }"
+              draggable="true"
+              @dragstart="onDragStart(idx, $event)"
+              @dragend="onDragEnd($event)"
+              @dragover="onDragOver(idx, $event)"
+              @dragleave="onDragLeave"
+              @drop="onDrop(idx)"
+            >
               <div class="model-entry__top">
+                <span class="model-entry__grip" title="拖拽排序">
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M8 6a2 2 0 1 1 0-4 2 2 0 0 1 0 4zm8 0a2 2 0 1 1 0-4 2 2 0 0 1 0 4zM8 14a2 2 0 1 1 0-4 2 2 0 0 1 0 4zm8 0a2 2 0 1 1 0-4 2 2 0 0 1 0 4zM8 22a2 2 0 1 1 0-4 2 2 0 0 1 0 4zm8 0a2 2 0 1 1 0-4 2 2 0 0 1 0 4z"/></svg>
+                </span>
                 <div class="model-entry__id">
                   <a-select
                     v-model="entry.id"
@@ -673,12 +748,12 @@ onBeforeUnmount(() => {
                     @change="(val: unknown) => onModelIdInput(entry, val as string)"
                   >
                     <a-select-opt-group v-if="form.mode === 'provider' && presetModels[form.provider].length" label="预设模型">
-                      <a-option v-for="m in presetModels[form.provider]" :key="m" :value="m">
+                      <a-option v-for="m in presetModels[form.provider].filter(pm => availableModelsForEntry(idx).includes(pm))" :key="m" :value="m">
                         {{ m }}<span class="tp-opt-meta">{{ getModelContext(m).i.toLocaleString() }} tokens</span>
                       </a-option>
                     </a-select-opt-group>
-                    <a-select-opt-group v-if="fetchedModels.length" label="API 拉取">
-                      <a-option v-for="m in fetchedModels" :key="m" :value="m">
+                    <a-select-opt-group v-if="dedupedFetchedModels.length" label="API 拉取">
+                      <a-option v-for="m in dedupedFetchedModels.filter(fm => availableModelsForEntry(idx).includes(fm))" :key="m" :value="m">
                         {{ m }}<span class="tp-opt-meta">{{ getModelContext(m).i.toLocaleString() }} tokens</span>
                       </a-option>
                     </a-select-opt-group>
@@ -1435,6 +1510,35 @@ body.tp-cabin-open .tp-opt-meta {
   background: #f5f5f7;
   border: 1px solid rgba(0, 0, 0, 0.06);
   border-radius: 10px;
+  cursor: default;
+  transition: border-color 0.18s, box-shadow 0.18s, transform 0.15s, opacity 0.15s;
+}
+.model-entry.dragging {
+  opacity: 0.45;
+  transform: scale(0.98);
+}
+.model-entry.drag-over {
+  border-color: #007aff;
+  box-shadow: 0 0 0 2px rgba(0, 122, 255, 0.18);
+}
+.model-entry__grip {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 5px;
+  color: #aeaeb2;
+  cursor: grab;
+  transition: background 0.18s, color 0.18s;
+}
+.model-entry__grip:active {
+  cursor: grabbing;
+}
+.model-entry__grip:hover {
+  background: rgba(0, 0, 0, 0.06);
+  color: #636366;
 }
 .model-entry__top {
   display: flex;

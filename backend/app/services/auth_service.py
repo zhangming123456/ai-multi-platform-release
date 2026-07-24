@@ -9,8 +9,10 @@ from app.schemas.auth import UserCreate
 from typing import Optional
 
 
-async def authenticate_user(db: AsyncSession, email: str, password: str) -> Optional[User]:
-    result = await db.execute(select(User).where(User.email == email))
+async def authenticate_user(db: AsyncSession, login_id: str, password: str) -> Optional[User]:
+    result = await db.execute(
+        select(User).where((User.username == login_id) | (User.email == login_id))
+    )
     user = result.scalar_one_or_none()
     if user is None:
         return None
@@ -21,6 +23,7 @@ async def authenticate_user(db: AsyncSession, email: str, password: str) -> Opti
 
 async def create_user(db: AsyncSession, user_data: UserCreate) -> User:
     user = User(
+        username=user_data.username,
         email=user_data.email,
         hashed_password=hash_password(user_data.password),
         nickname=user_data.nickname,
@@ -33,10 +36,15 @@ async def create_user(db: AsyncSession, user_data: UserCreate) -> User:
     return user
 
 
+async def get_user_by_username(db: AsyncSession, username: str) -> Optional[User]:
+    result = await db.execute(select(User).where(User.username == username))
+    return result.scalar_one_or_none()
+
+
 async def get_user_by_email(db: AsyncSession, email: str) -> Optional[User]:
     result = await db.execute(select(User).where(User.email == email))
     return result.scalar_one_or_none()
 
 
 def generate_token(user: User) -> str:
-    return create_access_token(data={"sub": str(user.id), "email": user.email, "role": user.role})
+    return create_access_token(data={"sub": str(user.id), "username": user.username, "role": user.role})

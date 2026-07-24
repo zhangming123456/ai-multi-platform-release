@@ -5,7 +5,11 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     libffi-dev \
+    tzdata \
+    && ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime \
+    && echo "Asia/Shanghai" > /etc/timezone \
     && rm -rf /var/lib/apt/lists/*
+ENV TZ=Asia/Shanghai
 
 COPY backend/requirements.txt .
 RUN pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/ && \

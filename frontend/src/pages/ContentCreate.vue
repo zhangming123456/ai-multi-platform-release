@@ -452,7 +452,10 @@ async function saveContent() {
       platform: activePreview.value,
       status: 'draft',
     })
-    Message.success('内容已保存为草稿')
+    Message.success('内容已保存为草稿，即将跳转到内容工坊')
+    setTimeout(() => {
+      router.push('/content')
+    }, 800)
   } catch (error: unknown) {
     const err = error as { response?: { data?: { detail?: unknown } }; message?: string }
     const detail = err.response?.data?.detail

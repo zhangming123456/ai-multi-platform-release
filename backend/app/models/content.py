@@ -3,7 +3,7 @@ from __future__ import annotations
 import enum
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -13,6 +13,8 @@ from typing import Optional
 class ContentStatus(str, enum.Enum):
     draft = "draft"
     ready = "ready"
+    pending_review = "pending_review"
+    rejected = "rejected"
     published = "published"
 
 
@@ -33,10 +35,10 @@ class Content(Base):
         ForeignKey("contents.id"), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, server_default=func.now(), nullable=False
+        DateTime, default=datetime.now, nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, server_default=func.now(), onupdate=func.now(), nullable=False
+        DateTime, default=datetime.now, onupdate=datetime.now, nullable=False
     )
 
     user = relationship("User", back_populates="contents")
