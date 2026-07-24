@@ -1,20 +1,13 @@
 from __future__ import annotations
 
 import os
-import sys
 import tempfile
 import uuid
 from datetime import datetime, timedelta
-from pathlib import Path
 
 import pytest
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-
-# Ensure the backend package root is on sys.path so ``import app`` works when
-# running ``pytest backend/tests/services/test_rbac_service.py -v`` from the
-# repository root.
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 # Import models so their tables are registered on Base.metadata.
 import app.models  # noqa: F401,E402
@@ -32,6 +25,7 @@ from app.services.rbac_service import (  # noqa: E402
     get_role_descendants,
     get_user_effective_permissions,
     has_permission,
+    has_permission_direct,
 )
 
 pytestmark = pytest.mark.asyncio
@@ -305,6 +299,31 @@ async def test_get_user_effective_permissions_excludes_expired_or_not_yet_valid_
     assert "expired:read" not in effective
 
 
+async def test_get_user_effective_permissions_inherited_super_admin_returns_all_active_permissions(
+    db,
+):
+    user = await _create_user(db)
+    admin_role = await _create_role(db, is_super_admin=True)
+    child_role = await _create_role(db)
+    await _add_hierarchy(db, admin_role.id, child_role.id)
+    await _assign_role(db, user.id, child_role.id)
+
+    resource = await _create_resource(db)
+    active_permission = await _create_permission(
+        db, resource.id, "read", "posts:read"
+    )
+    inactive_permission = await _create_permission(
+        db, resource.id, "write", "posts:write", is_active=False
+    )
+
+    effective = await get_user_effective_permissions(user.id, db)
+
+    assert effective == {
+        active_permission.key: PermissionAccess(read=True, write=True),
+    }
+    assert inactive_permission.key not in effective
+
+
 async def test_has_permission_read_write_and_unknown_mode_raises(db):
     user = await _create_user(db)
     role = await _create_role(db)
@@ -324,3 +343,26 @@ async def test_has_permission_read_write_and_unknown_mode_raises(db):
 
     with pytest.raises(ValueError, match="Unsupported permission mode: delete"):
         await has_permission(user.id, "reports:read", "delete", db)
+
+
+async def test_has_permission_direct_checks_assigned_role_and_ancestors(db):
+    user = await _create_user(db)
+    role = await _create_role(db)
+    parent_role = await _create_role(db)
+    await _add_hierarchy(db, parent_role.id, role.id)
+    await _assign_role(db, user.id, role.id)
+
+    resource = await _create_resource(db)
+    permission = await _create_permission(db, resource.id, "read", "reports:read")
+    parent_permission = await _create_permission(
+        db, resource.id, "update", "reports:write"
+    )
+    await _grant_permission(db, role.id, permission.id)
+    await _grant_permission(db, parent_role.id, parent_permission.id)
+
+    assert await has_permission_direct(user.id, "reports:read", "read", db) is True
+    assert await has_permission_direct(user.id, "reports:write", "write", db) is True
+    assert await has_permission_direct(user.id, "missing:key", "read", db) is False
+
+    with pytest.raises(ValueError, match="Unsupported permission mode: delete"):
+        await has_permission_direct(user.id, "reports:read", "delete", db)
