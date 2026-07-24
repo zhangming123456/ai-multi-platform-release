@@ -110,6 +110,12 @@ const router = createRouter({
           component: () => import('@/pages/RoleManage.vue'),
           meta: { permKey: 'permission_manage', adminOnly: true },
         },
+        {
+          path: 'settings/user-creation-review',
+          name: 'UserCreationReview',
+          component: () => import('@/pages/UserCreationReview.vue'),
+          meta: { permKey: 'review' },
+        },
       ],
     },
   ],

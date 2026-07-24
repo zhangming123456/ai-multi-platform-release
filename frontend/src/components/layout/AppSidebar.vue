@@ -117,6 +117,10 @@ const menuItems = computed<MenuItem[]>(() => {
   if (hasPerm('sql_review')) {
     reviewChildren.push({ key: 'sql-review', name: 'SQL 审核', path: '/sql-review', icon: IconStorage, permKey: 'sql_review' })
   }
+  const isAdmin = userStore.userInfo?.role === 'admin' || userStore.userInfo?.role === 'manager'
+  if (isAdmin) {
+    reviewChildren.push({ key: 'user-creation-review', name: '用户创建审核', path: '/settings/user-creation-review', icon: IconUser, permKey: 'review' })
+  }
   if (reviewChildren.length > 0) {
     items.push({
       key: 'review-group',

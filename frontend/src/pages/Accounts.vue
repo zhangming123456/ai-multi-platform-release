@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import {
   IconPlus,
   IconEdit,
@@ -248,7 +248,15 @@ async function addUser() {
     addCustomPerms.value = {}
     Message.success('用户添加成功')
   } catch (e: any) {
-    Message.error(e.response?.data?.detail || '添加失败')
+    if (e.response?.status === 202) {
+      addVisible.value = false
+      newUser.value = { username: '', email: '', password: '', nickname: '', role: 'operator' }
+      addCustomPermEnabled.value = false
+      addCustomPerms.value = {}
+      Message.success(e.response?.data?.detail || '账号创建申请已提交审核，请等待管理员审批')
+    } else {
+      Message.error(e.response?.data?.detail || '添加失败')
+    }
   } finally {
     addSaving.value = false
   }
@@ -299,18 +307,44 @@ const pwdVisible = ref(false)
 const pwdSaving = ref(false)
 const pwdUser = ref<UserInfo | null>(null)
 const newPassword = ref('')
+const oldPassword = ref('')
+const isDefaultPwd = ref(false)
+const pwdLoading = ref(false)
 
-function openPwdChange(user: UserInfo) {
+async function openPwdChange(user: UserInfo) {
   pwdUser.value = user
   newPassword.value = ''
+  oldPassword.value = ''
+  isDefaultPwd.value = false
   pwdVisible.value = true
+  if (isAdmin.value) {
+    isDefaultPwd.value = true
+    return
+  }
+  pwdLoading.value = true
+  try {
+    const res = await api.get<{ is_default_password: boolean }>(`/users/${user.id}/password-status`)
+    isDefaultPwd.value = res.data.is_default_password
+  } catch {
+    isDefaultPwd.value = false
+  } finally {
+    pwdLoading.value = false
+  }
 }
 
 async function changePassword() {
   if (!pwdUser.value || !newPassword.value) return
+  if (!isDefaultPwd.value && !oldPassword.value) {
+    Message.warning('请输入旧密码')
+    return
+  }
   pwdSaving.value = true
   try {
-    await api.put(`/users/${pwdUser.value.id}/password`, { new_password: newPassword.value })
+    const body: { new_password: string; old_password?: string } = { new_password: newPassword.value }
+    if (!isDefaultPwd.value) {
+      body.old_password = oldPassword.value
+    }
+    await api.put(`/users/${pwdUser.value.id}/password`, body)
     Message.success('密码修改成功')
     pwdVisible.value = false
   } catch (e: any) {
@@ -439,6 +473,14 @@ const addGroupedPerms = computed(() => {
   }
   return groups
 })
+
+watch(
+  () => newUser.value.username,
+  (val) => {
+    newUser.value.password = val ? `${val}123` : ''
+    newUser.value.nickname = val || ''
+  }
+)
 </script>
 
 <template>
@@ -523,11 +565,11 @@ const addGroupedPerms = computed(() => {
 
     <a-modal
       v-model:visible="addVisible"
-      title="添加账号"
+      :title="isAdmin ? '添加账号' : '提交账号创建申请'"
       :width="520"
       @ok="addUser"
       :ok-loading="addSaving"
-      ok-text="添加"
+      :ok-text="isAdmin ? '添加' : '提交审核'"
     >
       <a-form :model="newUser" layout="vertical">
         <a-form-item label="用户名" required>
@@ -640,19 +682,32 @@ const addGroupedPerms = computed(() => {
     <a-modal
       v-model:visible="pwdVisible"
       title="修改密码"
-      :width="400"
+      :width="420"
       @ok="changePassword"
       :ok-loading="pwdSaving"
       ok-text="确认修改"
     >
-      <a-form layout="vertical">
-        <a-form-item>
-          <template #label>
-            新密码 - {{ pwdUser?.nickname }}
-          </template>
-          <a-input-password v-model="newPassword" placeholder="请输入新密码（至少6位）" />
-        </a-form-item>
-      </a-form>
+      <a-spin :loading="pwdLoading" class="w-full">
+        <a-form layout="vertical">
+          <a-form-item v-if="!isDefaultPwd" label="旧密码" required>
+            <a-input-password v-model="oldPassword" placeholder="请输入当前密码" />
+          </a-form-item>
+          <a-form-item v-else>
+            <div class="flex items-center gap-2 px-3 py-2 rounded-lg bg-[#30d158]/[0.06] border border-[#30d158]/[0.15] -mb-3">
+              <span class="text-[12px] text-[#30d158] font-medium">当前为默认密码，可直接设置新密码</span>
+            </div>
+          </a-form-item>
+          <a-form-item>
+            <template #label>
+              新密码 - {{ pwdUser?.nickname }}
+            </template>
+            <a-input-password v-model="newPassword" placeholder="输入新密码" />
+          </a-form-item>
+          <div class="text-[11px] text-[#86868b] -mt-3 mb-2 leading-relaxed">
+            首字符须为字母，支持大小写字母、数字及 . _ @ $
+          </div>
+        </a-form>
+      </a-spin>
     </a-modal>
 
     <a-modal

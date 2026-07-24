@@ -10,6 +10,7 @@ from app.models.sql_change_request import SqlChangeRequest, SqlChangeStatus, Sql
 from app.models.sql_history import SqlHistory
 from app.models.template import Template
 from app.models.user import User, UserRole
+from app.models.user_creation_request import UserCreationRequest, UserCreationStatus
 from app.models.user_permission import UserPermission
 
 __all__ = [
@@ -33,5 +34,7 @@ __all__ = [
     "SqlChangeType",
     "Template",
     "AIGenerationRecord",
+    "UserCreationRequest",
+    "UserCreationStatus",
     "UserPermission",
 ]

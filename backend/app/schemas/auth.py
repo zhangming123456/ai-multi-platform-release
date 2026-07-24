@@ -62,6 +62,7 @@ class UserUpdate(BaseModel):
 
 class UserPasswordChange(BaseModel):
     new_password: str
+    old_password: Optional[str] = None
 
 
 class ProfileUpdate(BaseModel):

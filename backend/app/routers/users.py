@@ -5,10 +5,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import get_current_user, require_permission
-from app.core.security import hash_password
+from app.core.security import hash_password, validate_password_format, verify_password
 from app.database import get_db
 from app.models.custom_role import CustomRole
 from app.models.user import User, UserRole
+from app.models.user_creation_request import UserCreationRequest
 from app.routers.roles import BUILTIN_ROLE_NAMES
 from app.schemas.auth import (
     UserCreate,
@@ -74,6 +75,25 @@ async def create_user(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="该邮箱已被使用",
             )
+
+    if current_user.role not in (UserRole.admin, UserRole.manager):
+        creation_req = UserCreationRequest(
+            requester_id=current_user.id,
+            username=request.username,
+            email=request.email,
+            hashed_password=hash_password(request.password),
+            nickname=request.nickname,
+            role=request.role,
+            avatar_url=request.avatar_url,
+        )
+        db.add(creation_req)
+        await db.flush()
+        await db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_202_ACCEPTED,
+            detail="账号创建申请已提交审核，请等待管理员审批",
+        )
+
     user = User(
         username=request.username,
         email=request.email,
@@ -175,9 +195,56 @@ async def change_user_password(
             detail="仅可修改自己的密码",
         )
 
+    valid, msg = validate_password_format(request.new_password)
+    if not valid:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=msg,
+        )
+
+    is_admin_reset = current_user.role in (UserRole.admin, UserRole.manager)
+
+    if not is_admin_reset:
+        default_pwd = f"{user.username}123"
+        current_is_default = verify_password(default_pwd, user.hashed_password)
+
+        if not current_is_default:
+            if not request.old_password:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="非默认密码，请输入旧密码进行验证",
+                )
+            if not verify_password(request.old_password, user.hashed_password):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="旧密码验证失败",
+                )
+
     user.hashed_password = hash_password(request.new_password)
     await db.flush()
     return {"message": "密码修改成功"}
+
+
+@router.get("/{user_id}/password-status")
+async def get_password_status(
+    user_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="用户不存在")
+
+    if current_user.role not in (UserRole.admin, UserRole.manager) and user.id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="无权查看",
+        )
+
+    default_pwd = f"{user.username}123"
+    is_default = verify_password(default_pwd, user.hashed_password)
+    return {"is_default_password": is_default}
 
 
 @router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
