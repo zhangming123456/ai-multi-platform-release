@@ -30,7 +30,7 @@ async def get_role_ancestors(role_id: str, db: AsyncSession) -> list[RBACRole]:
     Defensively handles cycles by tracking visited role IDs.
     """
     ancestors: list[RBACRole] = []
-    seen_role_ids: set[str] = set()
+    seen_role_ids: set[str] = {role_id}
     current_level_ids: set[str] = {role_id}
 
     while current_level_ids:
@@ -60,7 +60,7 @@ async def get_role_descendants(role_id: str, db: AsyncSession) -> list[RBACRole]
     Defensively handles cycles by tracking visited role IDs.
     """
     descendants: list[RBACRole] = []
-    seen_role_ids: set[str] = set()
+    seen_role_ids: set[str] = {role_id}
     current_level_ids: set[str] = {role_id}
 
     while current_level_ids:
@@ -133,7 +133,7 @@ async def get_user_effective_permissions(
             RBACRole.is_super_admin.is_(True),
         )
     )
-    if super_admin_result.scalar_one_or_none() is not None:
+    if super_admin_result.scalars().first() is not None:
         all_permissions = await db.execute(
             select(RBACPermission).where(RBACPermission.is_active.is_(True))
         )
