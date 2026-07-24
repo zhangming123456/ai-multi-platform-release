@@ -196,6 +196,8 @@ async def has_permission(
     active_role_ids: Optional[list[str]] = None,
 ) -> bool:
     """Return True if the user has the requested permission mode."""
+    if mode not in {"read", "write"}:
+        raise ValueError(f"Unsupported permission mode: {mode}")
     effective = await get_user_effective_permissions(
         user_id,
         db,
@@ -206,9 +208,7 @@ async def has_permission(
         return False
     if mode == "read":
         return access.read
-    if mode == "write":
-        return access.write
-    raise ValueError(f"Unsupported permission mode: {mode}")
+    return access.write
 
 
 async def has_permission_direct(
