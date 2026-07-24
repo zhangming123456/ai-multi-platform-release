@@ -5,6 +5,13 @@ from app.models.custom_role import CustomRole
 from app.models.model_config import ModelConfig
 from app.models.notification import Notification, NotificationType
 from app.models.publish_task import PublishTask, PublishTaskStatus
+from app.models.rbac_constraint import RBACConstraint, RBACConstraintRoleAssociation
+from app.models.rbac_permission import RBACPermission
+from app.models.rbac_resource import RBACResource
+from app.models.rbac_role import RBACRole
+from app.models.rbac_role_hierarchy import RBACRoleHierarchy
+from app.models.rbac_role_permission import RBACRolePermission
+from app.models.rbac_user_role_assignment import RBACUserRoleAssignment
 from app.models.role_permission import RolePermission
 from app.models.sql_change_request import SqlChangeRequest, SqlChangeStatus, SqlChangeType
 from app.models.sql_history import SqlHistory
@@ -28,6 +35,14 @@ __all__ = [
     "PublishTask",
     "PublishTaskStatus",
     "RolePermission",
+    "RBACRole",
+    "RBACResource",
+    "RBACPermission",
+    "RBACRoleHierarchy",
+    "RBACRolePermission",
+    "RBACUserRoleAssignment",
+    "RBACConstraint",
+    "RBACConstraintRoleAssociation",
     "SqlHistory",
     "SqlChangeRequest",
     "SqlChangeStatus",
