@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import tempfile
+import uuid
 
 import pytest
 import pytest_asyncio
@@ -10,14 +11,16 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 import app.models  # noqa: F401,E402
+from app.core.security import create_access_token  # noqa: E402
 from app.database import Base, get_db  # noqa: E402
+from app.models.user import User, UserRole  # noqa: E402
 from app.routers import rbac_permissions  # noqa: E402
 
 pytestmark = pytest.mark.asyncio
 
 
 @pytest_asyncio.fixture
-async def client():
+async def test_app():
     fd, db_path = tempfile.mkstemp(suffix=".db")
     os.close(fd)
     engine = create_async_engine(f"sqlite+aiosqlite:///{db_path}")
@@ -43,20 +46,49 @@ async def client():
     app.include_router(rbac_permissions.router)
     app.dependency_overrides[get_db] = override_get_db
 
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
-        yield ac
+    yield app
 
     await engine.dispose()
     os.unlink(db_path)
 
 
-async def test_list_resources_returns_tree(client):
+@pytest_asyncio.fixture
+async def client(test_app):
+    async with AsyncClient(transport=ASGITransport(app=test_app), base_url="http://test") as ac:
+        yield ac
+
+
+@pytest_asyncio.fixture
+async def auth_headers(test_app):
+    db_gen = test_app.dependency_overrides[get_db]()
+    session = await db_gen.__anext__()
+    try:
+        user = User(
+            id=str(uuid.uuid4()),
+            username=f"admin-{uuid.uuid4().hex[:8]}",
+            email=f"{uuid.uuid4().hex[:8]}@example.com",
+            hashed_password="secret",
+            nickname="Admin User",
+            role=UserRole.admin,
+        )
+        session.add(user)
+        await session.commit()
+        token = create_access_token({"sub": user.id})
+        return {"Authorization": f"Bearer {token}"}
+    finally:
+        try:
+            await db_gen.aclose()
+        except Exception:
+            pass
+
+
+async def test_list_resources_returns_tree(client, auth_headers):
     # Use the API to create the hierarchy, which also exercises POST.
     parent_resp = await client.post("/api/v2/resources", json={
         "key": "tree-parent",
         "name": "Parent",
         "type": "page",
-    })
+    }, headers=auth_headers)
     assert parent_resp.status_code == 201
     parent_id = parent_resp.json()["id"]
 
@@ -65,10 +97,10 @@ async def test_list_resources_returns_tree(client):
         "name": "Child",
         "type": "action",
         "parent_id": parent_id,
-    })
+    }, headers=auth_headers)
     assert child_resp.status_code == 201
 
-    response = await client.get("/api/v2/resources")
+    response = await client.get("/api/v2/resources", headers=auth_headers)
     assert response.status_code == 200
     data = response.json()
     assert isinstance(data, list)
@@ -85,12 +117,12 @@ async def test_list_resources_returns_tree(client):
     assert child_in_tree["parent_id"] == parent_id
 
 
-async def test_list_permissions_returns_permissions_with_resources(client):
+async def test_list_permissions_returns_permissions_with_resources(client, auth_headers):
     resource_resp = await client.post("/api/v2/resources", json={
         "key": "perm-resource",
         "name": "Permission Resource",
         "type": "page",
-    })
+    }, headers=auth_headers)
     assert resource_resp.status_code == 201
     resource = resource_resp.json()
 
@@ -98,10 +130,10 @@ async def test_list_permissions_returns_permissions_with_resources(client):
         "resource_id": resource["id"],
         "operation": "read",
         "key": "perm-resource:read",
-    })
+    }, headers=auth_headers)
     assert perm_resp.status_code == 201
 
-    response = await client.get("/api/v2/permissions")
+    response = await client.get("/api/v2/permissions", headers=auth_headers)
     assert response.status_code == 200
     data = response.json()
     assert isinstance(data, list)
@@ -115,12 +147,12 @@ async def test_list_permissions_returns_permissions_with_resources(client):
     assert item["resource"]["type"] == "page"
 
 
-async def test_create_resource_creates_and_rejects_duplicate(client):
+async def test_create_resource_creates_and_rejects_duplicate(client, auth_headers):
     response = await client.post("/api/v2/resources", json={
         "key": "unique-resource",
         "name": "Unique Resource",
         "type": "page",
-    })
+    }, headers=auth_headers)
     assert response.status_code == 201
     data = response.json()
     assert data["key"] == "unique-resource"
@@ -133,33 +165,33 @@ async def test_create_resource_creates_and_rejects_duplicate(client):
         "key": "unique-resource",
         "name": "Duplicate",
         "type": "page",
-    })
+    }, headers=auth_headers)
     assert duplicate.status_code == 409
 
 
-async def test_create_resource_rejects_invalid_parent(client):
+async def test_create_resource_rejects_invalid_parent(client, auth_headers):
     response = await client.post("/api/v2/resources", json={
         "key": "orphan-resource",
         "name": "Orphan",
         "type": "page",
         "parent_id": "non-existent-parent-id",
-    })
+    }, headers=auth_headers)
     assert response.status_code == 400
 
 
-async def test_create_permission_creates_and_generates_key(client):
+async def test_create_permission_creates_and_generates_key(client, auth_headers):
     resource_resp = await client.post("/api/v2/resources", json={
         "key": "posts",
         "name": "Posts",
         "type": "page",
-    })
+    }, headers=auth_headers)
     assert resource_resp.status_code == 201
     resource = resource_resp.json()
 
     response = await client.post("/api/v2/permissions", json={
         "resource_id": resource["id"],
         "operation": "create",
-    })
+    }, headers=auth_headers)
     assert response.status_code == 201
     data = response.json()
     assert data["key"] == "posts:create"
@@ -168,12 +200,12 @@ async def test_create_permission_creates_and_generates_key(client):
     assert data["resource"]["key"] == "posts"
 
 
-async def test_create_permission_rejects_duplicate_key(client):
+async def test_create_permission_rejects_duplicate_key(client, auth_headers):
     resource_resp = await client.post("/api/v2/resources", json={
         "key": "articles",
         "name": "Articles",
         "type": "page",
-    })
+    }, headers=auth_headers)
     assert resource_resp.status_code == 201
     resource = resource_resp.json()
 
@@ -181,20 +213,74 @@ async def test_create_permission_rejects_duplicate_key(client):
         "resource_id": resource["id"],
         "operation": "delete",
         "key": "articles:delete",
-    })
+    }, headers=auth_headers)
     assert first.status_code == 201
 
     duplicate = await client.post("/api/v2/permissions", json={
         "resource_id": resource["id"],
         "operation": "delete",
         "key": "articles:delete",
-    })
+    }, headers=auth_headers)
     assert duplicate.status_code == 409
 
 
-async def test_create_permission_rejects_invalid_resource(client):
+async def test_create_permission_rejects_invalid_resource(client, auth_headers):
     response = await client.post("/api/v2/permissions", json={
         "resource_id": "non-existent-resource-id",
         "operation": "read",
+    }, headers=auth_headers)
+    assert response.status_code == 400
+
+
+async def test_unauthorized_request_returns_401(client):
+    response = await client.get("/api/v2/resources")
+    assert response.status_code == 401
+
+    response = await client.post("/api/v2/resources", json={
+        "key": "no-auth",
+        "name": "No Auth",
+        "type": "page",
     })
+    assert response.status_code == 401
+
+
+async def test_create_resource_rejects_invalid_type(client, auth_headers):
+    response = await client.post("/api/v2/resources", json={
+        "key": "bad-type",
+        "name": "Bad Type",
+        "type": "invalid",
+    }, headers=auth_headers)
+    assert response.status_code == 422
+
+
+async def test_create_permission_rejects_invalid_operation(client, auth_headers):
+    resource_resp = await client.post("/api/v2/resources", json={
+        "key": "perm-op",
+        "name": "Perm Op",
+        "type": "page",
+    }, headers=auth_headers)
+    assert resource_resp.status_code == 201
+    resource = resource_resp.json()
+
+    response = await client.post("/api/v2/permissions", json={
+        "resource_id": resource["id"],
+        "operation": "invalid",
+    }, headers=auth_headers)
+    assert response.status_code == 422
+
+
+async def test_create_permission_rejects_invalid_key_format(client, auth_headers):
+    resource_resp = await client.post("/api/v2/resources", json={
+        "key": "perm-key",
+        "name": "Perm Key",
+        "type": "page",
+    }, headers=auth_headers)
+    assert resource_resp.status_code == 201
+    resource = resource_resp.json()
+
+    response = await client.post("/api/v2/permissions", json={
+        "resource_id": resource["id"],
+        "operation": "read",
+        "key": "invalid-key",
+    }, headers=auth_headers)
     assert response.status_code == 400

@@ -1,18 +1,25 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Optional
+from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.deps import get_current_user, require_permission
 from app.database import get_db
 from app.models.rbac_permission import RBACPermission
 from app.models.rbac_resource import RBACResource
+from app.models.user import User
 
 router = APIRouter(prefix="/api/v2", tags=["RBAC 权限管理"])
+
+
+def _is_valid_permission_key(key: str) -> bool:
+    parts = key.split(":")
+    return len(parts) == 2 and bool(parts[0]) and bool(parts[1])
 
 
 class ResourceRef(BaseModel):
@@ -53,21 +60,28 @@ class CreateResourceRequest(BaseModel):
     key: str
     name: str
     description: Optional[str] = None
-    type: str
+    type: Literal["page", "action"]
     parent_id: Optional[str] = None
     is_active: bool = True
 
 
 class CreatePermissionRequest(BaseModel):
     resource_id: str
-    operation: str
+    operation: Literal["read", "write", "create", "update", "delete", "approve", "reject", "execute"]
     key: Optional[str] = None
     is_active: bool = True
 
 
-@router.get("/resources", response_model=list[ResourceNode])
-async def list_resources(db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(RBACResource))
+@router.get(
+    "/resources",
+    response_model=list[ResourceNode],
+    dependencies=[Depends(require_permission("permissions:read", "read"))],
+)
+async def list_resources(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    result = await db.execute(select(RBACResource).order_by(RBACResource.created_at.asc()))
     resources = result.scalars().all()
 
     node_map: dict[str, ResourceNode] = {}
@@ -95,11 +109,19 @@ async def list_resources(db: AsyncSession = Depends(get_db)):
     return roots
 
 
-@router.get("/permissions", response_model=list[PermissionItem])
-async def list_permissions(db: AsyncSession = Depends(get_db)):
+@router.get(
+    "/permissions",
+    response_model=list[PermissionItem],
+    dependencies=[Depends(require_permission("permissions:read", "read"))],
+)
+async def list_permissions(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     result = await db.execute(
         select(RBACPermission, RBACResource)
         .join(RBACResource, RBACPermission.resource_id == RBACResource.id)
+        .order_by(RBACPermission.created_at.asc())
     )
     permissions: list[PermissionItem] = []
     for permission, resource in result.all():
@@ -119,8 +141,17 @@ async def list_permissions(db: AsyncSession = Depends(get_db)):
     return permissions
 
 
-@router.post("/resources", response_model=ResourceNode, status_code=status.HTTP_201_CREATED)
-async def create_resource(body: CreateResourceRequest, db: AsyncSession = Depends(get_db)):
+@router.post(
+    "/resources",
+    response_model=ResourceNode,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_permission("permissions:write", "write"))],
+)
+async def create_resource(
+    body: CreateResourceRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     existing = await db.execute(select(RBACResource).where(RBACResource.key == body.key))
     if existing.scalar_one_or_none():
         raise HTTPException(
@@ -161,8 +192,17 @@ async def create_resource(body: CreateResourceRequest, db: AsyncSession = Depend
     )
 
 
-@router.post("/permissions", response_model=PermissionItem, status_code=status.HTTP_201_CREATED)
-async def create_permission(body: CreatePermissionRequest, db: AsyncSession = Depends(get_db)):
+@router.post(
+    "/permissions",
+    response_model=PermissionItem,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_permission("permissions:write", "write"))],
+)
+async def create_permission(
+    body: CreatePermissionRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     resource_result = await db.execute(
         select(RBACResource).where(RBACResource.id == body.resource_id)
     )
@@ -174,6 +214,12 @@ async def create_permission(body: CreatePermissionRequest, db: AsyncSession = De
         )
 
     key = body.key if body.key is not None else f"{resource.key}:{body.operation}"
+
+    if not _is_valid_permission_key(key):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="权限 key 必须包含且仅包含一个 ':'，且资源标识和操作标识均不能为空",
+        )
 
     existing = await db.execute(select(RBACPermission).where(RBACPermission.key == key))
     if existing.scalar_one_or_none():
