@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Callable, Optional
+from typing import Callable
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
@@ -9,9 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import decode_access_token
 from app.database import get_db
-from app.models.role_permission import RolePermission
 from app.models.user import User, UserRole
-from app.models.user_permission import UserPermission
+from app.services.rbac_service import has_permission_direct
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 
@@ -60,54 +59,24 @@ async def get_reviewer_user(
     return current_user
 
 
-async def _get_user_permission_map(user: User, db: AsyncSession) -> dict[str, dict[str, bool]]:
-    from app.constants.permissions import ALL_PERMISSION_KEYS, DEFAULT_ROLE_PERMISSIONS
-
-    if user.role == UserRole.admin:
-        return {k: {"read": True, "write": True} for k in ALL_PERMISSION_KEYS}
-
-    custom_result = await db.execute(
-        select(UserPermission).where(UserPermission.user_id == user.id)
-    )
-    custom_rows = custom_result.scalars().all()
-    if custom_rows:
-        return {r.permission_key: {"read": r.can_read, "write": r.can_write} for r in custom_rows}
-
-    result = await db.execute(
-        select(RolePermission).where(RolePermission.role == str(user.role))
-    )
-    rows = result.scalars().all()
-    if rows:
-        return {r.permission_key: {"read": r.can_read, "write": r.can_write} for r in rows}
-
-    keys = DEFAULT_ROLE_PERMISSIONS.get(str(user.role), [])
-    return {k: {"read": True, "write": True} for k in keys}
-
-
 def require_permission(permission_key: str, mode: str = "read") -> Callable:
     async def _checker(
         current_user: User = Depends(get_current_user),
         db: AsyncSession = Depends(get_db),
     ) -> User:
-        if current_user.role == UserRole.admin:
+        if mode not in {"read", "write"}:
+            raise ValueError(f"Unsupported permission mode: {mode}")
+
+        resolved_key = permission_key if ":" in permission_key else f"{permission_key}:read"
+        has_access = await has_permission_direct(
+            current_user.id, resolved_key, mode, db
+        )
+        if has_access:
             return current_user
-        perm_map = await _get_user_permission_map(current_user, db)
-        access = perm_map.get(permission_key)
-        if access is None:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="无操作权限",
-            )
-        if mode == "write" and not access.get("write", False):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="无写入权限",
-            )
-        if mode == "read" and not access.get("read", False):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="无查看权限",
-            )
-        return current_user
+
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="无操作权限",
+        )
 
     return _checker
