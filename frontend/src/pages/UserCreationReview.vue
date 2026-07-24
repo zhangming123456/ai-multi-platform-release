@@ -3,7 +3,6 @@ import { ref, computed, onMounted } from 'vue'
 import { Message } from '@arco-design/web-vue'
 import PageHeader from '@/components/layout/PageHeader.vue'
 import api from '@/utils/api'
-import { useUserStore } from '@/stores/user'
 import { formatDateTime as formatDate } from '@/utils/time'
 
 interface CreationRequest {
@@ -25,11 +24,10 @@ interface RoleDef {
   name: string
   display_name: string
   description: string | null
-  is_builtin: boolean
+  is_system: boolean
   role_type: string
 }
 
-const userStore = useUserStore()
 const loading = ref(false)
 const requests = ref<CreationRequest[]>([])
 const roleDefs = ref<RoleDef[]>([])
@@ -112,7 +110,7 @@ async function confirmReject() {
 
 onMounted(async () => {
   try {
-    const rolesRes = await api.get<RoleDef[]>('/roles')
+    const rolesRes = await api.get<RoleDef[]>('/v2/roles')
     roleDefs.value = Array.isArray(rolesRes.data) ? rolesRes.data : []
   } catch {}
   await fetchRequests()
@@ -166,7 +164,7 @@ onMounted(async () => {
       @ok="confirmReject"
       ok-text="确认驳回"
     >
-      <a-form layout="vertical">
+      <a-form :model="{}" layout="vertical">
         <a-form-item label="驳回原因" required>
           <a-textarea
             v-model="rejectReason"

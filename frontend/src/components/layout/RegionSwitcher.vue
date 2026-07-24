@@ -2,7 +2,7 @@
 import { IconLanguage } from '@arco-design/web-vue/es/icon'
 import { useRegionStore } from '@/stores/region'
 
-const { selectedTz, regions, switchRegion, currentRegion } = useRegionStore()
+const { selectedTz, regions, switchRegion } = useRegionStore()
 </script>
 
 <template>

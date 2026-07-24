@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue'
 import type { Component } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
+import { usePermissionStore } from '@/stores/permission'
 import {
   IconHome,
   IconFile,
@@ -16,6 +17,8 @@ import {
   IconTool,
   IconCheckCircle,
   IconUser,
+  IconLock,
+  IconUserGroup,
 } from '@arco-design/web-vue/es/icon'
 
 interface MenuEntry {
@@ -52,34 +55,39 @@ const route = useRoute()
 const router = useRouter()
 const userStore = useUserStore()
 
-function hasPerm(key: string): boolean {
-  const perms = userStore.userInfo?.permissions
-  if (!perms) return true
-  if (userStore.userInfo?.role === 'admin') return true
-  const access = perms[key]
-  return access ? access.read : false
+const permStore = usePermissionStore()
+
+function hasRBAC3Perm(key: string): boolean {
+  return permStore.hasPermission(key, 'read')
 }
 
 const sysChildren = computed<MenuEntry[]>(() => {
   const items: MenuEntry[] = []
-  if (hasPerm('accounts')) {
-    items.push({ key: 'accounts', name: '账号管理', path: '/accounts', icon: IconSafe, permKey: 'accounts' })
+  if (hasRBAC3Perm('token_plan:read')) {
+    items.push({ key: 'token-plan', name: 'Token 配置', path: '/settings/token-plan', icon: IconSettings, permKey: 'token_plan:read' })
   }
-  if (hasPerm('token_plan')) {
-    items.push({ key: 'token-plan', name: 'Token 配置', path: '/settings/token-plan', icon: IconSettings, permKey: 'token_plan' })
+  if (hasRBAC3Perm('api_docs:read')) {
+    items.push({ key: 'api-docs', name: 'API 文档', path: '/developer/docs', icon: IconCode, permKey: 'api_docs:read' })
   }
-  if (hasPerm('api_docs')) {
-    items.push({ key: 'api-docs', name: 'API 文档', path: '/developer/docs', icon: IconCode, permKey: 'api_docs' })
+  if (hasRBAC3Perm('database:read')) {
+    items.push({ key: 'database', name: '数据库管理', path: '/developer/database', icon: IconStorage, permKey: 'database:read' })
   }
-  if (userStore.userInfo?.role === 'admin' && hasPerm('database')) {
-    items.push({ key: 'database', name: '数据库管理', path: '/developer/database', icon: IconStorage, permKey: 'database' })
+  return items
+})
+
+const rbacChildren = computed<MenuEntry[]>(() => {
+  const items: MenuEntry[] = []
+  if (hasRBAC3Perm('users:read')) {
+    items.push({ key: 'rbac-users', name: '用户管理', path: '/rbac/users', icon: IconUser, permKey: 'users:read' })
   }
-  const isAdmin = userStore.userInfo?.role === 'admin' || userStore.userInfo?.role === 'manager'
-  if (isAdmin && hasPerm('permission_manage')) {
-    items.push({ key: 'role-manage', name: '角色管理', path: '/settings/roles', icon: IconUser, permKey: 'permission_manage' })
+  if (hasRBAC3Perm('roles:read')) {
+    items.push({ key: 'rbac-roles', name: '角色管理', path: '/rbac/roles', icon: IconUserGroup, permKey: 'roles:read' })
   }
-  if (isAdmin && hasPerm('permission_manage')) {
-    items.push({ key: 'permission-manage', name: '权限管理', path: '/settings/permissions', icon: IconUser, permKey: 'permission_manage' })
+  if (hasRBAC3Perm('permissions:read')) {
+    items.push({ key: 'rbac-permissions', name: '权限管理', path: '/rbac/permissions', icon: IconLock, permKey: 'permissions:read' })
+  }
+  if (hasRBAC3Perm('constraints:read')) {
+    items.push({ key: 'rbac-constraints', name: '职责分离', path: '/rbac/constraints', icon: IconSafe, permKey: 'constraints:read' })
   }
   return items
 })
@@ -87,19 +95,19 @@ const sysChildren = computed<MenuEntry[]>(() => {
 const menuItems = computed<MenuItem[]>(() => {
   const items: MenuItem[] = []
 
-  if (hasPerm('dashboard')) {
-    items.push({ key: 'dashboard', name: '仪表盘', path: '/', icon: IconHome, permKey: 'dashboard' })
+  if (hasRBAC3Perm('dashboard:read')) {
+    items.push({ key: 'dashboard', name: '仪表盘', path: '/', icon: IconHome, permKey: 'dashboard:read' })
   }
 
   const contentChildren: MenuEntry[] = []
-  if (hasPerm('content')) {
-    contentChildren.push({ key: 'content', name: '内容工坊', path: '/content', icon: IconFile, permKey: 'content' })
+  if (hasRBAC3Perm('content:read')) {
+    contentChildren.push({ key: 'content', name: '内容工坊', path: '/content', icon: IconFile, permKey: 'content:read' })
   }
-  if (hasPerm('publish')) {
-    contentChildren.push({ key: 'publish', name: '发布管理', path: '/publish', icon: IconSend, permKey: 'publish' })
+  if (hasRBAC3Perm('publish:read')) {
+    contentChildren.push({ key: 'publish', name: '发布管理', path: '/publish', icon: IconSend, permKey: 'publish:read' })
   }
-  if (hasPerm('templates')) {
-    contentChildren.push({ key: 'templates', name: '模板中心', path: '/templates', icon: IconApps, permKey: 'templates' })
+  if (hasRBAC3Perm('templates:read')) {
+    contentChildren.push({ key: 'templates', name: '模板中心', path: '/templates', icon: IconApps, permKey: 'templates:read' })
   }
   if (contentChildren.length > 0) {
     items.push({
@@ -111,15 +119,14 @@ const menuItems = computed<MenuItem[]>(() => {
   }
 
   const reviewChildren: MenuEntry[] = []
-  if (hasPerm('review')) {
-    reviewChildren.push({ key: 'review', name: '内容审核', path: '/review', icon: IconCheckCircle, permKey: 'review' })
+  if (hasRBAC3Perm('review:read')) {
+    reviewChildren.push({ key: 'review', name: '内容审核', path: '/review', icon: IconCheckCircle, permKey: 'review:read' })
   }
-  if (hasPerm('sql_review')) {
-    reviewChildren.push({ key: 'sql-review', name: 'SQL 审核', path: '/sql-review', icon: IconStorage, permKey: 'sql_review' })
+  if (hasRBAC3Perm('sql_review:read')) {
+    reviewChildren.push({ key: 'sql-review', name: 'SQL 审核', path: '/sql-review', icon: IconStorage, permKey: 'sql_review:read' })
   }
-  const isAdmin = userStore.userInfo?.role === 'admin' || userStore.userInfo?.role === 'manager'
-  if (isAdmin) {
-    reviewChildren.push({ key: 'user-creation-review', name: '用户创建审核', path: '/settings/user-creation-review', icon: IconUser, permKey: 'review' })
+  if (hasRBAC3Perm('user_creation_review:read')) {
+    reviewChildren.push({ key: 'user-creation-review', name: '用户创建审核', path: '/settings/user-creation-review', icon: IconUser, permKey: 'user_creation_review:read' })
   }
   if (reviewChildren.length > 0) {
     items.push({
@@ -130,8 +137,8 @@ const menuItems = computed<MenuItem[]>(() => {
     })
   }
 
-  if (hasPerm('platforms')) {
-    items.push({ key: 'platforms', name: '平台管理', path: '/platforms', icon: IconApps, permKey: 'platforms' })
+  if (hasRBAC3Perm('platforms:read')) {
+    items.push({ key: 'platforms', name: '平台管理', path: '/platforms', icon: IconApps, permKey: 'platforms:read' })
   }
 
   if (sysChildren.value.length > 0) {
@@ -140,6 +147,15 @@ const menuItems = computed<MenuItem[]>(() => {
       name: '系统设置',
       icon: IconTool,
       children: sysChildren.value,
+    })
+  }
+
+  if (rbacChildren.value.length > 0) {
+    items.push({
+      key: 'rbac-group',
+      name: '权限设置',
+      icon: IconLock,
+      children: rbacChildren.value,
     })
   }
 
@@ -183,6 +199,7 @@ function updateOpenKeys() {
 }
 
 watch(() => route.path, updateOpenKeys, { immediate: true })
+watch(menuItems, updateOpenKeys, { deep: true })
 
 function onMenuItemClick(key: string) {
   const item = allEntries.value.find((m) => m.key === key)

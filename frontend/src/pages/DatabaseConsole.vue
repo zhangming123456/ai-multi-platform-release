@@ -73,7 +73,6 @@ const suggestionStyle = ref({ top: '0px', left: '0px' })
 const textareaEl = ref<InstanceType<typeof HTMLTextAreaElement> | null>(null)
 const tableNames = ref<string[]>([])
 const tableSchemas = ref<Record<string, TableColumnInfo[]>>({})
-const expandedTables = ref<Set<string>>(new Set())
 const loadingSchema = ref<Set<string>>(new Set())
 const currentPage = ref(1)
 const pageSize = ref(30)
@@ -173,32 +172,7 @@ const paginationConfig = computed(() => {
   }
 })
 
-const historyPaginationConfig = computed(() => {
-  if (historyTotal.value === 0) return false
-  return {
-    current: historyPage.value,
-    pageSize: historyPageSize.value,
-    total: historyTotal.value,
-    showTotal: true,
-    showPageSize: false,
-    simple: true,
-    size: 'mini' as const,
-    onChange: (page: number) => {
-      historyPage.value = page
-      fetchHistory()
-    },
-  }
-})
-
 const activeTableName = ref('')
-
-const tableColumnPresets = computed<Record<string, string[]>>(() => {
-  const map: Record<string, string[]> = {}
-  for (const [name, cols] of Object.entries(tableSchemas.value)) {
-    map[name] = cols.map((c) => c.name)
-  }
-  return map
-})
 
 function needsTableSuggestion(): boolean {
   const before = textBeforeCaret.value.trim()
@@ -727,7 +701,19 @@ onMounted(() => {
                 <code class="db-history-item__sql">{{ item.sql_text }}</code>
               </div>
               <div v-if="historyTotal > historyPageSize" class="db-history-pagination">
-                <a-pagination v-bind="historyPaginationConfig" />
+                <a-pagination
+                  :current="historyPage"
+                  :page-size="historyPageSize"
+                  :total="historyTotal"
+                  show-total
+                  :show-page-size="false"
+                  simple
+                  size="mini"
+                  @change="(page: number) => {
+                    historyPage = page
+                    fetchHistory()
+                  }"
+                />
               </div>
             </div>
           </div>

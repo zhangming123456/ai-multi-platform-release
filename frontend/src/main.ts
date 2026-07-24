@@ -5,9 +5,11 @@ import '@arco-design/web-vue/dist/arco.css'
 import router from './router'
 import App from './App.vue'
 import './style.css'
+import vPerm from './directives/permission'
 
 const app = createApp(App)
 app.use(ArcoVue)
 app.use(createPinia())
 app.use(router)
+app.directive('perm', vPerm)
 app.mount('#app')

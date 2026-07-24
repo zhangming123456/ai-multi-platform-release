@@ -87,6 +87,81 @@ body {
   --arco-theme-info: #5856d6;
 }
 
+/* 默认文字不换行处理 */
+.arco-btn,
+.arco-tag,
+.arco-menu-item,
+.arco-menu-inline-header,
+.arco-radio,
+.arco-checkbox,
+.arco-breadcrumb-item,
+.arco-pagination-item,
+.arco-pagination-total,
+.arco-tabs-tab,
+.arco-select-view-value,
+.arco-select-option,
+.arco-dropdown-option,
+.arco-descriptions-item-label,
+.arco-descriptions-item-content,
+.arco-statistic-title,
+.arco-statistic-content,
+.arco-page-header-title,
+.arco-page-header-sub-title,
+.arco-list-item-meta-title,
+.arco-empty-description,
+.arco-spin-tip {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 表格表头默认不换行 */
+.arco-table-th {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 表格单元格默认不换行，特殊单元格可单独覆盖 */
+.arco-table-td {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 表单标签默认不换行 */
+.arco-form-item-label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 大部分 div 默认文字不换行 */
+div {
+  white-space: nowrap;
+}
+
+/* 需要正常换行的容器排除 */
+.arco-textarea,
+.arco-table-cell-wrap,
+.arco-typography,
+.arco-typography-paragraph,
+.arco-modal-body,
+.arco-card-body,
+.arco-form-item-extra,
+.arco-list-item-meta-description,
+.arco-descriptions-item-content,
+.arco-collapse-item-content,
+.arco-comment-content,
+.arco-tooltip-content,
+.arco-popover-content,
+pre,
+code,
+.wrap-text,
+.multiline {
+  white-space: normal;
+}
+
 .arco-layout-sider {
   background: rgba(255, 255, 255, 0.85) !important;
   backdrop-filter: blur(20px) saturate(180%);

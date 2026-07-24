@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 from sqlalchemy import func, select, text
 
-from app.core.deps import get_admin_user
+from app.core.deps import require_permission
 from app.database import async_session_factory
 from app.models.sql_history import SqlHistory
 from app.models.user import User
@@ -100,7 +100,7 @@ def _sort_key(value: Any) -> str:
 async def list_history(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=200),
-    admin: User = Depends(get_admin_user),
+    current_user: User = Depends(require_permission("db:history:read")),
 ):
     async with async_session_factory() as session:
         count_result = await session.execute(
@@ -140,7 +140,7 @@ async def list_history(
 @router.post("/execute", response_model=SqlResponse)
 async def execute_sql(
     request: SqlRequest,
-    admin: User = Depends(get_admin_user),
+    current_user: User = Depends(require_permission("db:execute", "write")),
 ):
     sql = request.sql.strip()
     if not sql:
@@ -225,7 +225,7 @@ async def execute_sql(
                 )
 
             history = SqlHistory(
-                user_id=admin.id,
+                user_id=current_user.id,
                 sql_text=executed_sql,
                 is_success=True,
                 message=msg,
@@ -239,7 +239,7 @@ async def execute_sql(
             msg = f"执行失败: {str(e)}"
 
             history = SqlHistory(
-                user_id=admin.id,
+                user_id=current_user.id,
                 sql_text=executed_sql,
                 is_success=False,
                 message=msg,

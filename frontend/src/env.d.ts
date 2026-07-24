@@ -5,3 +5,10 @@ declare module '*.vue' {
   const component: DefineComponent<{}, {}, any>
   export default component
 }
+
+declare module 'swagger-ui-dist/swagger-ui-bundle.js' {
+  const SwaggerUIBundle: any
+  export default SwaggerUIBundle
+}
+
+declare module 'swagger-ui-dist/swagger-ui.css' {}

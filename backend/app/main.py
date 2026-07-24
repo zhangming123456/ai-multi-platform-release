@@ -9,7 +9,26 @@ from app.core.privacy_middleware import PrivacyMaskMiddleware
 from app.core.security import hash_password
 from app.database import Base, async_session_factory, engine
 from app.models import User, UserRole
-from app.routers import accounts, auth, contents, dashboard, db, db_changes, model_configs, models, notifications, permissions, publish, reviews, roles, templates, user_creation_reviews, users
+from app.routers import (
+    accounts,
+    auth,
+    contents,
+    dashboard,
+    db,
+    db_changes,
+    model_configs,
+    models,
+    notifications,
+    publish,
+    rbac_constraints,
+    rbac_permissions,
+    rbac_roles,
+    rbac_users,
+    reviews,
+    templates,
+    user_creation_reviews,
+)
+from app.services.rbac_init_service import init_rbac_system
 
 
 @asynccontextmanager
@@ -50,6 +69,8 @@ async def lifespan(app: FastAPI):
         ))
         await session.commit()
 
+        await init_rbac_system(session)
+
     yield
 
 
@@ -80,12 +101,14 @@ app.include_router(notifications.router)
 app.include_router(publish.router)
 app.include_router(reviews.router)
 app.include_router(templates.router)
-app.include_router(users.router)
 app.include_router(db.router)
 app.include_router(db_changes.router)
-app.include_router(permissions.router)
-app.include_router(roles.router)
 app.include_router(user_creation_reviews.router)
+
+app.include_router(rbac_users.router)
+app.include_router(rbac_roles.router)
+app.include_router(rbac_permissions.router)
+app.include_router(rbac_constraints.router)
 
 
 @app.get("/")

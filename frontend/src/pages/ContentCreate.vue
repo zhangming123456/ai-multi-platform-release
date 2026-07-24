@@ -21,7 +21,6 @@ import PageHeader from '@/components/layout/PageHeader.vue'
 import PlatformIcon from '@/components/shared/PlatformIcon.vue'
 import {
   useTokenPlanStore,
-  MODEL_TYPE_LABELS,
   MODEL_TYPE_COLORS,
   MODEL_TYPE_ICONS,
   type ModelType,
@@ -84,10 +83,6 @@ watch(
 
 function platformLabel(value: string) {
   return platformChoices.find((p) => p.value === value)?.label || value
-}
-
-function modelTypeLabel(type: string): string {
-  return MODEL_TYPE_LABELS[type as ModelType] || '文本'
 }
 
 function modelTypeColor(type: string): string {
@@ -165,7 +160,7 @@ function handleFileChange(fileList: any[]) {
 }
 
 function compressImage(file: File, maxWidth = 1920, quality = 0.8): Promise<File> {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve, _reject) => {
     if (!file.type.startsWith('image/')) {
       resolve(file)
       return

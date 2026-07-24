@@ -1,8 +1,6 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted } from 'vue'
 import PageHeader from '@/components/layout/PageHeader.vue'
-
-const containerRef = ref<HTMLDivElement | null>(null)
 
 onMounted(async () => {
   const SwaggerUI = (await import('swagger-ui-dist/swagger-ui-bundle.js')).default
@@ -24,7 +22,6 @@ onMounted(async () => {
     <div class="flex-1 overflow-auto p-6">
       <div
         id="swagger-ui-container"
-        ref="containerRef"
         class="bg-white rounded-[16px] border border-black/[0.06] shadow-sm"
       />
     </div>

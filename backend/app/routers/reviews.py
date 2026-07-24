@@ -15,7 +15,7 @@ router = APIRouter(prefix="/api/reviews", tags=["审核管理"])
 @router.get("/", response_model=list[ReviewResponse])
 async def list_pending_reviews(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_permission("review")),
+    current_user: User = Depends(require_permission("review:read")),
 ):
     """获取待审核列表"""
 

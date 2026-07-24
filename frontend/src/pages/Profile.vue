@@ -30,7 +30,7 @@ interface RoleDef {
   name: string
   display_name: string
   description: string | null
-  is_builtin: boolean
+  is_system: boolean
 }
 
 const user = ref<ProfileInfo | null>(null)
@@ -67,7 +67,7 @@ onMounted(async () => {
   }
 
   try {
-    const rolesRes = await api.get<RoleDef[]>('/roles')
+    const rolesRes = await api.get<RoleDef[]>('/v2/roles')
     roleDefs.value = rolesRes.data
   } catch {}
 })
