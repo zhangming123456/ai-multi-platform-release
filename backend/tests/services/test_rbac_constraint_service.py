@@ -157,9 +157,35 @@ async def test_validate_role_hierarchy_detects_multi_level_cycle(db):
     await _add_hierarchy(db, role_a.id, role_b.id)
     await _add_hierarchy(db, role_b.id, role_c.id)
 
-    # role_c is already a descendant of role_a, so adding role_a -> role_c
-    # would close a cycle in the hierarchy.
-    assert await validate_role_hierarchy(role_a.id, role_c.id, db) is False
+    # Adding role_c -> role_a would close a cycle (A -> B -> C -> A),
+    # so it must be rejected.
+    assert await validate_role_hierarchy(role_c.id, role_a.id, db) is False
+
+
+async def test_validate_role_hierarchy_allows_new_parent(db):
+    role_a = await _create_role(db)
+    role_b = await _create_role(db)
+    role_c = await _create_role(db)
+
+    await _add_hierarchy(db, role_a.id, role_b.id)
+    await _add_hierarchy(db, role_b.id, role_c.id)
+
+    # role_a is an ancestor of role_c, so adding role_a -> role_c is a
+    # valid new parent relationship that does not create a cycle.
+    assert await validate_role_hierarchy(role_a.id, role_c.id, db) is True
+
+
+async def test_validate_role_hierarchy_redundant_edge(db):
+    role_a = await _create_role(db)
+    role_b = await _create_role(db)
+
+    await _add_hierarchy(db, role_a.id, role_b.id)
+
+    # Adding the same edge again is a redundant edge. The current
+    # implementation returns True because it only rejects cycles and
+    # self-loops; callers that want to avoid duplicate edges should
+    # check for an existing RBACRoleHierarchy row separately.
+    assert await validate_role_hierarchy(role_a.id, role_b.id, db) is True
 
 
 async def test_validate_user_role_assignments_mutual_exclusive_violation(db):

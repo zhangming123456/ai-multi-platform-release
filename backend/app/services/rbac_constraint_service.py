@@ -16,15 +16,15 @@ async def validate_role_hierarchy(
 ) -> bool:
     """Return True if adding parent -> child would not create a cycle.
 
-    A role cannot be its own parent, and a child cannot already be a
-    descendant of the proposed parent.
+    A role cannot be its own parent, and the proposed parent cannot already
+    be a descendant of the proposed child.
     """
     if parent_role_id == child_role_id:
         return False
 
-    descendants = await get_role_descendants(parent_role_id, db)
+    descendants = await get_role_descendants(child_role_id, db)
     descendant_ids = {role.id for role in descendants}
-    return child_role_id not in descendant_ids
+    return parent_role_id not in descendant_ids
 
 
 async def validate_user_role_assignments(
