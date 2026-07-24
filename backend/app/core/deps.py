@@ -14,6 +14,17 @@ from app.services.rbac_service import has_permission_direct
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 
+_LEGACY_KEY_MAP = {
+    "accounts": "users:read",
+    "user:create": "users:create",
+    "user:update": "users:update",
+    "user:delete": "users:delete",
+    "user:change_password": "users:change_password",
+    "permission_manage": "permissions:read",
+    "database": "db:read",
+    "db:history:read": "db_history:read",
+}
+
 
 async def get_current_user(
     token: str = Depends(oauth2_scheme),
@@ -60,23 +71,35 @@ async def get_reviewer_user(
 
 
 def require_permission(permission_key: str, mode: str = "read") -> Callable:
+    if mode not in {"read", "write"}:
+        raise ValueError(f"Unsupported permission mode: {mode}")
+
     async def _checker(
         current_user: User = Depends(get_current_user),
         db: AsyncSession = Depends(get_db),
     ) -> User:
-        if mode not in {"read", "write"}:
-            raise ValueError(f"Unsupported permission mode: {mode}")
+        if current_user.role == UserRole.admin:
+            return current_user
 
-        resolved_key = permission_key if ":" in permission_key else f"{permission_key}:read"
+        if ":" in permission_key:
+            resolved_key = _LEGACY_KEY_MAP.get(permission_key, permission_key)
+        else:
+            resolved_key = _LEGACY_KEY_MAP.get(permission_key, f"{permission_key}:read")
+
         has_access = await has_permission_direct(
             current_user.id, resolved_key, mode, db
         )
         if has_access:
             return current_user
 
+        if mode == "read":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="无查看权限",
+            )
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="无操作权限",
+            detail="无写入权限",
         )
 
     return _checker

@@ -18,7 +18,7 @@ from app.models.rbac_resource import RBACResource  # noqa: E402
 from app.models.rbac_role import RBACRole  # noqa: E402
 from app.models.rbac_role_permission import RBACRolePermission  # noqa: E402
 from app.models.rbac_user_role_assignment import RBACUserRoleAssignment  # noqa: E402
-from app.models.user import User  # noqa: E402
+from app.models.user import User, UserRole  # noqa: E402
 
 pytestmark = pytest.mark.asyncio
 
@@ -41,13 +41,14 @@ async def db():
     os.unlink(db_path)
 
 
-async def _create_user(session: AsyncSession) -> User:
+async def _create_user(session: AsyncSession, role: str | None = None) -> User:
     user = User(
         id=str(uuid.uuid4()),
         username=f"user-{uuid.uuid4().hex[:8]}",
         email=f"{uuid.uuid4().hex[:8]}@example.com",
         hashed_password="secret",
         nickname="Test User",
+        role=role or "operator",
     )
     session.add(user)
     await session.commit()
@@ -145,7 +146,7 @@ async def test_require_permission_denies_when_not_granted(db):
         await checker(current_user=user, db=db)
 
     assert exc_info.value.status_code == 403
-    assert exc_info.value.detail == "无操作权限"
+    assert exc_info.value.detail == "无查看权限"
 
 
 async def test_require_permission_legacy_page_key_resolves_to_read(db):
@@ -164,8 +165,70 @@ async def test_require_permission_legacy_page_key_resolves_to_read(db):
 
 
 async def test_require_permission_unknown_mode_raises(db):
+    with pytest.raises(ValueError, match="Unsupported permission mode: delete"):
+        require_permission("users:read", "delete")
+
+
+async def test_require_permission_write_granted(db):
+    user = await _create_user(db)
+    role = await _create_role(db)
+    resource = await _create_resource(db)
+    permission = await _create_permission(db, resource.id, "create", "users:create")
+
+    await _assign_role(db, user.id, role.id)
+    await _grant_permission(db, role.id, permission.id)
+
+    checker = require_permission("users:create", "write")
+    result = await checker(current_user=user, db=db)
+
+    assert result is user
+
+
+async def test_require_permission_write_denied(db):
     user = await _create_user(db)
 
-    checker = require_permission("users:read", "delete")
-    with pytest.raises(ValueError, match="Unsupported permission mode: delete"):
+    checker = require_permission("users:create", "write")
+    with pytest.raises(HTTPException) as exc_info:
         await checker(current_user=user, db=db)
+
+    assert exc_info.value.status_code == 403
+    assert exc_info.value.detail == "无写入权限"
+
+
+async def test_require_permission_admin_fallback_without_rbac_assignment(db):
+    user = await _create_user(db, role=UserRole.admin)
+
+    checker = require_permission("users:read", "read")
+    result = await checker(current_user=user, db=db)
+
+    assert result is user
+
+
+async def test_require_permission_legacy_key_maps_accounts_to_users_read(db):
+    user = await _create_user(db)
+    role = await _create_role(db)
+    resource = await _create_resource(db)
+    permission = await _create_permission(db, resource.id, "read", "users:read")
+
+    await _assign_role(db, user.id, role.id)
+    await _grant_permission(db, role.id, permission.id)
+
+    checker = require_permission("accounts", "read")
+    result = await checker(current_user=user, db=db)
+
+    assert result is user
+
+
+async def test_require_permission_legacy_key_maps_user_create_to_users_create(db):
+    user = await _create_user(db)
+    role = await _create_role(db)
+    resource = await _create_resource(db)
+    permission = await _create_permission(db, resource.id, "create", "users:create")
+
+    await _assign_role(db, user.id, role.id)
+    await _grant_permission(db, role.id, permission.id)
+
+    checker = require_permission("user:create", "write")
+    result = await checker(current_user=user, db=db)
+
+    assert result is user
