@@ -21,7 +21,7 @@ class TemplateUpdate(BaseModel):
 
 
 class TemplateResponse(BaseModel):
-    id: int
+    id: str
     name: str
     platform: str
     thumbnail_url: Optional[str] = None

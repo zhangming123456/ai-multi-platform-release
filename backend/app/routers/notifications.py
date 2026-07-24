@@ -74,7 +74,7 @@ async def get_unread_count(
 
 @router.post("/{notification_id}/read")
 async def mark_as_read(
-    notification_id: int,
+    notification_id: str,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):

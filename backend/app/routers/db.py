@@ -35,7 +35,7 @@ class SqlResponse(BaseModel):
 
 
 class SqlHistoryItem(BaseModel):
-    id: int
+    id: str
     username: str
     sql_text: str
     is_success: bool

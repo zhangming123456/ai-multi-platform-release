@@ -25,8 +25,8 @@ class AccountUpdate(BaseModel):
 
 
 class AccountResponse(BaseModel):
-    id: int
-    user_id: int
+    id: str
+    user_id: str
     platform: str
     nickname: str
     avatar_url: Optional[str] = None
@@ -43,7 +43,7 @@ class AccountResponse(BaseModel):
 
 
 class AccountStatusResponse(BaseModel):
-    id: int
+    id: str
     status: str
     last_check_at: Optional[datetime] = None
     error_message: Optional[str] = None

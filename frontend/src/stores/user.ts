@@ -32,9 +32,11 @@ export const useUserStore = defineStore('user', () => {
     userInfo.value = res.data
   }
 
-  function hasPermission(key: string): boolean {
+  function hasPermission(key: string, mode: 'read' | 'write' = 'read'): boolean {
     if (!userInfo.value?.permissions) return true
-    return userInfo.value.permissions.includes(key)
+    const access = userInfo.value.permissions[key]
+    if (!access) return false
+    return mode === 'read' ? access.read : access.write
   }
 
   return { token, userInfo, login, logout, fetchUserInfo, hasPermission }

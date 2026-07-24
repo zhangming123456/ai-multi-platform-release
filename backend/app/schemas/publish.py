@@ -7,15 +7,15 @@ from typing import Optional
 
 
 class PublishTaskCreate(BaseModel):
-    content_id: int
-    account_id: int
+    content_id: str
+    account_id: str
     scheduled_at: Optional[datetime] = None
 
 
 class PublishTaskResponse(BaseModel):
-    id: int
-    content_id: int
-    account_id: int
+    id: str
+    content_id: str
+    account_id: str
     status: str
     scheduled_at: Optional[datetime] = None
     published_at: Optional[datetime] = None

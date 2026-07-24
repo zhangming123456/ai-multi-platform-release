@@ -6,20 +6,20 @@ import { formatDateTime } from '@/utils/time'
 import { useNotificationStore } from '@/stores/notification'
 
 interface ReviewItem {
-  id: number
+  id: string
   title: string
   body: string
   platform: string
   status: string
   created_at: string
-  user_id: number
+  user_id: string
   username: string
 }
 
 const loading = ref(false)
 const reviews = ref<ReviewItem[]>([])
 const rejectModalVisible = ref(false)
-const currentReviewId = ref<number | null>(null)
+const currentReviewId = ref<string | null>(null)
 const rejectReason = ref('')
 const notificationStore = useNotificationStore()
 
@@ -36,7 +36,7 @@ const fetchReviews = async () => {
   }
 }
 
-const handleApprove = async (id: number) => {
+const handleApprove = async (id: string) => {
   try {
     await api.post(`/reviews/${id}/approve`)
     Message.success('审核通过')
@@ -49,7 +49,7 @@ const handleApprove = async (id: number) => {
   }
 }
 
-const handleReject = (id: number) => {
+const handleReject = (id: string) => {
   currentReviewId.value = id
   rejectReason.value = ''
   rejectModalVisible.value = true

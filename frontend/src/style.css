@@ -198,6 +198,10 @@ body {
   transform: translateY(-50%);
   max-width: 90vh;
 }
+.arco-modal-body {
+  max-height: 70vh;
+  overflow-y: auto;
+}
 .arco-modal {
   width: 90vw;
   max-width: 600px;

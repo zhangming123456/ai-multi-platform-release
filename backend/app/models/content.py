@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import enum
+import uuid
 from datetime import datetime
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text
@@ -21,8 +22,8 @@ class ContentStatus(str, enum.Enum):
 class Content(Base):
     __tablename__ = "contents"
 
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False)
     title: Mapped[str] = mapped_column(String(500), nullable=False)
     body: Mapped[str] = mapped_column(Text, nullable=False)
     platform: Mapped[str] = mapped_column(String(20), nullable=False)
@@ -31,8 +32,8 @@ class Content(Base):
     )
     media_urls: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     ai_generated: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    original_content_id: Mapped[Optional[int]] = mapped_column(
-        ForeignKey("contents.id"), nullable=True
+    original_content_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("contents.id"), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.now, nullable=False

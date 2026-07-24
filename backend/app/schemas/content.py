@@ -24,15 +24,15 @@ class ContentUpdate(BaseModel):
 
 
 class ContentResponse(BaseModel):
-    id: int
-    user_id: int
+    id: str
+    user_id: str
     title: str
     body: str
     platform: str
     status: str
     media_urls: Optional[str] = None
     ai_generated: bool
-    original_content_id: Optional[int] = None
+    original_content_id: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 
@@ -74,8 +74,8 @@ class AIGenerateResponse(BaseModel):
 
 
 class AIGenerationRecordResponse(BaseModel):
-    id: int
-    user_id: int
+    id: str
+    user_id: str
     topic: str
     platform: str
     plan_id: Optional[str] = None

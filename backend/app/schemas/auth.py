@@ -16,8 +16,13 @@ class Token(BaseModel):
     token_type: str = "bearer"
 
 
+class PermissionAccessInfo(BaseModel):
+    read: bool = True
+    write: bool = True
+
+
 class UserInfo(BaseModel):
-    id: int
+    id: str
     username: str
     email: Optional[str] = None
     nickname: str
@@ -29,7 +34,7 @@ class UserInfo(BaseModel):
 
 
 class UserInfoWithPermissions(UserInfo):
-    permissions: list[str] = []
+    permissions: dict[str, PermissionAccessInfo] = {}
 
 
 class LoginResponse(BaseModel):

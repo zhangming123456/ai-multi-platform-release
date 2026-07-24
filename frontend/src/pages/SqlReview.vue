@@ -10,8 +10,8 @@ import api from '@/utils/api'
 import { formatDateTime } from '@/utils/time'
 
 interface SqlChangeItem {
-  id: number
-  requester_id: number
+  id: string
+  requester_id: string
   requester_name: string | null
   change_type: string
   sql_text: string
@@ -19,7 +19,7 @@ interface SqlChangeItem {
   status: string
   approvals: number
   required_approvals: number
-  approved_by: number[]
+  approved_by: string[]
   reject_reason: string | null
   execute_message: string | null
   created_at: string

@@ -40,7 +40,7 @@ onMounted(() => {
 type LogLevel = 'info' | 'req' | 'ok' | 'err'
 
 interface LogEntry {
-  id: number
+  id: string
   time: string
   level: LogLevel
   message: string
@@ -56,7 +56,7 @@ function pushLog(level: LogLevel, message: string) {
   const now = new Date()
   const pad = (n: number) => String(n).padStart(2, '0')
   logs.value.push({
-    id: ++logSeq,
+    id: String(++logSeq),
     time: `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}.${String(
       now.getMilliseconds(),
     ).padStart(3, '0')}`,

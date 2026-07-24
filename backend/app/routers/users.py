@@ -44,14 +44,20 @@ async def list_users(
 async def create_user(
     request: UserCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_permission("user:create")),
+    current_user: User = Depends(require_permission("user:create", "write")),
 ):
-    if current_user.role != UserRole.admin:
+    if current_user.role not in (UserRole.admin, UserRole.manager):
         if request.role not in (None, "operator"):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="仅可创建运营者角色账号",
             )
+
+    if request.role == "admin":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="超级管理员账号唯一，不可创建",
+        )
 
     await _validate_role(request.role, db)
 
@@ -84,7 +90,7 @@ async def create_user(
 
 @router.put("/{user_id}", response_model=UserInfo)
 async def update_user(
-    user_id: int,
+    user_id: str,
     request: UserUpdate,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_permission("user:update")),
@@ -94,7 +100,7 @@ async def update_user(
     if not user:
         raise HTTPException(status_code=404, detail="用户不存在")
 
-    if current_user.role != UserRole.admin:
+    if current_user.role not in (UserRole.admin, UserRole.manager):
         if user.id != current_user.id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -110,6 +116,12 @@ async def update_user(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="超级管理员角色不可修改",
+        )
+
+    if "role" in (request.model_dump(exclude_unset=True)) and request.role == "admin":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="超级管理员账号唯一，不可将其他用户设为超级管理员",
         )
 
     update_data = request.model_dump(exclude_unset=True)
@@ -147,17 +159,17 @@ async def update_user(
 
 @router.put("/{user_id}/password")
 async def change_user_password(
-    user_id: int,
+    user_id: str,
     request: UserPasswordChange,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_permission("user:change_password")),
+    current_user: User = Depends(require_permission("user:change_password", "write")),
 ):
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=404, detail="用户不存在")
 
-    if current_user.role != UserRole.admin and user.id != current_user.id:
+    if current_user.role not in (UserRole.admin, UserRole.manager) and user.id != current_user.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="仅可修改自己的密码",
@@ -170,7 +182,7 @@ async def change_user_password(
 
 @router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_user(
-    user_id: int,
+    user_id: str,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_permission("user:delete")),
 ):

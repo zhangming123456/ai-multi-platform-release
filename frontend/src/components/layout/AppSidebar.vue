@@ -55,7 +55,9 @@ const userStore = useUserStore()
 function hasPerm(key: string): boolean {
   const perms = userStore.userInfo?.permissions
   if (!perms) return true
-  return perms.includes(key)
+  if (userStore.userInfo?.role === 'admin') return true
+  const access = perms[key]
+  return access ? access.read : false
 }
 
 const sysChildren = computed<MenuEntry[]>(() => {
@@ -72,10 +74,11 @@ const sysChildren = computed<MenuEntry[]>(() => {
   if (userStore.userInfo?.role === 'admin' && hasPerm('database')) {
     items.push({ key: 'database', name: '数据库管理', path: '/developer/database', icon: IconStorage, permKey: 'database' })
   }
-  if (userStore.userInfo?.role === 'admin' && hasPerm('permission_manage')) {
+  const isAdmin = userStore.userInfo?.role === 'admin' || userStore.userInfo?.role === 'manager'
+  if (isAdmin && hasPerm('permission_manage')) {
     items.push({ key: 'role-manage', name: '角色管理', path: '/settings/roles', icon: IconUser, permKey: 'permission_manage' })
   }
-  if (userStore.userInfo?.role === 'admin' && hasPerm('permission_manage')) {
+  if (isAdmin && hasPerm('permission_manage')) {
     items.push({ key: 'permission-manage', name: '权限管理', path: '/settings/permissions', icon: IconUser, permKey: 'permission_manage' })
   }
   return items

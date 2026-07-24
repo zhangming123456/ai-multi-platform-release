@@ -9,7 +9,7 @@ import PlatformIcon from '@/components/shared/PlatformIcon.vue'
 import { formatDateTime } from '@/utils/time'
 
 interface Template {
-  id: number
+  id: string
   name: string
   platform: string
   thumbnail_url: string | null

@@ -35,7 +35,7 @@ interface TableColumnInfo {
 }
 
 interface SqlHistoryItem {
-  id: number
+  id: string
   username: string
   sql_text: string
   is_success: boolean

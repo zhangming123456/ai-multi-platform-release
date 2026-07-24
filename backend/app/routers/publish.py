@@ -40,7 +40,7 @@ async def list_tasks(
 async def create_task(
     request: PublishTaskCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_permission("publish:create")),
+    current_user: User = Depends(require_permission("publish:create", "write")),
 ):
     task = await create_publish_task(db, request)
     return task
@@ -48,7 +48,7 @@ async def create_task(
 
 @router.get("/tasks/{task_id}", response_model=PublishTaskResponse)
 async def get_task(
-    task_id: int,
+    task_id: str,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -61,9 +61,9 @@ async def get_task(
 
 @router.post("/tasks/{task_id}/retry", response_model=PublishTaskResponse)
 async def retry_publish_task(
-    task_id: int,
+    task_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_permission("publish:retry")),
+    current_user: User = Depends(require_permission("publish:retry", "write")),
 ):
     task = await retry_task(db, task_id)
     if not task:

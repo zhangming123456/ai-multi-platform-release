@@ -14,8 +14,8 @@ type Platform = 'wechat_mp' | 'xiaohongshu' | 'douyin' | 'wechat_video'
 type AccountStatus = 'active' | 'inactive' | 'error'
 
 interface Account {
-  id: number
-  user_id: number
+  id: string
+  user_id: string
   platform: Platform
   nickname: string
   avatar_url: string | null
@@ -33,8 +33,8 @@ const platformFilter = ref('all')
 const showAddModal = ref(false)
 const loading = ref(false)
 const submitting = ref(false)
-const checkingId = ref<number | null>(null)
-const deletingId = ref<number | null>(null)
+const checkingId = ref<string | null>(null)
+const deletingId = ref<string | null>(null)
 
 const platformOptions = [
   { key: 'all', label: '全部' },
@@ -99,7 +99,7 @@ async function addAccount() {
   }
 }
 
-async function deleteAccount(id: number) {
+async function deleteAccount(id: string) {
   deletingId.value = id
   try {
     await api.delete(`/accounts/${id}`)
@@ -112,10 +112,10 @@ async function deleteAccount(id: number) {
   }
 }
 
-async function checkStatus(id: number) {
+async function checkStatus(id: string) {
   checkingId.value = id
   try {
-    const { data } = await api.post<{ id: number; status: AccountStatus; last_check_at: string; error_message: string | null }>(`/accounts/${id}/check`)
+    const { data } = await api.post<{ id: string; status: AccountStatus; last_check_at: string; error_message: string | null }>(`/accounts/${id}/check`)
     const idx = accounts.value.findIndex((a) => a.id === id)
     if (idx !== -1) {
       accounts.value[idx] = {

@@ -123,7 +123,9 @@ function hasPerm(to: RouteLocationNormalized): boolean {
   if (!permKey) return true
   const userStore = useUserStore()
   if (!userStore.userInfo?.permissions) return true
-  return userStore.userInfo.permissions.includes(permKey)
+  if (userStore.userInfo.role === 'admin') return true
+  const access = userStore.userInfo.permissions[permKey]
+  return access ? access.read : false
 }
 
 router.beforeEach(async (to) => {

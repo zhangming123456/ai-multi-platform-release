@@ -5,11 +5,11 @@ from pydantic import BaseModel
 
 
 class NotificationResponse(BaseModel):
-    id: int
+    id: str
     type: str
     title: str
     content: Optional[str] = None
-    related_id: Optional[int] = None
+    related_id: Optional[str] = None
     is_read: bool
     created_at: datetime
 

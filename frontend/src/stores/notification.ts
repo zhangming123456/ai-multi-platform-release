@@ -3,11 +3,11 @@ import { ref, computed } from 'vue'
 import api from '@/utils/api'
 
 interface Notification {
-  id: number
+  id: string
   type: string
   title: string
   content: string
-  related_id: number
+  related_id: string
   is_read: boolean
   created_at: string
 }
@@ -39,7 +39,7 @@ export const useNotificationStore = defineStore('notification', () => {
     }
   }
 
-  async function markAsRead(id: number) {
+  async function markAsRead(id: string) {
     try {
       await api.post(`/notifications/${id}/read`)
       const notification = notifications.value.find(n => n.id === id)

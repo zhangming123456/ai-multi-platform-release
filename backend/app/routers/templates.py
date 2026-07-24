@@ -32,7 +32,7 @@ async def list_templates(
 async def create_template(
     request: TemplateCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_permission("template:create")),
+    current_user: User = Depends(require_permission("template:create", "write")),
 ):
     template = Template(
         name=request.name,
@@ -48,7 +48,7 @@ async def create_template(
 
 @router.get("/{template_id}", response_model=TemplateResponse)
 async def get_template(
-    template_id: int,
+    template_id: str,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -61,10 +61,10 @@ async def get_template(
 
 @router.put("/{template_id}", response_model=TemplateResponse)
 async def update_template(
-    template_id: int,
+    template_id: str,
     request: TemplateUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_permission("template:update")),
+    current_user: User = Depends(require_permission("template:update", "write")),
 ):
     result = await db.execute(select(Template).where(Template.id == template_id))
     template = result.scalar_one_or_none()
@@ -82,9 +82,9 @@ async def update_template(
 
 @router.delete("/{template_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_template(
-    template_id: int,
+    template_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_permission("template:delete")),
+    current_user: User = Depends(require_permission("template:delete", "write")),
 ):
     result = await db.execute(select(Template).where(Template.id == template_id))
     template = result.scalar_one_or_none()

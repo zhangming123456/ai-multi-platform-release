@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Optional
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy import delete, select
@@ -17,8 +19,10 @@ router = APIRouter(prefix="/api/roles", tags=["角色管理"])
 class RoleDef(BaseModel):
     name: str
     display_name: str
-    description: str | None = None
+    description: Optional[str] = None
     is_builtin: bool = False
+    is_super_admin: bool = False
+    role_type: str = "other"
 
     model_config = {"from_attributes": True}
 
@@ -26,18 +30,21 @@ class RoleDef(BaseModel):
 class CreateRoleRequest(BaseModel):
     name: str
     display_name: str
-    description: str | None = None
+    description: Optional[str] = None
+    role_type: str = "other"
 
 
 class UpdateRoleRequest(BaseModel):
-    display_name: str | None = None
-    description: str | None = None
+    display_name: Optional[str] = None
+    description: Optional[str] = None
+    role_type: Optional[str] = None
 
 
 BUILTIN_ROLES: dict[str, dict] = {
-    "admin": {"name": "admin", "display_name": "管理员", "description": "超级管理员，拥有所有权限"},
-    "operator": {"name": "operator", "display_name": "运营者", "description": "日常内容运营与发布管理"},
-    "reviewer": {"name": "reviewer", "display_name": "审核员", "description": "内容与SQL变更审核"},
+    "admin": {"name": "admin", "display_name": "超级管理员", "description": "系统最高权限，拥有所有页面和操作权限，不可修改", "role_type": "admin"},
+    "manager": {"name": "manager", "display_name": "管理员", "description": "管理系统配置、用户权限和日常运营", "role_type": "admin"},
+    "operator": {"name": "operator", "display_name": "运营者", "description": "日常内容运营与发布管理", "role_type": "other"},
+    "reviewer": {"name": "reviewer", "display_name": "审核员", "description": "内容与SQL变更审核", "role_type": "other"},
 }
 
 BUILTIN_ROLE_NAMES = list(BUILTIN_ROLES.keys())
@@ -59,6 +66,8 @@ async def list_roles(
             display_name=info["display_name"],
             description=info["description"] or "",
             is_builtin=True,
+            is_super_admin=(role_name == "admin"),
+            role_type=info["role_type"],
         ))
 
     result = await db.execute(select(CustomRole).order_by(CustomRole.created_at.asc()))
@@ -68,6 +77,7 @@ async def list_roles(
             display_name=cr.display_name,
             description=cr.description or "",
             is_builtin=False,
+            role_type=cr.role_type,
         ))
 
     return roles
@@ -96,6 +106,7 @@ async def create_role(
         name=body.name,
         display_name=body.display_name,
         description=body.description,
+        role_type=body.role_type,
     )
     db.add(cr)
     await db.flush()
@@ -106,6 +117,7 @@ async def create_role(
         display_name=cr.display_name,
         description=cr.description,
         is_builtin=False,
+        role_type=cr.role_type,
     )
 
 
@@ -131,6 +143,8 @@ async def update_role(
         cr.display_name = body.display_name
     if body.description is not None:
         cr.description = body.description
+    if body.role_type is not None:
+        cr.role_type = body.role_type
 
     await db.flush()
     await db.refresh(cr)
@@ -140,6 +154,7 @@ async def update_role(
         display_name=cr.display_name,
         description=cr.description,
         is_builtin=False,
+        role_type=cr.role_type,
     )
 
 

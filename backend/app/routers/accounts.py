@@ -35,7 +35,7 @@ async def list_accounts(
 async def create_account(
     request: AccountCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_permission("account:create")),
+    current_user: User = Depends(require_permission("account:create", "write")),
 ):
     account = Account(
         user_id=current_user.id,
@@ -54,7 +54,7 @@ async def create_account(
 
 @router.get("/{account_id}", response_model=AccountResponse)
 async def get_account(
-    account_id: int,
+    account_id: str,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -69,10 +69,10 @@ async def get_account(
 
 @router.put("/{account_id}", response_model=AccountResponse)
 async def update_account(
-    account_id: int,
+    account_id: str,
     request: AccountUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_permission("account:update")),
+    current_user: User = Depends(require_permission("account:update", "write")),
 ):
     result = await db.execute(
         select(Account).where(Account.id == account_id, Account.user_id == current_user.id)
@@ -92,9 +92,9 @@ async def update_account(
 
 @router.delete("/{account_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_account(
-    account_id: int,
+    account_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_permission("account:delete")),
+    current_user: User = Depends(require_permission("account:delete", "write")),
 ):
     result = await db.execute(
         select(Account).where(Account.id == account_id, Account.user_id == current_user.id)
@@ -108,9 +108,9 @@ async def delete_account(
 
 @router.post("/{account_id}/check", response_model=AccountStatusResponse)
 async def check_account_status(
-    account_id: int,
+    account_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_permission("account:check")),
+    current_user: User = Depends(require_permission("account:check", "write")),
 ):
     result = await db.execute(
         select(Account).where(Account.id == account_id, Account.user_id == current_user.id)

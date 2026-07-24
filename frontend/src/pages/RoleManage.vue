@@ -2,7 +2,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { Message } from '@arco-design/web-vue'
-import { IconPlus, IconEdit, IconDelete, IconSafe, IconSettings } from '@arco-design/web-vue/es/icon'
+import { IconPlus, IconEdit, IconDelete, IconSafe, IconSettings, IconLock } from '@arco-design/web-vue/es/icon'
 import PageHeader from '@/components/layout/PageHeader.vue'
 import api from '@/utils/api'
 
@@ -11,6 +11,8 @@ interface RoleDef {
   display_name: string
   description: string | null
   is_builtin: boolean
+  is_super_admin: boolean
+  role_type: string
 }
 
 const router = useRouter()
@@ -19,6 +21,7 @@ const roles = ref<RoleDef[]>([])
 
 const BUILTIN_COLORS: Record<string, string> = {
   admin: 'red',
+  manager: 'orangered',
   operator: 'blue',
   reviewer: 'green',
 }
@@ -26,6 +29,20 @@ const BUILTIN_COLORS: Record<string, string> = {
 function roleColor(name: string): string {
   return BUILTIN_COLORS[name] || 'arcoblue'
 }
+
+const sortedRoles = computed(() => {
+  return [...roles.value].sort((a, b) => {
+    if (a.is_super_admin) return -1
+    if (b.is_super_admin) return 1
+    const builtinOrder = ['manager', 'operator', 'reviewer']
+    const aIdx = builtinOrder.indexOf(a.name)
+    const bIdx = builtinOrder.indexOf(b.name)
+    if (aIdx !== -1 && bIdx !== -1) return aIdx - bIdx
+    if (aIdx !== -1) return -1
+    if (bIdx !== -1) return 1
+    return 0
+  })
+})
 
 onMounted(async () => {
   loading.value = true
@@ -41,7 +58,7 @@ onMounted(async () => {
 
 const addVisible = ref(false)
 const addSaving = ref(false)
-const newRole = ref({ name: '', display_name: '', description: '' })
+const newRole = ref({ name: '', display_name: '', description: '', role_type: 'other' })
 
 async function createRole() {
   if (!newRole.value.name || !newRole.value.display_name) return
@@ -51,7 +68,7 @@ async function createRole() {
     roles.value.push(res.data)
     Message.success('角色创建成功')
     addVisible.value = false
-    newRole.value = { name: '', display_name: '', description: '' }
+    newRole.value = { name: '', display_name: '', description: '', role_type: 'other' }
   } catch (e: any) {
     Message.error(e.response?.data?.detail || '创建失败')
   } finally {
@@ -62,11 +79,11 @@ async function createRole() {
 const editVisible = ref(false)
 const editSaving = ref(false)
 const editingRole = ref<RoleDef | null>(null)
-const editForm = ref({ display_name: '', description: '' })
+const editForm = ref({ display_name: '', description: '', role_type: 'other' })
 
 function openEdit(role: RoleDef) {
   editingRole.value = role
-  editForm.value = { display_name: role.display_name, description: role.description || '' }
+  editForm.value = { display_name: role.display_name, description: role.description || '', role_type: role.role_type || 'other' }
   editVisible.value = true
 }
 
@@ -115,7 +132,7 @@ function goToPermissions(roleName: string) {
     <a-spin :loading="loading" class="w-full">
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         <div
-          v-for="role in roles"
+          v-for="role in sortedRoles"
           :key="role.name"
           class="bg-white/80 backdrop-blur-xl rounded-2xl border border-black/[0.05] overflow-hidden hover:border-black/[0.1] transition-all duration-200"
         >
@@ -125,7 +142,7 @@ function goToPermissions(roleName: string) {
                 <a-tag :color="roleColor(role.name)" size="small" class="!m-0">
                   {{ role.display_name }}
                 </a-tag>
-                <IconSafe v-if="role.name === 'admin'" :size="14" class="text-[#86868B]" />
+                <IconSafe v-if="role.is_super_admin" :size="14" class="text-[#ff9500]" />
               </div>
               <div v-if="!role.is_builtin" class="flex items-center gap-1">
                 <a-button type="text" size="mini" @click="openEdit(role)">
@@ -140,6 +157,9 @@ function goToPermissions(roleName: string) {
                   </a-button>
                 </a-popconfirm>
               </div>
+              <div v-else-if="role.is_super_admin" class="text-[11px] text-[#86868B] font-medium">
+                不可编辑
+              </div>
             </div>
 
             <p class="text-[13px] text-[#86868B] leading-relaxed mb-4">
@@ -150,19 +170,29 @@ function goToPermissions(roleName: string) {
               <code class="text-[12px] px-2 py-1 rounded-md bg-black/[0.04] text-[#636366] font-mono">
                 {{ role.name }}
               </code>
-              <a-tag v-if="role.is_builtin" size="small" color="gray" class="!m-0">内置</a-tag>
+              <a-tag v-if="role.is_super_admin" size="small" color="orangered" class="!m-0">超级</a-tag>
+              <a-tag v-else-if="role.is_builtin" size="small" color="gray" class="!m-0">内置</a-tag>
               <a-tag v-else size="small" color="arcoblue" class="!m-0">自定义</a-tag>
+              <a-tag v-if="role.role_type === 'admin'" size="small" color="orangered" class="!m-0">管理类型</a-tag>
+              <a-tag v-else size="small" color="gray" class="!m-0">普通类型</a-tag>
             </div>
           </div>
 
           <div
             class="px-5 py-3 bg-black/[0.01] border-t border-black/[0.04] flex items-center justify-between"
+            v-if="!role.is_super_admin"
           >
             <span class="text-[12px] text-[#86868B]">配置该角色的页面和操作权限</span>
             <a-button type="text" size="small" @click="goToPermissions(role.name)">
               <template #icon><IconSettings :size="14" /></template>
               权限配置
             </a-button>
+          </div>
+          <div
+            v-else
+            class="px-5 py-3 bg-black/[0.01] border-t border-black/[0.04] flex items-center"
+          >
+            <span class="text-[12px] text-[#86868B]">超级管理员拥有所有权限，不可修改</span>
           </div>
         </div>
       </div>
@@ -191,6 +221,17 @@ function goToPermissions(roleName: string) {
         <a-form-item label="描述（选填）">
           <a-textarea v-model="newRole.description" placeholder="角色职责说明" :auto-size="{ minRows: 2, maxRows: 4 }" />
         </a-form-item>
+        <a-form-item label="角色类型" required>
+          <a-radio-group v-model="newRole.role_type">
+            <a-radio value="admin">管理类型</a-radio>
+            <a-radio value="other">普通类型</a-radio>
+          </a-radio-group>
+          <template #extra>
+            <span class="text-[11px] text-[#86868b]">
+              {{ newRole.role_type === 'admin' ? '管理类型角色可配置数据库等高级权限' : '普通类型角色不支持数据库相关权限' }}
+            </span>
+          </template>
+        </a-form-item>
       </a-form>
     </a-modal>
 
@@ -208,6 +249,17 @@ function goToPermissions(roleName: string) {
         </a-form-item>
         <a-form-item label="描述">
           <a-textarea v-model="editForm.description" placeholder="角色职责说明" :auto-size="{ minRows: 2, maxRows: 4 }" />
+        </a-form-item>
+        <a-form-item label="角色类型">
+          <a-radio-group v-model="editForm.role_type">
+            <a-radio value="admin">管理类型</a-radio>
+            <a-radio value="other">普通类型</a-radio>
+          </a-radio-group>
+          <template #extra>
+            <span class="text-[11px] text-[#86868b]">
+              {{ editForm.role_type === 'admin' ? '管理类型角色可配置数据库等高级权限' : '普通类型角色不支持数据库相关权限' }}
+            </span>
+          </template>
         </a-form-item>
       </a-form>
     </a-modal>

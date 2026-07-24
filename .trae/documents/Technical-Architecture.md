@@ -61,6 +61,7 @@ flowchart TB
 - **HTTP 客户端**：Axios（带请求拦截器自动注入 JWT Token、401 响应拦截器自动跳转登录页）
 - **后端**：Python 3.11+ / FastAPI
 - **数据库**：SQLite（开发阶段）→ PostgreSQL（生产阶段）
+- **数据库 ID 规范**：所有表的主键 ID 必须使用 UUID 字符串（`VARCHAR(36)`），唯一例外是超级管理员用户 ID 固定为字符串 `"1"`
 - **ORM**：SQLAlchemy 2.0（异步模式）+ Alembic（数据库迁移）
 - **任务队列**：Celery + Redis
 - **缓存**：Redis
@@ -80,6 +81,8 @@ flowchart TB
 | /publish                    | Publish        | Publish.vue               | 需鉴权 | 发布管理中心               |
 | /templates                  | Templates      | Templates.vue             | 需鉴权 | 模板中心                   |
 | /settings/token-plan        | TokenPlan      | TokenPlan.vue             | 需鉴权 | AI 模型配置                |
+| /settings/roles             | RoleManage     | RoleManage.vue            | 需鉴权 | 角色管理（管理员）         |
+| /settings/permissions       | PermissionManage | PermissionManage.vue    | 需鉴权 | 权限管理（管理员）         |
 | /developer/docs             | ApiDocs        | ApiDocs.vue               | 需鉴权 | Swagger API 文档           |
 
 ### 3.1 路由守卫
@@ -102,6 +105,12 @@ flowchart TB
 | /api/models                 | routers/models.py          | 可用模型列表查询             |
 | /api/publish                | routers/publish.py         | 发布任务管理                 |
 | /api/templates              | routers/templates.py       | 模板管理                     |
+| /api/roles                  | routers/roles.py           | 角色管理（内置+自定义）      |
+| /api/permissions            | routers/permissions.py     | 角色权限与用户权限管理       |
+| /api/users                  | routers/users.py           | 用户管理（管理员功能）       |
+| /api/notifications          | routers/notifications.py   | 通知消息管理                 |
+| /api/reviews                | routers/reviews.py         | 内容审核管理                 |
+| /api/db-changes             | routers/db_changes.py      | 数据库变更请求管理           |
 
 ### 4.2 认证相关
 
@@ -124,10 +133,11 @@ interface LoginResponse {
 }
 
 interface UserInfo {
-  id: number
+  id: string
   email: string
+  username: string
   nickname: string
-  role: 'admin' | 'operator' | 'reviewer'
+  role: 'admin' | 'manager' | 'operator' | 'reviewer'
   avatar_url?: string | null
   created_at: string
 }
@@ -158,12 +168,12 @@ interface PlatformStat {
 }
 
 interface RecentPublish {
-  id: number
+  id: string
   title: string
   platform: Platform
-  account: string     // 账号昵称
+  account: string
   status: PublishStatus
-  time: string        // 格式化的发布时间
+  time: string
 }
 ```
 
@@ -181,8 +191,8 @@ type Platform = 'wechat_mp' | 'xiaohongshu' | 'douyin' | 'wechat_video'
 type AccountStatus = 'active' | 'inactive' | 'error'
 
 interface Account {
-  id: number
-  user_id: number
+  id: string
+  user_id: string
   platform: Platform
   nickname: string
   avatar_url: string | null
@@ -214,15 +224,15 @@ interface CreateAccountRequest {
 
 ```typescript
 interface Content {
-  id: number
-  user_id: number
+  id: string
+  user_id: string
   title: string
   body: string
   platform: string
   status: 'draft' | 'ready' | 'published'
   media_urls: string[]
   ai_generated: boolean
-  original_content_id?: number
+  original_content_id?: string
   created_at: string
   updated_at: string
 }
@@ -257,9 +267,9 @@ interface AIGenerateResponse {
 type PublishTaskStatus = 'pending' | 'publishing' | 'published' | 'failed'
 
 interface PublishTask {
-  id: number
-  content_id: number
-  account_id: number
+  id: string
+  content_id: string
+  account_id: string
   status: PublishTaskStatus
   scheduled_at?: string | null
   published_at?: string | null
@@ -270,8 +280,8 @@ interface PublishTask {
 }
 
 interface CreatePublishTaskRequest {
-  content_id: number
-  account_id: number
+  content_id: string
+  account_id: string
   scheduled_at?: string
 }
 ```
@@ -284,7 +294,7 @@ interface CreatePublishTaskRequest {
 
 ```typescript
 interface Template {
-  id: number
+  id: string
   name: string
   platform: string
   thumbnail_url?: string | null
@@ -308,6 +318,95 @@ interface Template {
 | 方法 | 路径           | 说明             | 鉴权 |
 | ---- | -------------- | ---------------- | ---- |
 | GET  | /api/models    | 获取可用模型列表 | 是   |
+
+### 4.10 角色管理
+
+| 方法   | 路径                   | 说明                | 鉴权           |
+| ------ | ---------------------- | ------------------- | -------------- |
+| GET    | /api/roles/            | 获取角色列表        | 是（管理员）   |
+| POST   | /api/roles/custom      | 创建自定义角色      | 是（管理员）   |
+| PUT    | /api/roles/custom/{name} | 更新自定义角色    | 是（管理员）   |
+| DELETE | /api/roles/custom/{name} | 删除自定义角色    | 是（管理员）   |
+
+```typescript
+interface RoleDef {
+  name: string
+  display_name: string
+  description?: string
+  is_builtin: boolean
+  is_super_admin: boolean
+  role_type: 'admin' | 'other'
+}
+
+interface CustomRole extends RoleDef {
+  id: string
+  created_at: string
+}
+```
+
+内置角色定义（按排序）：
+1. **超级管理员 (admin)** — 系统最高权限，ID=1，不可编辑，`role_type: "admin"`
+2. **管理员 (manager)** — 管理系统配置，`role_type: "admin"`
+3. **运营者 (operator)** — 日常内容运营，`role_type: "other"`
+4. **审核员 (reviewer)** — 内容审核，`role_type: "other"`
+
+### 4.11 权限管理
+
+| 方法 | 路径                                | 说明                   | 鉴权             |
+| ---- | ----------------------------------- | ---------------------- | ---------------- |
+| GET  | /api/permissions/role/{role}        | 获取角色权限配置       | 是（管理员）     |
+| PUT  | /api/permissions/role/{role}        | 更新角色权限           | 是（管理员）     |
+| GET  | /api/permissions/user/{user_id}     | 获取用户自定义权限     | 是（管理员/本人） |
+| PUT  | /api/permissions/user/{user_id}     | 更新用户自定义权限     | 是（管理员）     |
+| GET  | /api/permissions/user/{user_id}/effective | 获取用户有效权限   | 是（管理员）     |
+
+权限键格式：`{资源}:{操作}`，如 `content:create`、`database`、`db:execute`
+
+角色类型与数据库权限约束：
+- `role_type: "admin"` — 可配置数据库相关权限（`database`、`db:execute`、`db:history:read`）
+- `role_type: "other"` — 不支持数据库相关权限配置
+
+### 4.12 用户管理
+
+| 方法 | 路径                       | 说明         | 鉴权           |
+| ---- | -------------------------- | ------------ | -------------- |
+| GET  | /api/users/                | 用户列表     | 是（管理员）   |
+| GET  | /api/users/{user_id}       | 用户详情     | 是（管理员）   |
+| PUT  | /api/users/{user_id}       | 更新用户信息 | 是（管理员）   |
+
+### 4.13 通知管理
+
+| 方法 | 路径                              | 说明           | 鉴权 |
+| ---- | --------------------------------- | -------------- | ---- |
+| GET  | /api/notifications/               | 获取通知列表   | 是   |
+| PUT  | /api/notifications/{id}/read      | 标记已读       | 是   |
+
+```typescript
+interface NotificationResponse {
+  id: string
+  type: string
+  title: string
+  content?: string
+  related_id?: string
+  is_read: boolean
+  created_at: string
+}
+```
+
+### 4.14 内容审核
+
+| 方法 | 路径                              | 说明           | 鉴权           |
+| ---- | --------------------------------- | -------------- | -------------- |
+| GET  | /api/reviews/                     | 获取待审核内容 | 是（审核员）   |
+| PUT  | /api/reviews/{content_id}         | 审核内容       | 是（审核员）   |
+
+### 4.15 数据库变更请求
+
+| 方法 | 路径                              | 说明             | 鉴权             |
+| ---- | --------------------------------- | ---------------- | ---------------- |
+| GET  | /api/db-changes/                  | 获取变更请求列表 | 是（管理员）     |
+| POST | /api/db-changes/                  | 创建变更请求     | 是（管理员）     |
+| PUT  | /api/db-changes/{change_id}       | 审批/拒绝变更    | 是（管理员）     |
 
 ## 5. 后端服务架构
 
@@ -380,7 +479,8 @@ flowchart LR
 ```mermaid
 erDiagram
     users {
-        int id PK
+        string id PK "UUID（超级管理员='1'）"
+        string username UK
         string email
         string hashed_password
         string nickname
@@ -391,8 +491,8 @@ erDiagram
     }
 
     model_configs {
-        int id PK
-        int user_id FK
+        string id PK "UUID"
+        string user_id FK
         string name
         string display_name
         string provider
@@ -415,8 +515,8 @@ erDiagram
     }
 
     accounts {
-        int id PK
-        int user_id FK
+        string id PK "UUID"
+        string user_id FK
         string platform
         string nickname
         string avatar_url
@@ -431,23 +531,23 @@ erDiagram
     }
 
     contents {
-        int id PK
-        int user_id FK
+        string id PK "UUID"
+        string user_id FK
         string title
         text body
         string platform
         string status
         text media_urls
         boolean ai_generated
-        int original_content_id FK
+        string original_content_id FK
         datetime created_at
         datetime updated_at
     }
 
     publish_tasks {
-        int id PK
-        int content_id FK
-        int account_id FK
+        string id PK "UUID"
+        string content_id FK
+        string account_id FK
         string status
         datetime scheduled_at
         datetime published_at
@@ -458,7 +558,7 @@ erDiagram
     }
 
     templates {
-        int id PK
+        string id PK "UUID"
         string name
         string platform
         string thumbnail_url
@@ -467,19 +567,97 @@ erDiagram
         datetime updated_at
     }
 
+    custom_roles {
+        string id PK "UUID"
+        string name
+        string display_name
+        string description
+        string role_type
+        boolean is_builtin
+        datetime created_at
+    }
+
+    role_permissions {
+        string id PK "UUID"
+        string role FK
+        string perm_key
+        datetime created_at
+    }
+
+    user_permissions {
+        string id PK "UUID"
+        string user_id FK
+        string perm_key
+        string granted_by FK
+        datetime created_at
+    }
+
+    notifications {
+        string id PK "UUID"
+        string user_id FK
+        string type
+        string title
+        text content
+        string related_id
+        boolean is_read
+        datetime created_at
+    }
+
+    ai_generations {
+        string id PK "UUID"
+        string user_id FK
+        string topic
+        string platform
+        string plan_id
+        string model
+        string title
+        text body
+        text hashtags
+        datetime created_at
+    }
+
+    sql_histories {
+        string id PK "UUID"
+        string user_id FK
+        text sql_text
+        string status
+        text result
+        datetime created_at
+    }
+
+    sql_change_requests {
+        string id PK "UUID"
+        string user_id FK
+        string status
+        text description
+        text sql_text
+        string reviewed_by FK
+        datetime created_at
+        datetime updated_at
+    }
+
     users ||--o{ model_configs : "配置"
     users ||--o{ accounts : "管理"
     users ||--o{ contents : "创建"
+    users ||--o{ ai_generations : "生成"
+    users ||--o{ notifications : "接收"
+    users ||--o{ sql_histories : "执行"
+    users ||--o{ sql_change_requests : "提交"
+    users ||--o{ user_permissions : "拥有"
     accounts ||--o{ publish_tasks : "执行"
     contents ||--o{ publish_tasks : "关联"
     contents ||--o| contents : "AI变体"
+    custom_roles ||--o{ role_permissions : "拥有"
 ```
 
 ### 6.2 数据定义语言 (DDL)
 
 ```sql
+-- 数据库 ID 规范：所有主键使用 UUID VARCHAR(36)，唯一例外是超级管理员用户 ID 固定为 '1'
+
 CREATE TABLE users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id VARCHAR(36) PRIMARY KEY,
+    username VARCHAR(100) UNIQUE NOT NULL,
     email VARCHAR(255) UNIQUE NOT NULL,
     hashed_password VARCHAR(255) NOT NULL,
     nickname VARCHAR(100) NOT NULL,
@@ -490,8 +668,8 @@ CREATE TABLE users (
 );
 
 CREATE TABLE model_configs (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER NOT NULL REFERENCES users(id),
+    id VARCHAR(36) PRIMARY KEY,
+    user_id VARCHAR(36) NOT NULL REFERENCES users(id),
     name VARCHAR(200) NOT NULL,
     display_name VARCHAR(200),
     provider VARCHAR(50) NOT NULL DEFAULT 'openai',
@@ -514,8 +692,8 @@ CREATE TABLE model_configs (
 );
 
 CREATE TABLE accounts (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER NOT NULL REFERENCES users(id),
+    id VARCHAR(36) PRIMARY KEY,
+    user_id VARCHAR(36) NOT NULL REFERENCES users(id),
     platform VARCHAR(50) NOT NULL,
     nickname VARCHAR(200) NOT NULL,
     avatar_url VARCHAR(500),
@@ -530,23 +708,23 @@ CREATE TABLE accounts (
 );
 
 CREATE TABLE contents (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER NOT NULL REFERENCES users(id),
+    id VARCHAR(36) PRIMARY KEY,
+    user_id VARCHAR(36) NOT NULL REFERENCES users(id),
     title VARCHAR(500) NOT NULL,
     body TEXT NOT NULL,
     platform VARCHAR(50) NOT NULL,
     status VARCHAR(20) DEFAULT 'draft',
     media_urls TEXT DEFAULT '[]',
     ai_generated BOOLEAN DEFAULT FALSE,
-    original_content_id INTEGER REFERENCES contents(id),
+    original_content_id VARCHAR(36) REFERENCES contents(id),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE publish_tasks (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    content_id INTEGER NOT NULL REFERENCES contents(id),
-    account_id INTEGER NOT NULL REFERENCES accounts(id),
+    id VARCHAR(36) PRIMARY KEY,
+    content_id VARCHAR(36) NOT NULL REFERENCES contents(id),
+    account_id VARCHAR(36) NOT NULL REFERENCES accounts(id),
     status VARCHAR(20) DEFAULT 'pending',
     scheduled_at TIMESTAMP,
     published_at TIMESTAMP,
@@ -557,11 +735,82 @@ CREATE TABLE publish_tasks (
 );
 
 CREATE TABLE templates (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id VARCHAR(36) PRIMARY KEY,
     name VARCHAR(200) NOT NULL,
     platform VARCHAR(50) NOT NULL,
     thumbnail_url VARCHAR(500),
     config TEXT NOT NULL DEFAULT '{}',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE custom_roles (
+    id VARCHAR(36) PRIMARY KEY,
+    name VARCHAR(50) UNIQUE NOT NULL,
+    display_name VARCHAR(100) NOT NULL,
+    description TEXT,
+    role_type VARCHAR(20) DEFAULT 'other',
+    is_builtin BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE role_permissions (
+    id VARCHAR(36) PRIMARY KEY,
+    role VARCHAR(50) NOT NULL REFERENCES custom_roles(name),
+    perm_key VARCHAR(100) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(role, perm_key)
+);
+
+CREATE TABLE user_permissions (
+    id VARCHAR(36) PRIMARY KEY,
+    user_id VARCHAR(36) NOT NULL REFERENCES users(id),
+    perm_key VARCHAR(100) NOT NULL,
+    granted_by VARCHAR(36) REFERENCES users(id),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(user_id, perm_key)
+);
+
+CREATE TABLE notifications (
+    id VARCHAR(36) PRIMARY KEY,
+    user_id VARCHAR(36) NOT NULL REFERENCES users(id),
+    type VARCHAR(50) NOT NULL,
+    title VARCHAR(200) NOT NULL,
+    content TEXT,
+    related_id VARCHAR(36),
+    is_read BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE ai_generations (
+    id VARCHAR(36) PRIMARY KEY,
+    user_id VARCHAR(36) NOT NULL REFERENCES users(id),
+    topic VARCHAR(500) NOT NULL,
+    platform VARCHAR(50) NOT NULL,
+    plan_id VARCHAR(36),
+    model VARCHAR(200),
+    title VARCHAR(500) NOT NULL,
+    body TEXT NOT NULL,
+    hashtags TEXT DEFAULT '[]',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE sql_histories (
+    id VARCHAR(36) PRIMARY KEY,
+    user_id VARCHAR(36) NOT NULL REFERENCES users(id),
+    sql_text TEXT NOT NULL,
+    status VARCHAR(20) DEFAULT 'success',
+    result TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE sql_change_requests (
+    id VARCHAR(36) PRIMARY KEY,
+    user_id VARCHAR(36) NOT NULL REFERENCES users(id),
+    status VARCHAR(20) DEFAULT 'pending',
+    description TEXT,
+    sql_text TEXT,
+    reviewed_by VARCHAR(36) REFERENCES users(id),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -575,6 +824,10 @@ CREATE INDEX idx_publish_tasks_status ON publish_tasks(status);
 CREATE INDEX idx_publish_tasks_scheduled_at ON publish_tasks(scheduled_at);
 CREATE INDEX idx_model_configs_user_id ON model_configs(user_id);
 CREATE INDEX idx_model_configs_enabled ON model_configs(enabled);
+CREATE INDEX idx_notifications_user_id ON notifications(user_id);
+CREATE INDEX idx_notifications_is_read ON notifications(is_read);
+CREATE INDEX idx_user_permissions_user_id ON user_permissions(user_id);
+CREATE INDEX idx_sql_change_requests_status ON sql_change_requests(status);
 ```
 
 ## 7. 前端架构
@@ -616,6 +869,8 @@ frontend/src/
     ├── Publish.vue             # 发布管理
     ├── Templates.vue           # 模板中心
     ├── TokenPlan.vue           # 模型配置
+    ├── RoleManage.vue          # 角色管理（管理员）
+    ├── PermissionManage.vue    # 权限管理（管理员）
     └── ApiDocs.vue             # API 文档（iframe Swagger）
 ```
 

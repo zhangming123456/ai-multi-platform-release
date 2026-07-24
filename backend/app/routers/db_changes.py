@@ -30,8 +30,8 @@ class SubmitChangeRequest(BaseModel):
 
 
 class SqlChangeItem(BaseModel):
-    id: int
-    requester_id: int
+    id: str
+    requester_id: str
     requester_name: Optional[str] = None
     change_type: str
     sql_text: str
@@ -39,7 +39,7 @@ class SqlChangeItem(BaseModel):
     status: str
     approvals: int
     required_approvals: int
-    approved_by: list[int]
+    approved_by: list[str]
     reject_reason: Optional[str]
     execute_message: Optional[str]
     created_at: str
@@ -51,7 +51,7 @@ class SqlChangeListResponse(BaseModel):
 
 
 def _to_item(req: SqlChangeRequest, requester_name: Optional[str] = None) -> SqlChangeItem:
-    approved_by = [int(x) for x in req.approved_by.split(",") if x.strip()]
+    approved_by = [x for x in req.approved_by.split(",") if x.strip()]
     return SqlChangeItem(
         id=req.id,
         requester_id=req.requester_id,
@@ -159,9 +159,9 @@ async def list_changes(
 
 @router.post("/{change_id}/approve", response_model=SqlChangeItem)
 async def approve_change(
-    change_id: int,
+    change_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_permission("db_change:approve")),
+    current_user: User = Depends(require_permission("db_change:approve", "write")),
 ):
     """审核通过 SQL 变更（达到 2 人通过后自动执行）"""
 
@@ -178,7 +178,7 @@ async def approve_change(
     if req.requester_id == current_user.id:
         raise HTTPException(status_code=400, detail="不能审核自己提交的请求")
 
-    approved_ids = [int(x) for x in req.approved_by.split(",") if x.strip()]
+    approved_ids = [x for x in req.approved_by.split(",") if x.strip()]
     if current_user.id in approved_ids:
         raise HTTPException(status_code=400, detail="您已审核过该请求")
 
@@ -236,10 +236,10 @@ async def approve_change(
 
 @router.post("/{change_id}/reject", response_model=SqlChangeItem)
 async def reject_change(
-    change_id: int,
+    change_id: str,
     reason: str = Body(default="", embed=True),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_permission("db_change:reject")),
+    current_user: User = Depends(require_permission("db_change:reject", "write")),
 ):
     """驳回 SQL 变更请求"""
 

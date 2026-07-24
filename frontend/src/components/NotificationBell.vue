@@ -14,7 +14,7 @@ onMounted(() => {
   notificationStore.fetchUnreadCount()
 })
 
-const handleNotificationClick = async (id: number, relatedId: number | null) => {
+const handleNotificationClick = async (id: string, relatedId: string | null) => {
   await notificationStore.markAsRead(id)
   if (relatedId) {
     router.push(`/review/${relatedId}`)

@@ -33,7 +33,7 @@ class PlatformStat(BaseModel):
 
 
 class RecentPublish(BaseModel):
-    id: int
+    id: str
     title: str
     platform: str
     account: str

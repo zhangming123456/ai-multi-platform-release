@@ -14,9 +14,9 @@ type Platform = 'wechat_mp' | 'xiaohongshu' | 'douyin' | 'wechat_video'
 type TaskStatus = 'pending' | 'publishing' | 'published' | 'failed'
 
 interface PublishTask {
-  id: number
-  content_id: number
-  account_id: number
+  id: string
+  content_id: string
+  account_id: string
   status: TaskStatus
   scheduled_at: string | null
   published_at: string | null
@@ -27,14 +27,14 @@ interface PublishTask {
 }
 
 interface Content {
-  id: number
+  id: string
   title: string
   platform: string
   status: string
 }
 
 interface Account {
-  id: number
+  id: string
   platform: string
   nickname: string
   status: string
@@ -46,8 +46,8 @@ const loading = ref(false)
 const submitting = ref(false)
 
 const formData = ref({
-  contentId: undefined as number | undefined,
-  accountId: undefined as number | undefined,
+  contentId: undefined as string | undefined,
+  accountId: undefined as string | undefined,
   scheduledAt: undefined as string | undefined,
 })
 
@@ -139,7 +139,7 @@ async function createTask() {
   }
 }
 
-async function retryTask(id: number) {
+async function retryTask(id: string) {
   try {
     await api.post(`/publish/tasks/${id}/retry`)
     Message.success('已重新触发发布')

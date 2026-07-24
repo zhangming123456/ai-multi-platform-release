@@ -42,6 +42,11 @@ async def login(request: LoginRequest, db: AsyncSession = Depends(get_db)):
 
 @router.post("/register", response_model=UserInfo, status_code=status.HTTP_201_CREATED)
 async def register(request: UserCreate, db: AsyncSession = Depends(get_db)):
+    if request.role == "admin":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="超级管理员账号唯一，不可通过注册创建",
+        )
     existing = await get_user_by_username(db, request.username)
     if existing:
         raise HTTPException(
@@ -68,7 +73,8 @@ async def get_me(
 
     permissions = await get_user_permissions(current_user, db)
     user_info = UserInfo.model_validate(current_user)
-    return UserInfoWithPermissions(**user_info.model_dump(), permissions=permissions)
+    permissions_info = {k: v.model_dump() for k, v in permissions.items()}
+    return UserInfoWithPermissions(**user_info.model_dump(), permissions=permissions_info)
 
 
 @router.put("/profile", response_model=UserInfo)

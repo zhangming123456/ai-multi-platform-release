@@ -5,11 +5,11 @@ from pydantic import BaseModel
 
 
 class ReviewResponse(BaseModel):
-    id: int
+    id: str
     title: str
     body: str
     platform: str
     status: str
     created_at: datetime
-    user_id: int
+    user_id: str
     username: Optional[str] = None

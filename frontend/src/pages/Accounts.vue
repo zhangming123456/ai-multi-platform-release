@@ -14,7 +14,7 @@ import { useUserStore } from '@/stores/user'
 import { formatDateTime as formatDate } from '@/utils/time'
 
 interface UserInfo {
-  id: number
+  id: string
   username: string
   email: string | null
   nickname: string
@@ -31,11 +31,17 @@ interface PermissionDef {
 }
 
 interface UserPermDetail {
-  user_id: number
+  user_id: string
   role: string
-  role_permissions: string[]
-  custom_permissions: string[] | null
-  effective_permissions: string[]
+  role_permissions: Record<string, PermAccess>
+  custom_permissions: Record<string, PermAccess> | null
+  effective_permissions: Record<string, PermAccess>
+  is_editable: boolean
+}
+
+interface PermAccess {
+  read: boolean
+  write: boolean
 }
 
 interface RoleDef {
@@ -43,6 +49,7 @@ interface RoleDef {
   display_name: string
   description: string | null
   is_builtin: boolean
+  role_type: string
 }
 
 const userStore = useUserStore()
@@ -50,27 +57,29 @@ const loading = ref(false)
 const users = ref<UserInfo[]>([])
 const roleFilter = ref('all')
 
-const canManageUserPerm = computed(() => {
-  return userStore.userInfo?.permissions?.includes('user_perm_manage') ?? false
-})
+function hasStorePerm(key: string, mode: 'read' | 'write' = 'write'): boolean {
+  if (!userStore.userInfo?.permissions) return true
+  if (userStore.userInfo?.role === 'admin') return true
+  const access = userStore.userInfo.permissions[key]
+  if (!access) return false
+  return mode === 'read' ? access.read : access.write
+}
 
-const canCreateUser = computed(() => {
-  return userStore.userInfo?.permissions?.includes('user:create') ?? false
-})
+const canManageUserPerm = computed(() => hasStorePerm('user_perm_manage', 'write'))
 
-const canUpdateUser = computed(() => {
-  return userStore.userInfo?.permissions?.includes('user:update') ?? false
-})
+const canCreateUser = computed(() => hasStorePerm('user:create', 'write'))
 
-const canDeleteUser = computed(() => {
-  return userStore.userInfo?.permissions?.includes('user:delete') ?? false
-})
+const canUpdateUser = computed(() => hasStorePerm('user:update', 'write'))
 
-const canChangePassword = computed(() => {
-  return userStore.userInfo?.permissions?.includes('user:change_password') ?? false
-})
+const canDeleteUser = computed(() => hasStorePerm('user:delete', 'write'))
+
+const canChangePassword = computed(() => hasStorePerm('user:change_password', 'write'))
 
 const isAdmin = computed(() => {
+  return userStore.userInfo?.role === 'admin' || userStore.userInfo?.role === 'manager'
+})
+
+const isSuperAdmin = computed(() => {
   return userStore.userInfo?.role === 'admin'
 })
 
@@ -106,6 +115,7 @@ const ROLE_COLORS: Record<string, string> = {
 
 const BUILTIN_COLORS: Record<string, string> = {
   admin: 'red',
+  manager: 'orangered',
   operator: 'blue',
   reviewer: 'green',
 }
@@ -173,19 +183,43 @@ const newUser = ref({
 })
 
 const addCustomPermEnabled = ref(false)
-const addCustomPerms = ref<string[]>([])
+const addCustomPerms = ref<Record<string, PermAccess>>({})
 const addRolePerms = ref<PermissionDef[]>([])
 const addRolePermLoading = ref(false)
+
+function addTogglePermRead(key: string) {
+  if (!addCustomPerms.value[key]) {
+    addCustomPerms.value[key] = { read: true, write: false }
+  } else {
+    addCustomPerms.value[key].read = !addCustomPerms.value[key].read
+  }
+}
+
+function addTogglePermWrite(key: string) {
+  if (!addCustomPerms.value[key]) {
+    addCustomPerms.value[key] = { read: false, write: true }
+  } else {
+    addCustomPerms.value[key].write = !addCustomPerms.value[key].write
+  }
+}
+
+function addHasPermRead(key: string): boolean {
+  return addCustomPerms.value[key]?.read ?? false
+}
+
+function addHasPermWrite(key: string): boolean {
+  return addCustomPerms.value[key]?.write ?? false
+}
 
 async function onAddRoleChange(role: string) {
   newUser.value.role = role
   addCustomPermEnabled.value = false
-  addCustomPerms.value = []
+  addCustomPerms.value = {}
   if (role === 'admin') return
   addRolePermLoading.value = true
   try {
-    const res = await api.get<{ permissions: PermissionDef[]; role_permissions: Record<string, string[]> }>('/permissions/all')
-    const roleKeys = res.data.role_permissions[role] || []
+    const res = await api.get<{ permissions: PermissionDef[]; role_permissions: Record<string, Record<string, {read: boolean, write: boolean}>> }>('/permissions/all')
+    const roleKeys = Object.keys(res.data.role_permissions[role] || {})
     addRolePerms.value = res.data.permissions.filter((p) => roleKeys.includes(p.key))
   } catch {
     addRolePerms.value = []
@@ -200,7 +234,7 @@ async function addUser() {
   try {
     const res = await api.post<UserInfo>('/users/', newUser.value)
     const created = res.data
-    if (addCustomPermEnabled.value && addCustomPerms.value.length > 0 && created.role !== 'admin') {
+    if (addCustomPermEnabled.value && Object.keys(addCustomPerms.value).length > 0 && created.role !== 'admin') {
       try {
         await api.put(`/permissions/user/${created.id}`, { permissions: addCustomPerms.value })
       } catch {
@@ -211,7 +245,7 @@ async function addUser() {
     addVisible.value = false
     newUser.value = { username: '', email: '', password: '', nickname: '', role: 'operator' }
     addCustomPermEnabled.value = false
-    addCustomPerms.value = []
+    addCustomPerms.value = {}
     Message.success('用户添加成功')
   } catch (e: any) {
     Message.error(e.response?.data?.detail || '添加失败')
@@ -302,13 +336,16 @@ const permLoading = ref(false)
 const permUser = ref<UserInfo | null>(null)
 const permDetail = ref<UserPermDetail | null>(null)
 const permAllDefs = ref<PermissionDef[]>([])
-const selectedPerms = ref<string[]>([])
+const selectedPermAccess = ref<Record<string, PermAccess>>({})
+
+const permEditable = computed(() => permDetail.value?.is_editable ?? false)
 
 const groupedRolePerms = computed(() => {
   if (!permDetail.value) return {}
   const groups: Record<string, PermissionDef[]> = {}
+  const rolePermKeys = Object.keys(permDetail.value.role_permissions)
   for (const def of permAllDefs.value) {
-    if (permDetail.value.role_permissions.includes(def.key)) {
+    if (rolePermKeys.includes(def.key)) {
       if (!groups[def.group]) groups[def.group] = []
       groups[def.group].push(def)
     }
@@ -328,7 +365,7 @@ async function openUserPerm(user: UserInfo) {
     ])
     permDetail.value = detailRes.data
     permAllDefs.value = allRes.data.permissions
-    selectedPerms.value = [...detailRes.data.effective_permissions]
+    selectedPermAccess.value = JSON.parse(JSON.stringify(detailRes.data.effective_permissions))
   } catch (e: any) {
     Message.error(e.response?.data?.detail || '加载权限信息失败')
   } finally {
@@ -336,20 +373,37 @@ async function openUserPerm(user: UserInfo) {
   }
 }
 
-function togglePerm(key: string) {
-  const idx = selectedPerms.value.indexOf(key)
-  if (idx >= 0) {
-    selectedPerms.value.splice(idx, 1)
+function togglePermRead(key: string) {
+  if (!permEditable.value) return
+  if (!selectedPermAccess.value[key]) {
+    selectedPermAccess.value[key] = { read: true, write: false }
   } else {
-    selectedPerms.value.push(key)
+    selectedPermAccess.value[key].read = !selectedPermAccess.value[key].read
   }
+}
+
+function togglePermWrite(key: string) {
+  if (!permEditable.value) return
+  if (!selectedPermAccess.value[key]) {
+    selectedPermAccess.value[key] = { read: false, write: true }
+  } else {
+    selectedPermAccess.value[key].write = !selectedPermAccess.value[key].write
+  }
+}
+
+function hasPermRead(key: string): boolean {
+  return selectedPermAccess.value[key]?.read ?? false
+}
+
+function hasPermWrite(key: string): boolean {
+  return selectedPermAccess.value[key]?.write ?? false
 }
 
 async function saveUserPerm() {
   if (!permUser.value) return
   permSaving.value = true
   try {
-    await api.put(`/permissions/user/${permUser.value.id}`, { permissions: selectedPerms.value })
+    await api.put(`/permissions/user/${permUser.value.id}`, { permissions: selectedPermAccess.value })
     Message.success('权限配置已保存')
     permVisible.value = false
   } catch (e: any) {
@@ -364,7 +418,7 @@ async function resetUserPerm() {
   permSaving.value = true
   try {
     const res = await api.delete<UserPermDetail>(`/permissions/user/${permUser.value.id}/custom`)
-    selectedPerms.value = [...res.data.effective_permissions]
+    selectedPermAccess.value = JSON.parse(JSON.stringify(res.data.effective_permissions))
     if (permDetail.value) {
       permDetail.value.custom_permissions = null
       permDetail.value.effective_permissions = res.data.effective_permissions
@@ -431,7 +485,7 @@ const addGroupedPerms = computed(() => {
         <template #actions="{ record }">
           <a-space :size="4">
             <a-button
-              v-if="canManageUserPerm && record.role !== 'admin'"
+              v-if="(isAdmin || isSelf(record)) && record.role !== 'admin'"
               type="text"
               size="small"
               title="权限配置"
@@ -490,7 +544,8 @@ const addGroupedPerms = computed(() => {
         </a-form-item>
         <a-form-item label="角色">
           <a-select :model-value="newUser.role" @change="onAddRoleChange">
-            <a-option v-if="isAdmin" value="admin">管理员 - 全部权限</a-option>
+            <a-option v-if="isSuperAdmin" value="admin">超级管理员 - 全部权限</a-option>
+            <a-option v-if="isAdmin" value="manager">管理员</a-option>
             <a-option value="operator">运营者</a-option>
             <a-option v-if="isAdmin" value="reviewer">审核员</a-option>
             <a-option v-if="isAdmin" v-for="rd in customRoles" :key="rd.name" :value="rd.name">
@@ -510,15 +565,26 @@ const addGroupedPerms = computed(() => {
               <div class="w-full space-y-3 mt-1">
                 <div v-for="(perms, group) in addGroupedPerms" :key="group">
                   <p class="text-[12px] text-[#86868b] font-medium mb-1.5">{{ group }}</p>
-                  <div class="flex flex-wrap gap-1.5">
-                    <a-checkbox
+                  <div class="flex flex-wrap gap-2">
+                    <div
                       v-for="perm in perms"
                       :key="perm.key"
-                      :model-value="addCustomPerms.includes(perm.key)"
-                      @change="(val: any) => { if (val) addCustomPerms.push(perm.key); else addCustomPerms = addCustomPerms.filter(k => k !== perm.key) }"
+                      class="flex items-center gap-2 px-2 py-1.5 rounded-lg border border-black/[0.06]"
                     >
-                      {{ perm.name }}
-                    </a-checkbox>
+                      <span class="text-[12px] text-[#1D1D1F] min-w-[60px]">{{ perm.name }}</span>
+                      <a-switch
+                        :model-value="addHasPermRead(perm.key)"
+                        @change="addTogglePermRead(perm.key)"
+                        size="mini"
+                      />
+                      <span class="text-[11px] text-[#86868b]">读</span>
+                      <a-switch
+                        :model-value="addHasPermWrite(perm.key)"
+                        @change="addTogglePermWrite(perm.key)"
+                        size="mini"
+                      />
+                      <span class="text-[11px] text-[#86868b]">写</span>
+                    </div>
                   </div>
                 </div>
                 <p v-if="addRolePerms.length === 0 && !addRolePermLoading" class="text-[12px] text-[#86868b]">
@@ -596,21 +662,27 @@ const addGroupedPerms = computed(() => {
       :ok-loading="permSaving"
       @ok="saveUserPerm"
       ok-text="保存权限"
+      :footer="permEditable"
     >
       <template #title>
         <div class="flex items-center gap-2">
-          <span>权限配置</span>
+          <span>权限查看</span>
           <a-tag v-if="permUser" :color="roleColor(permUser.role)" size="small">
             {{ roleLabel(permUser.role) }}
           </a-tag>
           <span class="text-[13px] text-[#86868b] font-normal">{{ permUser?.nickname }}</span>
+          <a-tag v-if="!permEditable" size="small" color="gray" class="!m-0">只读</a-tag>
         </div>
       </template>
 
       <a-spin :loading="permLoading" class="w-full">
         <div v-if="permDetail" class="space-y-4">
+          <div v-if="!permEditable" class="flex items-center gap-2 px-3 py-2 rounded-lg bg-[#007aff]/[0.04] border border-[#007aff]/[0.12]">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#007aff" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            <span class="text-[12px] text-[#007aff] font-medium">仅查看，无编辑权限</span>
+          </div>
           <div
-            v-if="permDetail.custom_permissions"
+            v-if="permDetail.custom_permissions && permEditable"
             class="flex items-center justify-between px-3 py-2 rounded-lg bg-[#ff9500]/[0.06] border border-[#ff9500]/[0.15]"
           >
             <span class="text-[12px] text-[#ff9500] font-medium">已自定义权限（非角色默认）</span>
@@ -619,7 +691,7 @@ const addGroupedPerms = computed(() => {
             </a-button>
           </div>
           <div
-            v-else
+            v-else-if="!permDetail.custom_permissions"
             class="px-3 py-2 rounded-lg bg-[#30d158]/[0.06] border border-[#30d158]/[0.15]"
           >
             <span class="text-[12px] text-[#30d158] font-medium">当前使用角色默认权限</span>
@@ -627,27 +699,41 @@ const addGroupedPerms = computed(() => {
 
           <div v-for="(perms, group) in groupedRolePerms" :key="group">
             <p class="text-[13px] font-semibold text-[#1D1D1F] mb-2">{{ group }}</p>
-            <div class="grid grid-cols-2 gap-1.5">
+            <div class="grid grid-cols-1 gap-1.5">
               <div
                 v-for="perm in perms"
                 :key="perm.key"
                 :class="[
-                  'flex items-center gap-2.5 px-3 py-2.5 rounded-lg border cursor-pointer transition-all duration-200',
-                  selectedPerms.includes(perm.key)
+                  'flex items-center justify-between px-3 py-2.5 rounded-lg border transition-all duration-200',
+                  !permEditable ? 'cursor-default' : '',
+                  (hasPermRead(perm.key) || hasPermWrite(perm.key))
                     ? 'border-[#007aff]/20 bg-[#007aff]/[0.04]'
-                    : 'border-black/[0.06] hover:border-black/[0.12]',
+                    : 'border-black/[0.06]',
                 ]"
-                @click="togglePerm(perm.key)"
               >
-                <a-checkbox
-                  :model-value="selectedPerms.includes(perm.key)"
-                  class="pointer-events-none"
-                />
-                <div>
-                  <p class="text-[13px] text-[#1D1D1F] m-0 leading-tight">{{ perm.name }}</p>
+                <div class="min-w-0 flex-1">
+                  <p class="text-[13px] font-medium text-[#1D1D1F] m-0 leading-tight">{{ perm.name }}</p>
                   <p class="text-[11px] text-[#86868B] m-0 mt-0.5">
                     {{ perm.type === 'page' ? '页面' : '操作' }}
                   </p>
+                </div>
+                <div class="flex items-center gap-3 shrink-0 ml-4">
+                  <div class="flex items-center gap-1" @click.stop="togglePermRead(perm.key)">
+                    <a-switch
+                      :model-value="hasPermRead(perm.key)"
+                      :disabled="!permEditable"
+                      size="small"
+                    />
+                    <span class="text-[12px] text-[#86868B] w-4 text-center">读</span>
+                  </div>
+                  <div class="flex items-center gap-1" @click.stop="togglePermWrite(perm.key)">
+                    <a-switch
+                      :model-value="hasPermWrite(perm.key)"
+                      :disabled="!permEditable"
+                      size="small"
+                    />
+                    <span class="text-[12px] text-[#86868B] w-4 text-center">写</span>
+                  </div>
                 </div>
               </div>
             </div>

@@ -1,16 +1,21 @@
+export interface PermissionAccess {
+  read: boolean
+  write: boolean
+}
+
 export interface UserInfo {
-  id: number
+  id: string
   username: string
   email: string | null
   nickname: string
   role: string
   avatar_url: string | null
   created_at: string
-  permissions?: string[]
+  permissions?: Record<string, PermissionAccess>
 }
 
 export interface Account {
-  id: number
+  id: string
   platform: 'wechat_mp' | 'xiaohongshu' | 'douyin' | 'wechat_video'
   nickname: string
   avatar: string
@@ -20,7 +25,7 @@ export interface Account {
 }
 
 export interface Content {
-  id: number
+  id: string
   title: string
   platform: 'wechat_mp' | 'xiaohongshu' | 'douyin' | 'wechat_video'
   status: 'draft' | 'review' | 'approved' | 'published'
@@ -31,11 +36,11 @@ export interface Content {
 }
 
 export interface PublishTask {
-  id: number
-  contentId: number
+  id: string
+  contentId: string
   contentTitle: string
   platform: 'wechat_mp' | 'xiaohongshu' | 'douyin' | 'wechat_video'
-  accountId: number
+  accountId: string
   accountName: string
   status: 'pending' | 'publishing' | 'published' | 'failed'
   scheduledAt: string
@@ -43,7 +48,7 @@ export interface PublishTask {
 }
 
 export interface Template {
-  id: number
+  id: string
   name: string
   description: string
   platform: 'wechat_mp' | 'xiaohongshu' | 'douyin' | 'wechat_video'

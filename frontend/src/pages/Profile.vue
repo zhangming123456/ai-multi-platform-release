@@ -17,7 +17,7 @@ const router = useRouter()
 const userStore = useUserStore()
 
 interface ProfileInfo {
-  id: number
+  id: string
   username: string
   email: string | null
   nickname: string

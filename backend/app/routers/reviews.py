@@ -43,7 +43,7 @@ async def list_pending_reviews(
 
 @router.post("/{content_id}/submit", response_model=ReviewResponse)
 async def submit_for_review(
-    content_id: int,
+    content_id: str,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_permission("review:submit")),
 ):
@@ -104,9 +104,9 @@ async def submit_for_review(
 
 @router.post("/{content_id}/approve", response_model=ReviewResponse)
 async def approve_content(
-    content_id: int,
+    content_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_permission("review:approve")),
+    current_user: User = Depends(require_permission("review:approve", "write")),
 ):
     """审核通过"""
 
@@ -153,7 +153,7 @@ async def approve_content(
 
 @router.post("/{content_id}/reject", response_model=ReviewResponse)
 async def reject_content(
-    content_id: int,
+    content_id: str,
     reason: str = Body(..., embed=True),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_permission("review:reject")),

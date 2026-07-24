@@ -12,17 +12,22 @@ interface PermissionDef {
   type: string
 }
 
+interface PermAccess {
+  read: boolean
+  write: boolean
+}
+
 interface AllPermissionsResponse {
   permissions: PermissionDef[]
   roles: string[]
-  role_permissions: Record<string, string[]>
+  role_permissions: Record<string, Record<string, PermAccess>>
 }
 
 const loading = ref(false)
 const saving = ref(false)
 const permissions = ref<PermissionDef[]>([])
 const roles = ref<string[]>([])
-const rolePermissions = ref<Record<string, string[]>>({})
+const rolePermissions = ref<Record<string, Record<string, PermAccess>>>({})
 const activeRole = ref('operator')
 
 interface RoleDef {
@@ -30,10 +35,13 @@ interface RoleDef {
   display_name: string
   description: string | null
   is_builtin: boolean
+  is_super_admin: boolean
+  role_type: string
 }
 
 const BUILTIN_COLORS: Record<string, string> = {
   admin: 'red',
+  manager: 'orangered',
   operator: 'blue',
   reviewer: 'green',
 }
@@ -72,57 +80,119 @@ function rColor(name: string): string {
   return roleColors.value[name] || 'arcoblue'
 }
 
+function isSuperAdmin(name: string): boolean {
+  const def = roleDefs.value.find((r) => r.name === name)
+  return def?.is_super_admin ?? false
+}
+
+function isAdminType(name: string): boolean {
+  const def = roleDefs.value.find((r) => r.name === name)
+  return def?.role_type === 'admin'
+}
+
+function ensurePerm(key: string) {
+  if (!rolePermissions.value[activeRole.value]) {
+    rolePermissions.value[activeRole.value] = {}
+  }
+  if (!rolePermissions.value[activeRole.value][key]) {
+    rolePermissions.value[activeRole.value][key] = { read: false, write: false }
+  }
+}
+
+const DB_PERM_KEYS = ['database', 'db:execute', 'db:history:read']
+
+const sortedRoles = computed(() => {
+  return [...roles.value].sort((a, b) => {
+    if (isSuperAdmin(a)) return -1
+    if (isSuperAdmin(b)) return 1
+    const builtinOrder = ['manager', 'operator', 'reviewer']
+    const aIdx = builtinOrder.indexOf(a)
+    const bIdx = builtinOrder.indexOf(b)
+    if (aIdx !== -1 && bIdx !== -1) return aIdx - bIdx
+    if (aIdx !== -1) return -1
+    if (bIdx !== -1) return 1
+    return 0
+  })
+})
+
 const groupedPermissions = computed(() => {
   const groups: Record<string, PermissionDef[]> = {}
+  const activeIsAdminType = isAdminType(activeRole.value)
   for (const p of permissions.value) {
+    if (!activeIsAdminType && DB_PERM_KEYS.includes(p.key)) continue
     if (!groups[p.group]) groups[p.group] = []
     groups[p.group].push(p)
   }
   return groups
 })
 
-const editableRoles = computed(() => roles.value.filter((r) => r !== 'admin'))
+const editableRoles = computed(() => roles.value.filter((r) => !isSuperAdmin(r)))
 
-const currentRolePerms = computed(() => rolePermissions.value[activeRole.value] || [])
+const currentRolePerms = computed(() => rolePermissions.value[activeRole.value] || {})
 
-function hasPermission(key: string): boolean {
-  return currentRolePerms.value.includes(key)
+function hasPermRead(key: string): boolean {
+  return currentRolePerms.value[key]?.read ?? false
 }
 
-function togglePermission(key: string) {
-  if (activeRole.value === 'admin') return
-  const perms = rolePermissions.value[activeRole.value] || []
-  const idx = perms.indexOf(key)
-  if (idx >= 0) {
-    perms.splice(idx, 1)
-  } else {
-    perms.push(key)
-  }
-  rolePermissions.value[activeRole.value] = [...perms]
+function hasPermWrite(key: string): boolean {
+  return currentRolePerms.value[key]?.write ?? false
 }
 
-function toggleGroupAll(group: string) {
-  if (activeRole.value === 'admin') return
+function togglePermRead(key: string) {
+  if (isSuperAdmin(activeRole.value)) return
+  ensurePerm(key)
+  rolePermissions.value[activeRole.value][key].read = !rolePermissions.value[activeRole.value][key].read
+}
+
+function togglePermWrite(key: string) {
+  if (isSuperAdmin(activeRole.value)) return
+  ensurePerm(key)
+  rolePermissions.value[activeRole.value][key].write = !rolePermissions.value[activeRole.value][key].write
+}
+
+function toggleGroupAllRead(group: string) {
+  if (isSuperAdmin(activeRole.value)) return
   const groupPerms = groupedPermissions.value[group] || []
   const keys = groupPerms.map((p) => p.key)
-  const allSelected = keys.every((k) => currentRolePerms.value.includes(k))
-  const perms = [...currentRolePerms.value]
-  if (allSelected) {
-    rolePermissions.value[activeRole.value] = perms.filter((k) => !keys.includes(k))
-  } else {
-    const merged = new Set([...perms, ...keys])
-    rolePermissions.value[activeRole.value] = [...merged]
+  const allSelected = keys.every((k) => hasPermRead(k))
+  const newVal = !allSelected
+  for (const k of keys) {
+    ensurePerm(k)
+    rolePermissions.value[activeRole.value][k].read = newVal
   }
 }
 
-function isGroupAllSelected(group: string): boolean {
+function toggleGroupAllWrite(group: string) {
+  if (isSuperAdmin(activeRole.value)) return
   const groupPerms = groupedPermissions.value[group] || []
-  return groupPerms.every((p) => currentRolePerms.value.includes(p.key))
+  const keys = groupPerms.map((p) => p.key)
+  const allSelected = keys.every((k) => hasPermWrite(k))
+  const newVal = !allSelected
+  for (const k of keys) {
+    ensurePerm(k)
+    rolePermissions.value[activeRole.value][k].write = newVal
+  }
 }
 
-function isGroupPartialSelected(group: string): boolean {
+function isGroupAllReadSelected(group: string): boolean {
   const groupPerms = groupedPermissions.value[group] || []
-  const selectedCount = groupPerms.filter((p) => currentRolePerms.value.includes(p.key)).length
+  return groupPerms.every((p) => hasPermRead(p.key))
+}
+
+function isGroupAllWriteSelected(group: string): boolean {
+  const groupPerms = groupedPermissions.value[group] || []
+  return groupPerms.every((p) => hasPermWrite(p.key))
+}
+
+function isGroupPartialReadSelected(group: string): boolean {
+  const groupPerms = groupedPermissions.value[group] || []
+  const selectedCount = groupPerms.filter((p) => hasPermRead(p.key)).length
+  return selectedCount > 0 && selectedCount < groupPerms.length
+}
+
+function isGroupPartialWriteSelected(group: string): boolean {
+  const groupPerms = groupedPermissions.value[group] || []
+  const selectedCount = groupPerms.filter((p) => hasPermWrite(p.key)).length
   return selectedCount > 0 && selectedCount < groupPerms.length
 }
 
@@ -148,12 +218,19 @@ onMounted(async () => {
 })
 
 async function savePermissions() {
-  if (activeRole.value === 'admin') return
+  if (isSuperAdmin(activeRole.value)) return
   saving.value = true
   try {
+    const permsToSave: Record<string, PermAccess> = {}
+    const rolePermMap = rolePermissions.value[activeRole.value] || {}
+    for (const [key, access] of Object.entries(rolePermMap)) {
+      if (access.read || access.write) {
+        permsToSave[key] = { read: access.read, write: access.write }
+      }
+    }
     await api.put(`/permissions/role/${activeRole.value}`, {
       role: activeRole.value,
-      permissions: rolePermissions.value[activeRole.value] || [],
+      permissions: permsToSave,
     })
     Message.success(`${rLabel(activeRole.value)} 权限保存成功`)
   } catch (e: any) {
@@ -169,7 +246,7 @@ async function savePermissions() {
     <PageHeader title="权限管理" subtitle="为不同角色分配页面访问和操作权限，超级管理员拥有所有权限">
       <template #actions>
         <a-button
-          v-if="activeRole !== 'admin'"
+          v-if="!isSuperAdmin(activeRole)"
           type="primary"
           :loading="saving"
           @click="savePermissions"
@@ -185,7 +262,7 @@ async function savePermissions() {
           <div class="bg-white/80 backdrop-blur-xl rounded-2xl border border-black/[0.05] p-3">
             <p class="text-[12px] text-[#86868B] font-medium px-3 pb-2 pt-1">选择角色</p>
             <div
-              v-for="role in roles"
+              v-for="role in sortedRoles"
               :key="role"
               :class="[
                 'flex items-center gap-2.5 px-3 py-2.5 rounded-xl cursor-pointer transition-all duration-200 mb-1',
@@ -198,21 +275,22 @@ async function savePermissions() {
               <a-tag :color="rColor(role)" size="small" class="!m-0">
                 {{ rLabel(role) }}
               </a-tag>
-              <IconLock v-if="role === 'admin'" :size="13" class="text-[#86868B]" />
+              <IconLock v-if="isSuperAdmin(role)" :size="13" class="text-[#ff9500]" />
+              {{ isSuperAdmin(role) ? '' : '' }}
             </div>
           </div>
         </div>
 
         <div class="flex-1 min-w-0">
           <div
-            v-if="activeRole === 'admin'"
-            class="bg-[#007aff]/[0.04] border border-[#007aff]/[0.12] rounded-2xl p-5 mb-5 flex items-start gap-3"
+            v-if="isSuperAdmin(activeRole)"
+            class="bg-[#ff9500]/[0.06] border border-[#ff9500]/[0.15] rounded-2xl p-5 mb-5 flex items-start gap-3"
           >
-            <IconSafe :size="20" class="text-[#007aff] mt-0.5 shrink-0" />
+            <IconSafe :size="20" class="text-[#ff9500] mt-0.5 shrink-0" />
             <div>
               <p class="text-[14px] font-semibold text-[#1D1D1F] m-0">超级管理员拥有所有权限</p>
               <p class="text-[12px] text-[#86868B] m-0 mt-1">
-                超级管理员默认拥有全部页面和操作权限，同时也具备审核员角色，不可修改。
+                超级管理员默认拥有全部页面和操作权限，不可修改。
               </p>
             </div>
           </div>
@@ -230,46 +308,58 @@ async function savePermissions() {
                   <span class="text-[14px] font-semibold text-[#1D1D1F]">{{ group }}</span>
                   <a-tag size="small" color="gray" class="!m-0">{{ perms.length }}</a-tag>
                 </div>
-                <a-checkbox
-                  v-if="activeRole !== 'admin'"
-                  :model-value="isGroupAllSelected(group)"
-                  :indeterminate="isGroupPartialSelected(group)"
-                  @change="toggleGroupAll(group)"
-                >
-                  全选
-                </a-checkbox>
+                <div v-if="!isSuperAdmin(activeRole)" class="flex items-center gap-4">
+                  <a-checkbox
+                    :model-value="isGroupAllReadSelected(group)"
+                    :indeterminate="isGroupPartialReadSelected(group)"
+                    @change="toggleGroupAllRead(group)"
+                  >
+                    全选读
+                  </a-checkbox>
+                  <a-checkbox
+                    :model-value="isGroupAllWriteSelected(group)"
+                    :indeterminate="isGroupPartialWriteSelected(group)"
+                    @change="toggleGroupAllWrite(group)"
+                  >
+                    全选写
+                  </a-checkbox>
+                </div>
                 <a-tag v-else color="green" size="small" class="!m-0">已拥有</a-tag>
               </div>
 
-              <div class="p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+              <div class="p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 gap-2">
                 <div
                   v-for="perm in perms"
                   :key="perm.key"
                   :class="[
-                    'flex items-center gap-3 px-3.5 py-3 rounded-xl border transition-all duration-200',
-                    activeRole === 'admin'
+                    'flex items-center justify-between px-3.5 py-3 rounded-xl border transition-all duration-200',
+                    isSuperAdmin(activeRole)
                       ? 'border-[#30d158]/20 bg-[#30d158]/[0.04] cursor-default'
-                      : hasPermission(perm.key)
-                        ? 'border-[#007aff]/20 bg-[#007aff]/[0.04] cursor-pointer hover:border-[#007aff]/40'
-                        : 'border-black/[0.06] bg-white cursor-pointer hover:border-black/[0.12] hover:bg-black/[0.01]',
+                      : (hasPermRead(perm.key) || hasPermWrite(perm.key))
+                        ? 'border-[#007aff]/20 bg-[#007aff]/[0.04]'
+                        : 'border-black/[0.06] bg-white',
                   ]"
-                  @click="togglePermission(perm.key)"
                 >
-                  <a-checkbox
-                    v-if="activeRole !== 'admin'"
-                    :model-value="hasPermission(perm.key)"
-                    class="pointer-events-none"
-                  />
-                  <div v-else class="w-4 h-4 rounded-full bg-[#30d158] flex items-center justify-center shrink-0">
-                    <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
-                      <path d="M1 4L3.5 6.5L9 1" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-                    </svg>
-                  </div>
-                  <div class="min-w-0">
+                  <div class="min-w-0 flex-1">
                     <p class="text-[13px] font-medium text-[#1D1D1F] m-0 leading-tight">{{ perm.name }}</p>
                     <p class="text-[11px] text-[#86868B] m-0 mt-0.5">
                       {{ perm.type === 'page' ? '页面访问' : '操作权限' }}
                     </p>
+                  </div>
+                  <div v-if="isSuperAdmin(activeRole)" class="w-4 h-4 rounded-full bg-[#30d158] flex items-center justify-center shrink-0 ml-3">
+                    <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
+                      <path d="M1 4L3.5 6.5L9 1" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                  </div>
+                  <div v-else class="flex items-center gap-3 shrink-0 ml-4">
+                    <div class="flex items-center gap-1 cursor-pointer" @click.stop="togglePermRead(perm.key)">
+                      <a-switch :model-value="hasPermRead(perm.key)" size="small" />
+                      <span class="text-[12px] text-[#86868B] w-4 text-center">读</span>
+                    </div>
+                    <div class="flex items-center gap-1 cursor-pointer" @click.stop="togglePermWrite(perm.key)">
+                      <a-switch :model-value="hasPermWrite(perm.key)" size="small" />
+                      <span class="text-[12px] text-[#86868B] w-4 text-center">写</span>
+                    </div>
                   </div>
                 </div>
               </div>

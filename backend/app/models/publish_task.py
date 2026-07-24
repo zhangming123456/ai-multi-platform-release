@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import enum
+import uuid
 from datetime import datetime
 
 from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
@@ -20,9 +21,9 @@ class PublishTaskStatus(str, enum.Enum):
 class PublishTask(Base):
     __tablename__ = "publish_tasks"
 
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    content_id: Mapped[int] = mapped_column(ForeignKey("contents.id"), nullable=False)
-    account_id: Mapped[int] = mapped_column(ForeignKey("accounts.id"), nullable=False)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    content_id: Mapped[str] = mapped_column(String(36), ForeignKey("contents.id"), nullable=False)
+    account_id: Mapped[str] = mapped_column(String(36), ForeignKey("accounts.id"), nullable=False)
     status: Mapped[PublishTaskStatus] = mapped_column(
         String(20), default=PublishTaskStatus.pending, nullable=False
     )

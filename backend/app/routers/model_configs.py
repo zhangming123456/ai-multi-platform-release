@@ -99,7 +99,7 @@ async def list_model_configs(
 async def create_model_config(
     request: ModelConfigCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_permission("model_config:create")),
+    current_user: User = Depends(require_permission("model_config:create", "write")),
 ):
     config_id = request.id or f"plan-{int(__import__('time').time() * 1000)}"
     existing = await db.execute(select(ModelConfig).where(ModelConfig.id == config_id))
@@ -119,7 +119,7 @@ async def update_model_config(
     config_id: str,
     request: ModelConfigUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_permission("model_config:update")),
+    current_user: User = Depends(require_permission("model_config:update", "write")),
 ):
     result = await db.execute(select(ModelConfig).where(ModelConfig.id == config_id))
     config = result.scalar_one_or_none()
@@ -138,7 +138,7 @@ async def update_model_config(
 async def delete_model_config(
     config_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_permission("model_config:delete")),
+    current_user: User = Depends(require_permission("model_config:delete", "write")),
 ):
     result = await db.execute(select(ModelConfig).where(ModelConfig.id == config_id))
     config = result.scalar_one_or_none()

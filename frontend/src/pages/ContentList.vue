@@ -25,15 +25,15 @@ const statusFilter = ref('all')
 const loading = ref(false)
 
 interface Content {
-  id: number
-  user_id: number
+  id: string
+  user_id: string
   title: string
   body: string
   platform: 'wechat_mp' | 'xiaohongshu' | 'douyin' | 'wechat_video'
   status: 'draft' | 'ready' | 'published' | 'pending_review' | 'rejected'
   media_urls: string[]
   ai_generated: boolean
-  original_content_id: number | null
+  original_content_id: string | null
   created_at: string
   updated_at: string
 }
@@ -126,7 +126,7 @@ async function copyContent(content: Content) {
   }
 }
 
-async function removeContent(id: number) {
+async function removeContent(id: string) {
   Modal.warning({
     title: '确认删除',
     content: '删除后不可恢复，确定要删除这条内容吗？',
@@ -143,7 +143,7 @@ async function removeContent(id: number) {
   })
 }
 
-async function submitForReview(id: number) {
+async function submitForReview(id: string) {
   try {
     await api.post(`/reviews/${id}/submit`)
     const idx = contents.value.findIndex(c => c.id === id)

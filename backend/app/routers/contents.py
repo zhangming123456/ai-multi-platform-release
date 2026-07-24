@@ -63,7 +63,7 @@ async def list_contents(
 async def create_content(
     request: ContentCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_permission("content:create")),
+    current_user: User = Depends(require_permission("content:create", "write")),
 ):
     content = Content(
         user_id=current_user.id,
@@ -98,7 +98,7 @@ async def list_ai_generations(
 
 @router.get("/{content_id}", response_model=ContentResponse)
 async def get_content(
-    content_id: int,
+    content_id: str,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -113,10 +113,10 @@ async def get_content(
 
 @router.put("/{content_id}", response_model=ContentResponse)
 async def update_content(
-    content_id: int,
+    content_id: str,
     request: ContentUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_permission("content:update")),
+    current_user: User = Depends(require_permission("content:update", "write")),
 ):
     result = await db.execute(
         select(Content).where(Content.id == content_id, Content.user_id == current_user.id)
@@ -136,9 +136,9 @@ async def update_content(
 
 @router.delete("/{content_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_content(
-    content_id: int,
+    content_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_permission("content:delete")),
+    current_user: User = Depends(require_permission("content:delete", "write")),
 ):
     result = await db.execute(
         select(Content).where(Content.id == content_id, Content.user_id == current_user.id)
@@ -154,7 +154,7 @@ async def delete_content(
 async def ai_generate(
     request: AIGenerateRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_permission("content:ai_generate")),
+    current_user: User = Depends(require_permission("content:ai_generate", "write")),
 ):
     try:
         variants = await generate_content_variants(
@@ -205,7 +205,7 @@ async def ai_generate(
 async def ai_generate_stream(
     request: AIGenerateStreamRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_permission("content:ai_generate")),
+    current_user: User = Depends(require_permission("content:ai_generate", "write")),
 ):
     """SSE 流式生成端点：逐平台流式输出 LLM 内容，同时推送实时日志。"""
 

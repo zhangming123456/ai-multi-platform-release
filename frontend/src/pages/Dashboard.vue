@@ -40,7 +40,7 @@ interface PlatformStat {
 }
 
 interface RecentPublish {
-  id: number
+  id: string
   title: string
   platform: Platform
   account: string
