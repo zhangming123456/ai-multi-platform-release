@@ -12,7 +12,7 @@ from app.models.rbac_role_permission import RBACRolePermission
 from app.models.rbac_user_role_assignment import RBACUserRoleAssignment
 from app.models.role_permission import RolePermission
 from app.models.user import User
-from app.routers.permissions import ALL_PERMISSIONS, DEFAULT_ROLE_PERMISSIONS
+from app.constants.permissions import ALL_PERMISSIONS, DEFAULT_ROLE_PERMISSIONS
 
 
 BUILTIN_ROLES = [
@@ -51,6 +51,12 @@ def _map_legacy_permission(legacy_key: str) -> tuple[str, str]:
     """Map a legacy permission key to (resource_key, operation)."""
     if legacy_key == "db:history:read":
         return "db_history", "read"
+    if legacy_key.startswith("user:"):
+        operation = legacy_key.split(":", 1)[1]
+        return "users", operation
+    if legacy_key.startswith("template:"):
+        operation = legacy_key.split(":", 1)[1]
+        return "templates", operation
     if ":" in legacy_key:
         resource_key, operation = legacy_key.rsplit(":", 1)
         return resource_key, operation
@@ -109,10 +115,12 @@ async def _ensure_resources_and_permissions(db: AsyncSession) -> None:
         elif resource_key in resource_cache:
             resource = resource_cache[resource_key]
         else:
-            if legacy_key == "accounts":
+            if legacy_key == "accounts" or legacy_key.startswith("user:"):
                 resource_name = "账号设置"
             elif legacy_key == "permission_manage":
                 resource_name = "权限设置"
+            elif legacy_key.startswith("template:"):
+                resource_name = "模板中心"
             else:
                 resource_name = perm_def["name"]
 
@@ -257,7 +265,8 @@ async def migrate_legacy_role_permissions(db: AsyncSession) -> None:
     role_permission_pairs = [
         (roles_by_name[record.role].id, permissions_by_key[_permission_key(*_map_legacy_permission(record.permission_key))].id)
         for record in legacy_records
-        if record.role in roles_by_name
+        if (record.can_read or record.can_write)
+        and record.role in roles_by_name
         and _permission_key(*_map_legacy_permission(record.permission_key)) in permissions_by_key
     ]
 

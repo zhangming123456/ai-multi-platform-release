@@ -61,7 +61,7 @@ async def get_reviewer_user(
 
 
 async def _get_user_permission_map(user: User, db: AsyncSession) -> dict[str, dict[str, bool]]:
-    from app.routers.permissions import ALL_PERMISSION_KEYS, DEFAULT_ROLE_PERMISSIONS
+    from app.constants.permissions import ALL_PERMISSION_KEYS, DEFAULT_ROLE_PERMISSIONS
 
     if user.role == UserRole.admin:
         return {k: {"read": True, "write": True} for k in ALL_PERMISSION_KEYS}

@@ -18,9 +18,10 @@ from app.models.rbac_role_permission import RBACRolePermission  # noqa: E402
 from app.models.rbac_user_role_assignment import RBACUserRoleAssignment  # noqa: E402
 from app.models.role_permission import RolePermission  # noqa: E402
 from app.models.user import User  # noqa: E402
-from app.routers.permissions import ALL_PERMISSIONS, DEFAULT_ROLE_PERMISSIONS  # noqa: E402
+from app.constants.permissions import ALL_PERMISSIONS, DEFAULT_ROLE_PERMISSIONS  # noqa: E402
 from app.services.rbac_init_service import (  # noqa: E402
     _map_legacy_permission,
+    _permission_key,
     init_rbac_system,
 )
 
@@ -60,12 +61,18 @@ async def _create_user(session: AsyncSession, role: str = "operator") -> User:
 
 
 async def _create_legacy_role_permission(
-    session: AsyncSession, role: str, permission_key: str
+    session: AsyncSession,
+    role: str,
+    permission_key: str,
+    can_read: bool = True,
+    can_write: bool = True,
 ) -> RolePermission:
     record = RolePermission(
         id=str(uuid.uuid4()),
         role=role,
         permission_key=permission_key,
+        can_read=can_read,
+        can_write=can_write,
     )
     session.add(record)
     await session.commit()
@@ -105,22 +112,46 @@ async def test_init_rbac_system_creates_builtin_roles_resources_permissions_and_
     assert users_resource is not None
     assert users_resource.name == "账号设置"
 
+    templates_resource = next(
+        (resource for resource in resources if resource.key == "templates"), None
+    )
+    assert templates_resource is not None
+    assert templates_resource.name == "模板中心"
+
     permissions_result = await db.execute(select(RBACPermission))
     permissions = permissions_result.scalars().all()
+    permissions_by_id = {permission.id: permission.key for permission in permissions}
     permission_keys = {permission.key for permission in permissions}
     expected_permission_keys = {
-        f"{_map_legacy_permission(p['key'])[0]}:{_map_legacy_permission(p['key'])[1]}"
+        _permission_key(*_map_legacy_permission(p["key"]))
         for p in ALL_PERMISSIONS
     }
     assert permission_keys == expected_permission_keys
 
+    users_create_perm = next(
+        (permission for permission in permissions if permission.key == "users:create"), None
+    )
+    assert users_create_perm is not None
+    assert users_create_perm.resource_id == users_resource.id
+
+    templates_create_perm = next(
+        (permission for permission in permissions if permission.key == "templates:create"), None
+    )
+    assert templates_create_perm is not None
+    assert templates_create_perm.resource_id == templates_resource.id
+
     role_permissions_result = await db.execute(select(RBACRolePermission))
     role_permissions = role_permissions_result.scalars().all()
-    admin_permission_keys = {
-        perm_key
-        for perm_key in DEFAULT_ROLE_PERMISSIONS["admin"]
+    admin_role_permission_keys = {
+        permissions_by_id[rp.permission_id]
+        for rp in role_permissions
+        if rp.role_id == admin_role.id
     }
-    assert len(role_permissions) >= len(admin_permission_keys)
+    expected_admin_permission_keys = {
+        _permission_key(*_map_legacy_permission(key))
+        for key in DEFAULT_ROLE_PERMISSIONS["admin"]
+    }
+    assert admin_role_permission_keys == expected_admin_permission_keys
 
     assignments_result = await db.execute(select(RBACUserRoleAssignment))
     assignments = assignments_result.scalars().all()
@@ -164,6 +195,35 @@ async def test_migrate_legacy_role_permissions(db):
     }
     assert (manager_role.id, content_create_perm.id) in migrated_pairs
     assert (manager_role.id, users_read_perm.id) in migrated_pairs
+
+
+async def test_migrate_legacy_role_permissions_skips_denied_records(db):
+    await init_rbac_system(db)
+
+    # Use a permission not present in the manager default set so that any
+    # existing RBACRolePermission could only come from legacy migration.
+    await _create_legacy_role_permission(
+        db, "manager", "user:delete", can_read=False, can_write=False
+    )
+
+    await init_rbac_system(db)
+
+    manager_role = (
+        await db.execute(select(RBACRole).where(RBACRole.name == "manager"))
+    ).scalar_one()
+    users_delete_perm = (
+        await db.execute(
+            select(RBACPermission).where(RBACPermission.key == "users:delete")
+        )
+    ).scalar_one()
+
+    role_permissions_result = await db.execute(
+        select(RBACRolePermission).where(
+            RBACRolePermission.role_id == manager_role.id,
+            RBACRolePermission.permission_id == users_delete_perm.id,
+        )
+    )
+    assert role_permissions_result.scalar_one_or_none() is None
 
 
 async def test_init_rbac_system_is_idempotent(db):
