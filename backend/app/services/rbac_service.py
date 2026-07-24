@@ -14,6 +14,8 @@ from app.models.rbac_role_permission import RBACRolePermission
 from app.models.rbac_user_role_assignment import RBACUserRoleAssignment
 
 
+# Execute is intentionally treated as both read and write: performing an action
+# implies both viewing it and writing/mutating state.
 READ_OPERATIONS = {"read", "execute"}
 WRITE_OPERATIONS = {"create", "update", "delete", "approve", "reject", "execute"}
 
@@ -25,7 +27,7 @@ class PermissionAccess:
 
 
 async def get_role_ancestors(role_id: str, db: AsyncSession) -> list[RBACRole]:
-    """Return all ancestor roles by walking up the hierarchy (parent -> child).
+    """Return all ancestor roles by walking up the hierarchy (child -> parent).
 
     Defensively handles cycles by tracking visited role IDs.
     """
@@ -119,6 +121,23 @@ async def get_user_effective_permissions(
     if not assigned_role_ids:
         return {}
 
+    # If any directly assigned role is a super admin, grant everything without
+    # building the ancestor closure.
+    super_admin_result = await db.execute(
+        select(RBACRole).where(
+            RBACRole.id.in_(assigned_role_ids),
+            RBACRole.is_super_admin.is_(True),
+        )
+    )
+    if super_admin_result.scalars().first() is not None:
+        all_permissions = await db.execute(
+            select(RBACPermission).where(RBACPermission.is_active.is_(True))
+        )
+        return {
+            permission.key: PermissionAccess(read=True, write=True)
+            for permission in all_permissions.scalars().all()
+        }
+
     # Build the ancestor closure for each assigned role once.
     all_role_ids: set[str] = set()
     for role_id in assigned_role_ids:
@@ -187,4 +206,4 @@ async def has_permission(
         return access.read
     if mode == "write":
         return access.write
-    return False
+    raise ValueError(f"Unsupported permission mode: {mode}")
