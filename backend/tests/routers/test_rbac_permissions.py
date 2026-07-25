@@ -13,6 +13,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 import app.models  # noqa: F401,E402
 from app.core.security import create_access_token  # noqa: E402
 from app.database import Base, get_db  # noqa: E402
+from app.models.rbac_role import RBACRole  # noqa: E402
+from app.models.rbac_user_role_assignment import RBACUserRoleAssignment  # noqa: E402
 from app.models.user import User, UserRole  # noqa: E402
 from app.routers import rbac_permissions  # noqa: E402
 
@@ -72,6 +74,22 @@ async def auth_headers(test_app):
             role=UserRole.admin,
         )
         session.add(user)
+        await session.flush()
+
+        admin_role = RBACRole(
+            name="admin",
+            display_name="超级管理员",
+            role_type="admin",
+            is_super_admin=True,
+            is_builtin=True,
+        )
+        session.add(admin_role)
+        await session.flush()
+        session.add(
+            RBACUserRoleAssignment(
+                user_id=user.id, role_id=admin_role.id, grant_type="direct"
+            )
+        )
         await session.commit()
         token = create_access_token({"sub": user.id})
         return {"Authorization": f"Bearer {token}"}

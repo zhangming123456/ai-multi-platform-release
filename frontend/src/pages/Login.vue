@@ -53,7 +53,7 @@ async function handleLogin() {
         <p>多平台矩阵管理系统</p>
       </div>
 
-      <a-form layout="vertical" @submit.prevent="handleLogin">
+      <a-form :model="{}" layout="vertical" @submit.prevent="handleLogin">
         <a-form-item field="username" label="用户名">
           <a-input v-model="username" placeholder="用户名或邮箱" size="large" allow-clear>
             <template #prefix>

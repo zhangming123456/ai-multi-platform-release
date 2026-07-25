@@ -21,7 +21,7 @@ router = APIRouter(prefix="/api/accounts", tags=["账号管理"])
 async def list_accounts(
     platform: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission("account:read", "read")),
 ):
     query = select(Account).where(Account.user_id == current_user.id)
     if platform:
@@ -56,7 +56,7 @@ async def create_account(
 async def get_account(
     account_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission("account:read", "read")),
 ):
     result = await db.execute(
         select(Account).where(Account.id == account_id, Account.user_id == current_user.id)

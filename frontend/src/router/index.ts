@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import type { RouteLocationNormalized } from 'vue-router'
 import { useUserStore } from '@/stores/user'
+import { usePermissionStore } from '@/stores/permission'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -19,7 +20,7 @@ const router = createRouter({
           path: '',
           name: 'Dashboard',
           component: () => import('@/pages/Dashboard.vue'),
-          meta: { permKey: 'dashboard' },
+          meta: { permKey: 'dashboard:read' },
         },
         {
           path: '403',
@@ -31,107 +32,109 @@ const router = createRouter({
           path: 'profile',
           name: 'Profile',
           component: () => import('@/pages/Profile.vue'),
+          meta: { skipPermCheck: true },
         },
         {
           path: 'platforms',
           name: 'Platforms',
           component: () => import('@/pages/Platforms.vue'),
-          meta: { permKey: 'platforms' },
-        },
-        {
-          path: 'accounts',
-          name: 'Accounts',
-          component: () => import('@/pages/Accounts.vue'),
-          meta: { permKey: 'accounts' },
+          meta: { permKey: 'platforms:read' },
         },
         {
           path: 'content',
           name: 'ContentList',
           component: () => import('@/pages/ContentList.vue'),
-          meta: { permKey: 'content' },
+          meta: { permKey: 'content:read' },
         },
         {
           path: 'content/create',
           name: 'ContentCreate',
           component: () => import('@/pages/ContentCreate.vue'),
-          meta: { permKey: 'content' },
+          meta: { permKey: 'content:create' },
         },
         {
           path: 'publish',
           name: 'Publish',
           component: () => import('@/pages/Publish.vue'),
-          meta: { permKey: 'publish' },
+          meta: { permKey: 'publish:read' },
         },
         {
           path: 'review',
           name: 'Review',
           component: () => import('@/pages/Review.vue'),
-          meta: { permKey: 'review' },
+          meta: { permKey: 'review:read' },
         },
         {
           path: 'sql-review',
           name: 'SqlReview',
           component: () => import('@/pages/SqlReview.vue'),
-          meta: { permKey: 'sql_review' },
+          meta: { permKey: 'sql_review:read' },
         },
         {
           path: 'templates',
           name: 'Templates',
           component: () => import('@/pages/Templates.vue'),
-          meta: { permKey: 'templates' },
+          meta: { permKey: 'templates:read' },
         },
         {
           path: 'settings/token-plan',
           name: 'TokenPlan',
           component: () => import('@/pages/TokenPlan.vue'),
-          meta: { permKey: 'token_plan' },
+          meta: { permKey: 'token_plan:read' },
         },
         {
           path: 'developer/docs',
           name: 'ApiDocs',
           component: () => import('@/pages/ApiDocs.vue'),
-          meta: { permKey: 'api_docs' },
+          meta: { permKey: 'api_docs:read' },
         },
         {
           path: 'developer/database',
           name: 'DatabaseConsole',
           component: () => import('@/pages/DatabaseConsole.vue'),
-          meta: { permKey: 'database', adminOnly: true },
-        },
-        {
-          path: 'settings/permissions',
-          name: 'PermissionManage',
-          component: () => import('@/pages/PermissionManage.vue'),
-          meta: { permKey: 'permission_manage', adminOnly: true },
-        },
-        {
-          path: 'settings/roles',
-          name: 'RoleManage',
-          component: () => import('@/pages/RoleManage.vue'),
-          meta: { permKey: 'permission_manage', adminOnly: true },
+          meta: { permKey: 'db:read' },
         },
         {
           path: 'settings/user-creation-review',
           name: 'UserCreationReview',
           component: () => import('@/pages/UserCreationReview.vue'),
-          meta: { permKey: 'review' },
+          meta: { permKey: 'review:read' },
+        },
+        {
+          path: 'rbac/users',
+          name: 'RBACUserManage',
+          component: () => import('@/pages/RBACUserManage.vue'),
+          meta: { permKey: 'users:read' },
+        },
+        {
+          path: 'rbac/roles',
+          name: 'RBACRoleManage',
+          component: () => import('@/pages/RBACRoleManage.vue'),
+          meta: { permKey: 'roles:read' },
+        },
+        {
+          path: 'rbac/permissions',
+          name: 'RBACPermissionManage',
+          component: () => import('@/pages/RBACPermissionManage.vue'),
+          meta: { permKey: 'permissions:read' },
+        },
+        {
+          path: 'rbac/constraints',
+          name: 'RBACConstraintManage',
+          component: () => import('@/pages/RBACConstraintManage.vue'),
+          meta: { permKey: 'constraints:read' },
         },
       ],
     },
   ],
 })
 
-let userInfoReady = false
-
 function hasPerm(to: RouteLocationNormalized): boolean {
   if (to.meta.skipPermCheck) return true
   const permKey = to.meta.permKey as string | undefined
   if (!permKey) return true
-  const userStore = useUserStore()
-  if (!userStore.userInfo?.permissions) return true
-  if (userStore.userInfo.role === 'admin') return true
-  const access = userStore.userInfo.permissions[permKey]
-  return access ? access.read : false
+  const permStore = usePermissionStore()
+  return permStore.hasPermission(permKey, 'read')
 }
 
 router.beforeEach(async (to) => {
@@ -150,14 +153,25 @@ router.beforeEach(async (to) => {
   }
 
   const userStore = useUserStore()
-  if (!userInfoReady || !userStore.userInfo) {
-    try {
+  const permStore = usePermissionStore()
+
+  try {
+    if (!userStore.userInfo) {
       await userStore.fetchUserInfo()
-    } catch {
-      userStore.logout()
-      return { name: 'Login', query: { redirect: to.fullPath } }
     }
-    userInfoReady = true
+    if (!userStore.userInfo) {
+      throw new Error('无法获取用户信息')
+    }
+    if (
+      permStore.lastPermissionsUserId !== userStore.userInfo.id ||
+      Object.keys(permStore.permissions).length === 0
+    ) {
+      await permStore.loadPermissions(userStore.userInfo.id)
+    }
+  } catch {
+    permStore.clearPermissions()
+    userStore.logout()
+    return { name: 'Login', query: { redirect: to.fullPath } }
   }
 
   if (!hasPerm(to)) {

@@ -200,7 +200,7 @@ export const useTokenPlanStore = defineStore('tokenPlan', () => {
         activePlanId.value = enabledPlans.value[0]?.id || list[0].id
       }
       if (activeModelList.value.length > 0 && !selectedModelId.value) {
-        selectedModelId.value = activeModelList.value[0]
+        selectedModelId.value = activeModelList.value[0].id
       }
       loaded.value = true
     } catch (e) {

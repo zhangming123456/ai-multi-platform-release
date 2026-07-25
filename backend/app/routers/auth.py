@@ -69,11 +69,14 @@ async def get_me(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    from app.routers.permissions import get_user_permissions
+    from app.services.rbac_service import get_user_effective_permissions
 
-    permissions = await get_user_permissions(current_user, db)
+    effective = await get_user_effective_permissions(current_user.id, db)
     user_info = UserInfo.model_validate(current_user)
-    permissions_info = {k: v.model_dump() for k, v in permissions.items()}
+    permissions_info = {
+        key: {"read": access.read, "write": access.write}
+        for key, access in effective.items()
+    }
     return UserInfoWithPermissions(**user_info.model_dump(), permissions=permissions_info)
 
 

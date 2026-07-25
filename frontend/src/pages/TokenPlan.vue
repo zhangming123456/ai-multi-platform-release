@@ -6,7 +6,6 @@ import {
   parseModelField,
   serializeModelField,
   MODEL_TYPE_OPTIONS,
-  MODEL_TYPE_LABELS,
   MODEL_TYPE_COLORS,
   MODEL_TYPE_ICONS,
   type PlanProvider,
@@ -181,7 +180,7 @@ function getBaseUrl(provider: string, customUrl?: string): string {
   return customUrl || ''
 }
 
-async function doFetch(url: string, target: 'provider' | 'custom') {
+async function doFetch(url: string, _target: 'provider' | 'custom') {
   if (!form.value.apiKey) {
     Message.warning('请先填写 API 密钥')
     return
@@ -363,7 +362,7 @@ function validate(): boolean {
   return true
 }
 
-function save() {
+async function save() {
   if (!validate()) return
   const f = form.value
   const validModels = f.models.filter((m) => m.id.trim())
@@ -372,10 +371,10 @@ function save() {
   const name = f.displayName || firstModelId || providerLabel(f.provider)
   const payload = { ...f, model: modelStr, name }
   if (isEdit.value) {
-    store.updatePlan(editingId.value, payload)
+    await store.updatePlan(editingId.value, payload)
     Message.success('配置已保存')
   } else {
-    const np = store.addPlan({ ...payload, enabled: true })
+    const np = await store.addPlan({ ...payload, enabled: true })
     if (!store.activePlan) store.setActivePlan(np.id)
     Message.success('模型已添加')
   }

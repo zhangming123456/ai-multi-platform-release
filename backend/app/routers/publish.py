@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.deps import get_current_user, require_permission
+from app.core.deps import require_permission
 from app.database import get_db
 from app.models.publish_task import PublishTask
 from app.models.user import User
@@ -21,7 +21,7 @@ async def list_tasks(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission("publish:read", "read")),
 ):
     query = (
         select(PublishTask)
@@ -50,7 +50,7 @@ async def create_task(
 async def get_task(
     task_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission("publish:read", "read")),
 ):
     result = await db.execute(select(PublishTask).where(PublishTask.id == task_id))
     task = result.scalar_one_or_none()
@@ -74,6 +74,6 @@ async def retry_publish_task(
 @router.get("/stats", response_model=PublishStatusResponse)
 async def publish_stats(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission("publish:read", "read")),
 ):
     return await get_publish_stats(db)

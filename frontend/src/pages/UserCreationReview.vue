@@ -3,7 +3,6 @@ import { ref, computed, onMounted } from 'vue'
 import { Message } from '@arco-design/web-vue'
 import PageHeader from '@/components/layout/PageHeader.vue'
 import api from '@/utils/api'
-import { useUserStore } from '@/stores/user'
 import { formatDateTime as formatDate } from '@/utils/time'
 
 interface CreationRequest {
@@ -29,7 +28,6 @@ interface RoleDef {
   role_type: string
 }
 
-const userStore = useUserStore()
 const loading = ref(false)
 const requests = ref<CreationRequest[]>([])
 const roleDefs = ref<RoleDef[]>([])
@@ -166,7 +164,7 @@ onMounted(async () => {
       @ok="confirmReject"
       ok-text="确认驳回"
     >
-      <a-form layout="vertical">
+      <a-form :model="{}" layout="vertical">
         <a-form-item label="驳回原因" required>
           <a-textarea
             v-model="rejectReason"

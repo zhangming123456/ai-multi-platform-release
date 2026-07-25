@@ -7,18 +7,74 @@ from pydantic import BaseModel
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.deps import get_current_user, require_permission
+from app.core.deps import require_permission
 from app.database import async_session_factory, get_db
 from app.models.notification import Notification, NotificationType
+from app.models.rbac_permission import RBACPermission
+from app.models.rbac_role_hierarchy import RBACRoleHierarchy
+from app.models.rbac_role_permission import RBACRolePermission
+from app.models.rbac_user_role_assignment import RBACUserRoleAssignment
 from app.models.sql_change_request import (
     SqlChangeRequest,
     SqlChangeStatus,
     SqlChangeType,
 )
 from app.models.sql_history import SqlHistory
-from app.models.user import User, UserRole
+from app.models.user import User
 
 router = APIRouter(prefix="/api/db-changes", tags=["SQL 变更审核"])
+
+
+async def _user_ids_with_permission(
+    permission_key: str,
+    db: AsyncSession,
+) -> set[str]:
+    """Return user IDs whose roles grant the requested permission (including inheritance)."""
+    perm_result = await db.execute(
+        select(RBACPermission.id).where(
+            RBACPermission.key == permission_key,
+            RBACPermission.is_active.is_(True),
+        )
+    )
+    perm = perm_result.scalar_one_or_none()
+    if perm is None:
+        return set()
+
+    rp_result = await db.execute(
+        select(RBACRolePermission.role_id).where(
+            RBACRolePermission.permission_id == perm.id
+        )
+    )
+    role_ids = {row for row in rp_result.scalars().all()}
+    if not role_ids:
+        return set()
+
+    all_role_ids = set(role_ids)
+    frontier = set(role_ids)
+    seen = set(role_ids)
+    while frontier:
+        result = await db.execute(
+            select(RBACRoleHierarchy.child_role_id).where(
+                RBACRoleHierarchy.parent_role_id.in_(frontier)
+            )
+        )
+        frontier = set()
+        for row in result.scalars().all():
+            if row not in seen:
+                seen.add(row)
+                frontier.add(row)
+                all_role_ids.add(row)
+
+    user_result = await db.execute(
+        select(User.id)
+        .join(
+            RBACUserRoleAssignment,
+            User.id == RBACUserRoleAssignment.user_id,
+        )
+        .where(RBACUserRoleAssignment.role_id.in_(all_role_ids))
+        .distinct()
+    )
+    return {row[0] for row in user_result.all()}
 
 REQUIRED_APPROVALS = 2
 
@@ -110,9 +166,8 @@ async def submit_change(
     await db.commit()
     await db.refresh(req)
 
-    reviewers_result = await db.execute(
-        select(User).where(User.role.in_([UserRole.admin, UserRole.reviewer]))
-    )
+    reviewer_ids = await _user_ids_with_permission("db_change:approve", db)
+    reviewers_result = await db.execute(select(User).where(User.id.in_(reviewer_ids)))
     reviewers = reviewers_result.scalars().all()
     type_label = "删除" if "delete" in body.change_type else "修改"
     for reviewer in reviewers:
@@ -134,7 +189,7 @@ async def submit_change(
 async def list_changes(
     status_filter: Optional[str] = Query(default=None, alias="status"),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission("db_change:approve", "read")),
 ):
     """获取 SQL 变更审核列表"""
     stmt = select(SqlChangeRequest).order_by(SqlChangeRequest.created_at.desc())

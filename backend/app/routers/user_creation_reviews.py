@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.deps import get_current_user, require_permission
 from app.core.security import hash_password
 from app.database import get_db
-from app.models.user import User, UserRole
+from app.models.user import User
 from app.models.user_creation_request import UserCreationRequest, UserCreationStatus
 
 router = APIRouter(prefix="/api/user-creation-reviews", tags=["用户创建审核"])
@@ -41,14 +41,8 @@ class RejectRequest(BaseModel):
 @router.get("/", response_model=list[UserCreationRequestResponse])
 async def list_user_creation_requests(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_permission("review")),
+    current_user: User = Depends(require_permission("review:read")),
 ):
-    if current_user.role not in (UserRole.admin, UserRole.manager):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="仅管理员可查看用户创建审核",
-        )
-
     result = await db.execute(
         select(
             UserCreationRequest.id,
@@ -97,12 +91,6 @@ async def approve_user_creation(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_permission("review:approve", "write")),
 ):
-    if current_user.role not in (UserRole.admin, UserRole.manager):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="仅管理员可审批用户创建",
-        )
-
     result = await db.execute(
         select(UserCreationRequest).where(UserCreationRequest.id == request_id)
     )
@@ -162,12 +150,6 @@ async def reject_user_creation(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_permission("review:reject", "write")),
 ):
-    if current_user.role not in (UserRole.admin, UserRole.manager):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="仅管理员可驳回用户创建",
-        )
-
     result = await db.execute(
         select(UserCreationRequest).where(UserCreationRequest.id == request_id)
     )

@@ -250,8 +250,7 @@ async def has_permission_direct(
     if not assigned_role_ids:
         return False
 
-    # If any directly assigned role is a super admin, grant the permission only
-    # when the requested key exists and is active.
+    # If any directly assigned role is a super admin, grant the permission.
     super_admin_result = await db.execute(
         select(RBACRole).where(
             RBACRole.id.in_(assigned_role_ids),
@@ -259,13 +258,7 @@ async def has_permission_direct(
         )
     )
     if super_admin_result.scalars().first() is not None:
-        permission_result = await db.execute(
-            select(RBACPermission).where(
-                RBACPermission.key == permission_key,
-                RBACPermission.is_active.is_(True),
-            )
-        )
-        return permission_result.scalars().first() is not None
+        return True
 
     # Build the ancestor closure for each assigned role once.
     all_role_ids: set[str] = set(assigned_role_ids)

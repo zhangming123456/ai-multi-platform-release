@@ -73,7 +73,6 @@ const suggestionStyle = ref({ top: '0px', left: '0px' })
 const textareaEl = ref<InstanceType<typeof HTMLTextAreaElement> | null>(null)
 const tableNames = ref<string[]>([])
 const tableSchemas = ref<Record<string, TableColumnInfo[]>>({})
-const expandedTables = ref<Set<string>>(new Set())
 const loadingSchema = ref<Set<string>>(new Set())
 const currentPage = ref(1)
 const pageSize = ref(30)
@@ -173,7 +172,7 @@ const paginationConfig = computed(() => {
   }
 })
 
-const historyPaginationConfig = computed(() => {
+const historyPaginationConfig = computed<false | any>(() => {
   if (historyTotal.value === 0) return false
   return {
     current: historyPage.value,
@@ -191,14 +190,6 @@ const historyPaginationConfig = computed(() => {
 })
 
 const activeTableName = ref('')
-
-const tableColumnPresets = computed<Record<string, string[]>>(() => {
-  const map: Record<string, string[]> = {}
-  for (const [name, cols] of Object.entries(tableSchemas.value)) {
-    map[name] = cols.map((c) => c.name)
-  }
-  return map
-})
 
 function needsTableSuggestion(): boolean {
   const before = textBeforeCaret.value.trim()

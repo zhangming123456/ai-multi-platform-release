@@ -1,7 +1,6 @@
 from app.models.account import Account, AccountStatus, Platform
 from app.models.ai_generation import AIGenerationRecord
 from app.models.content import Content, ContentStatus
-from app.models.custom_role import CustomRole
 from app.models.model_config import ModelConfig
 from app.models.notification import Notification, NotificationType
 from app.models.publish_task import PublishTask, PublishTaskStatus
@@ -12,20 +11,17 @@ from app.models.rbac_role import RBACRole
 from app.models.rbac_role_hierarchy import RBACRoleHierarchy
 from app.models.rbac_role_permission import RBACRolePermission
 from app.models.rbac_user_role_assignment import RBACUserRoleAssignment
-from app.models.role_permission import RolePermission
 from app.models.sql_change_request import SqlChangeRequest, SqlChangeStatus, SqlChangeType
 from app.models.sql_history import SqlHistory
 from app.models.template import Template
 from app.models.user import User, UserRole
 from app.models.user_creation_request import UserCreationRequest, UserCreationStatus
-from app.models.user_permission import UserPermission
 
 __all__ = [
     "User",
     "UserRole",
     "Account",
     "AccountStatus",
-    "CustomRole",
     "Platform",
     "Content",
     "ContentStatus",
@@ -34,7 +30,6 @@ __all__ = [
     "NotificationType",
     "PublishTask",
     "PublishTaskStatus",
-    "RolePermission",
     "RBACRole",
     "RBACResource",
     "RBACPermission",
@@ -51,5 +46,4 @@ __all__ = [
     "AIGenerationRecord",
     "UserCreationRequest",
     "UserCreationStatus",
-    "UserPermission",
 ]

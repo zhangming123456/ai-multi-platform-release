@@ -4,7 +4,7 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
-from app.core.deps import get_current_user
+from app.core.deps import require_permission
 from app.models.user import User
 
 router = APIRouter(prefix="/api/models", tags=["模型"])
@@ -22,7 +22,7 @@ class FetchModelsResponse(BaseModel):
 @router.post("/fetch", response_model=FetchModelsResponse)
 async def fetch_models(
     request: FetchModelsRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission("token_plan:read", "read")),
 ):
     url = request.base_url.rstrip("/") + "/models"
     headers = {

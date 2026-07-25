@@ -6,19 +6,75 @@ from app.core.deps import get_current_user, require_permission
 from app.database import get_db
 from app.models.content import Content, ContentStatus
 from app.models.notification import Notification, NotificationType
-from app.models.user import User, UserRole
+from app.models.rbac_permission import RBACPermission
+from app.models.rbac_role_hierarchy import RBACRoleHierarchy
+from app.models.rbac_role_permission import RBACRolePermission
+from app.models.rbac_user_role_assignment import RBACUserRoleAssignment
+from app.models.user import User
 from app.schemas.review import ReviewResponse
 
 router = APIRouter(prefix="/api/reviews", tags=["审核管理"])
 
 
+async def _user_ids_with_permission(
+    permission_key: str,
+    db: AsyncSession,
+) -> set[str]:
+    """Return user IDs whose roles grant the requested permission (including inheritance)."""
+    perm_result = await db.execute(
+        select(RBACPermission.id).where(
+            RBACPermission.key == permission_key,
+            RBACPermission.is_active.is_(True),
+        )
+    )
+    perm = perm_result.scalar_one_or_none()
+    if perm is None:
+        return set()
+
+    rp_result = await db.execute(
+        select(RBACRolePermission.role_id).where(
+            RBACRolePermission.permission_id == perm.id
+        )
+    )
+    role_ids = {row for row in rp_result.scalars().all()}
+    if not role_ids:
+        return set()
+
+    # Include descendant roles so inherited permissions are honored.
+    all_role_ids = set(role_ids)
+    frontier = set(role_ids)
+    seen = set(role_ids)
+    while frontier:
+        result = await db.execute(
+            select(RBACRoleHierarchy.child_role_id).where(
+                RBACRoleHierarchy.parent_role_id.in_(frontier)
+            )
+        )
+        frontier = set()
+        for row in result.scalars().all():
+            if row not in seen:
+                seen.add(row)
+                frontier.add(row)
+                all_role_ids.add(row)
+
+    user_result = await db.execute(
+        select(User.id)
+        .join(
+            RBACUserRoleAssignment,
+            User.id == RBACUserRoleAssignment.user_id,
+        )
+        .where(RBACUserRoleAssignment.role_id.in_(all_role_ids))
+        .distinct()
+    )
+    return {row[0] for row in user_result.all()}
+
+
 @router.get("/", response_model=list[ReviewResponse])
 async def list_pending_reviews(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_permission("review")),
+    current_user: User = Depends(require_permission("review:read")),
 ):
     """获取待审核列表"""
-
     result = await db.execute(
         select(Content)
         .where(Content.status == ContentStatus.pending_review)
@@ -72,10 +128,9 @@ async def submit_for_review(
     content.status = ContentStatus.pending_review
     await db.commit()
 
-    # 创建通知：发给所有审核员和 admin
-    reviewers_result = await db.execute(
-        select(User).where(User.role.in_([UserRole.admin, UserRole.reviewer]))
-    )
+    # 创建通知：发给所有拥有 review:approve 权限的用户
+    reviewer_ids = await _user_ids_with_permission("review:approve", db)
+    reviewers_result = await db.execute(select(User).where(User.id.in_(reviewer_ids)))
     reviewers = reviewers_result.scalars().all()
 
     for reviewer in reviewers:

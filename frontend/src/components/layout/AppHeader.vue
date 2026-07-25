@@ -19,7 +19,6 @@ const breadcrumbMap: Record<string, string> = {
   '/': '仪表盘',
   '/profile': '个人资料',
   '/platforms': '平台管理',
-  '/accounts': '账号管理',
   '/content': '内容工坊',
   '/content/create': '创建内容',
   '/publish': '发布管理',
@@ -27,6 +26,10 @@ const breadcrumbMap: Record<string, string> = {
   '/templates': '模板中心',
   '/settings/token-plan': 'Token 配置',
   '/developer/docs': 'API 文档',
+  '/rbac/users': '账号设置',
+  '/rbac/roles': '角色设置',
+  '/rbac/permissions': '权限设置',
+  '/rbac/constraints': '职责分离',
 }
 
 const breadcrumbs = computed(() => {

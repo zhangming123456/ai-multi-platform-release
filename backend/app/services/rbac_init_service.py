@@ -2,17 +2,16 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.rbac_permission import RBACPermission
 from app.models.rbac_resource import RBACResource
 from app.models.rbac_role import RBACRole
+from app.models.rbac_role_hierarchy import RBACRoleHierarchy
 from app.models.rbac_role_permission import RBACRolePermission
 from app.models.rbac_user_role_assignment import RBACUserRoleAssignment
-from app.models.role_permission import RolePermission
 from app.models.user import User
-from app.constants.permissions import ALL_PERMISSIONS, DEFAULT_ROLE_PERMISSIONS
 
 
 BUILTIN_ROLES = [
@@ -47,6 +46,76 @@ BUILTIN_ROLES = [
 ]
 
 
+# RBAC3 resources and their operations. Page resources always include a read
+# operation; action resources expose the operations they support.
+RBAC_RESOURCES: list[dict] = [
+    {"key": "dashboard", "name": "仪表盘", "type": "page", "operations": ["read"]},
+    {"key": "platforms", "name": "平台管理", "type": "page", "operations": ["read"]},
+    {"key": "content", "name": "内容工坊", "type": "page", "operations": ["read", "create", "update", "delete", "ai_generate"]},
+    {"key": "publish", "name": "发布管理", "type": "page", "operations": ["read", "create", "retry"]},
+    {"key": "templates", "name": "模板中心", "type": "page", "operations": ["read", "create", "update", "delete"]},
+    {"key": "review", "name": "内容审核", "type": "page", "operations": ["read", "submit", "approve", "reject"]},
+    {"key": "sql_review", "name": "SQL 审核", "type": "page", "operations": ["read"]},
+    {"key": "accounts", "name": "平台账号", "type": "page", "operations": ["read"]},
+    {"key": "token_plan", "name": "Token 配置", "type": "page", "operations": ["read"]},
+    {"key": "api_docs", "name": "API 文档", "type": "page", "operations": ["read"]},
+    {"key": "db", "name": "数据库管理", "type": "page", "operations": ["read", "execute"]},
+    {"key": "permissions", "name": "权限设置", "type": "page", "operations": ["read", "write"]},
+    {"key": "roles", "name": "角色设置", "type": "page", "operations": ["read", "write"]},
+    {"key": "constraints", "name": "职责分离", "type": "page", "operations": ["read", "write"]},
+    {"key": "users", "name": "用户", "type": "action", "operations": ["read", "write", "create", "update", "delete", "change_password"]},
+    {"key": "account", "name": "平台账号", "type": "action", "operations": ["read", "create", "update", "delete", "check"]},
+    {"key": "db_change", "name": "SQL 变更", "type": "action", "operations": ["submit", "approve", "reject"]},
+    {"key": "model_config", "name": "模型配置", "type": "action", "operations": ["create", "update", "delete"]},
+    {"key": "db_history", "name": "SQL 历史", "type": "action", "operations": ["read"]},
+]
+
+
+ALL_PERMISSION_KEYS: list[str] = [
+    f"{resource['key']}:{operation}"
+    for resource in RBAC_RESOURCES
+    for operation in resource["operations"]
+]
+
+
+DEFAULT_ROLE_PERMISSIONS: dict[str, list[str]] = {
+    "admin": ALL_PERMISSION_KEYS,
+    "manager": [
+        "dashboard:read", "platforms:read", "content:read", "publish:read",
+        "templates:read", "review:read", "sql_review:read", "accounts:read", "account:read",
+        "token_plan:read", "api_docs:read", "permissions:read", "permissions:write",
+        "roles:read", "roles:write", "constraints:read", "constraints:write",
+        "users:read", "users:write", "users:create", "users:update", "users:change_password",
+        "content:create", "content:update", "content:delete", "content:ai_generate",
+        "review:submit", "review:approve", "review:reject",
+        "db_change:submit", "db_change:approve", "db_change:reject",
+        "templates:create", "templates:update", "templates:delete",
+        "account:create", "account:update", "account:delete", "account:check",
+        "publish:create", "publish:retry",
+        "model_config:create", "model_config:update", "model_config:delete",
+        "db:execute", "db_history:read",
+    ],
+    "operator": [
+        "dashboard:read", "platforms:read", "content:read", "publish:read",
+        "templates:read", "accounts:read", "account:read", "token_plan:read", "api_docs:read",
+        "users:create", "users:update", "users:change_password",
+        "content:create", "content:update", "content:delete", "content:ai_generate",
+        "review:submit",
+        "db_change:submit",
+        "templates:create", "templates:update", "templates:delete",
+        "account:create", "account:update", "account:delete", "account:check",
+        "publish:create", "publish:retry",
+    ],
+    "reviewer": [
+        "dashboard:read", "content:read", "review:read", "sql_review:read",
+        "platforms:read", "account:read",
+        "review:approve", "review:reject",
+        "db_change:approve", "db_change:reject",
+        "templates:create", "templates:update", "templates:delete",
+    ],
+}
+
+
 def _map_legacy_permission(legacy_key: str) -> tuple[str, str]:
     """Map a legacy permission key to (resource_key, operation)."""
     if legacy_key == "db:history:read":
@@ -57,13 +126,18 @@ def _map_legacy_permission(legacy_key: str) -> tuple[str, str]:
     if legacy_key.startswith("template:"):
         operation = legacy_key.split(":", 1)[1]
         return "templates", operation
-    if ":" in legacy_key:
-        resource_key, operation = legacy_key.rsplit(":", 1)
-        return resource_key, operation
+    if legacy_key.startswith("account:"):
+        operation = legacy_key.split(":", 1)[1]
+        return "account", operation
     if legacy_key == "accounts":
         return "users", "read"
     if legacy_key == "permission_manage":
         return "permissions", "read"
+    if legacy_key == "database":
+        return "db", "read"
+    if ":" in legacy_key:
+        resource_key, operation = legacy_key.rsplit(":", 1)
+        return resource_key, operation
     return legacy_key, "read"
 
 
@@ -94,61 +168,47 @@ async def _ensure_builtin_roles(db: AsyncSession) -> None:
 
 
 async def _ensure_resources_and_permissions(db: AsyncSession) -> None:
-    result = await db.execute(select(RBACResource).where(RBACResource.key.in_(
-        [_map_legacy_permission(p["key"])[0] for p in ALL_PERMISSIONS]
-    )))
+    resource_keys = [resource["key"] for resource in RBAC_RESOURCES]
+    result = await db.execute(select(RBACResource).where(RBACResource.key.in_(resource_keys)))
     existing_resources = {resource.key: resource for resource in result.scalars().all()}
 
-    permission_keys = [_permission_key(*_map_legacy_permission(p["key"])) for p in ALL_PERMISSIONS]
-    result = await db.execute(select(RBACPermission).where(RBACPermission.key.in_(permission_keys)))
+    result = await db.execute(select(RBACPermission).where(RBACPermission.key.in_(ALL_PERMISSION_KEYS)))
     existing_permissions = {perm.key: perm for perm in result.scalars().all()}
 
     resource_cache: dict[str, RBACResource] = {}
 
-    for perm_def in ALL_PERMISSIONS:
-        legacy_key = perm_def["key"]
-        resource_key, operation = _map_legacy_permission(legacy_key)
-        perm_key = _permission_key(resource_key, operation)
-
+    for resource_def in RBAC_RESOURCES:
+        resource_key = resource_def["key"]
         if resource_key in existing_resources:
             resource = existing_resources[resource_key]
         elif resource_key in resource_cache:
             resource = resource_cache[resource_key]
         else:
-            if legacy_key == "accounts" or legacy_key.startswith("user:"):
-                resource_name = "账号设置"
-            elif legacy_key == "permission_manage":
-                resource_name = "权限设置"
-            elif legacy_key.startswith("template:"):
-                resource_name = "模板中心"
-            else:
-                resource_name = perm_def["name"]
-
-            resource_type = "page" if perm_def["type"] == "page" else "action"
             resource = RBACResource(
                 key=resource_key,
-                name=resource_name,
-                type=resource_type,
+                name=resource_def["name"],
+                type=resource_def["type"],
                 is_active=True,
                 created_at=datetime.utcnow(),
             )
             db.add(resource)
             resource_cache[resource_key] = resource
 
-        if perm_key in existing_permissions:
-            continue
+        for operation in resource_def["operations"]:
+            perm_key = _permission_key(resource_key, operation)
+            if perm_key in existing_permissions:
+                continue
 
-        # Flush to get resource.id for newly created resources.
-        if resource.id is None:
-            await db.flush()
+            if resource.id is None:
+                await db.flush()
 
-        db.add(RBACPermission(
-            resource_id=resource.id,
-            operation=operation,
-            key=perm_key,
-            is_active=True,
-            created_at=datetime.utcnow(),
-        ))
+            db.add(RBACPermission(
+                resource_id=resource.id,
+                operation=operation,
+                key=perm_key,
+                is_active=True,
+                created_at=datetime.utcnow(),
+            ))
 
     await db.commit()
 
@@ -159,20 +219,15 @@ async def _ensure_builtin_role_permissions(db: AsyncSession) -> None:
     )))
     roles_by_name = {role.name: role for role in result.scalars().all()}
 
-    permission_keys = [
-        _permission_key(*_map_legacy_permission(key))
-        for keys in DEFAULT_ROLE_PERMISSIONS.values()
-        for key in keys
-    ]
-    result = await db.execute(select(RBACPermission).where(RBACPermission.key.in_(permission_keys)))
+    result = await db.execute(select(RBACPermission).where(RBACPermission.key.in_(ALL_PERMISSION_KEYS)))
     permissions_by_key = {perm.key: perm for perm in result.scalars().all()}
 
     role_permission_pairs = [
-        (roles_by_name[role_name].id, permissions_by_key[_permission_key(*_map_legacy_permission(key))].id)
+        (roles_by_name[role_name].id, permissions_by_key[key].id)
         for role_name, keys in DEFAULT_ROLE_PERMISSIONS.items()
         if role_name in roles_by_name
         for key in keys
-        if _permission_key(*_map_legacy_permission(key)) in permissions_by_key
+        if key in permissions_by_key
     ]
 
     if not role_permission_pairs:
@@ -245,29 +300,41 @@ async def sync_user_role_assignments(db: AsyncSession) -> None:
 
 
 async def migrate_legacy_role_permissions(db: AsyncSession) -> None:
-    result = await db.execute(select(RolePermission))
-    legacy_records = result.scalars().all()
+    """Migrate legacy role_permissions table data into RBAC3 role permissions.
 
+    This function no longer imports the old constants/models at module level.
+    It reads from the legacy table via raw SQL so that the migration still works
+    when the old model files have been removed.
+    """
+    try:
+        result = await db.execute(
+            text("SELECT role, permission_key, can_read, can_write FROM role_permissions")
+        )
+    except Exception:
+        # Legacy table does not exist; nothing to migrate.
+        return
+
+    legacy_records = result.mappings().all()
     if not legacy_records:
         return
 
-    role_names = {record.role for record in legacy_records}
+    role_names = {record["role"] for record in legacy_records}
     result = await db.execute(select(RBACRole).where(RBACRole.name.in_(role_names)))
     roles_by_name = {role.name: role for role in result.scalars().all()}
 
     permission_keys = [
-        _permission_key(*_map_legacy_permission(record.permission_key))
+        _permission_key(*_map_legacy_permission(record["permission_key"]))
         for record in legacy_records
     ]
     result = await db.execute(select(RBACPermission).where(RBACPermission.key.in_(permission_keys)))
     permissions_by_key = {perm.key: perm for perm in result.scalars().all()}
 
     role_permission_pairs = [
-        (roles_by_name[record.role].id, permissions_by_key[_permission_key(*_map_legacy_permission(record.permission_key))].id)
+        (roles_by_name[record["role"]].id, permissions_by_key[_permission_key(*_map_legacy_permission(record["permission_key"]))].id)
         for record in legacy_records
-        if (record.can_read or record.can_write)
-        and record.role in roles_by_name
-        and _permission_key(*_map_legacy_permission(record.permission_key)) in permissions_by_key
+        if (record["can_read"] or record["can_write"])
+        and record["role"] in roles_by_name
+        and _permission_key(*_map_legacy_permission(record["permission_key"])) in permissions_by_key
     ]
 
     if not role_permission_pairs:

@@ -5,7 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional
 
-from app.core.deps import get_current_user, require_permission
+from app.core.deps import require_permission
 from app.database import get_db
 from app.models.template import Template
 from app.models.user import User
@@ -18,7 +18,7 @@ router = APIRouter(prefix="/api/templates", tags=["模板管理"])
 async def list_templates(
     platform: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission("templates:read", "read")),
 ):
     query = select(Template)
     if platform:
@@ -50,7 +50,7 @@ async def create_template(
 async def get_template(
     template_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission("templates:read", "read")),
 ):
     result = await db.execute(select(Template).where(Template.id == template_id))
     template = result.scalar_one_or_none()

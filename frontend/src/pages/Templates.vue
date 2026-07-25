@@ -6,7 +6,6 @@ import api from '@/utils/api'
 import PageHeader from '@/components/layout/PageHeader.vue'
 import SegmentedControl from '@/components/shared/SegmentedControl.vue'
 import PlatformIcon from '@/components/shared/PlatformIcon.vue'
-import { formatDateTime } from '@/utils/time'
 
 interface Template {
   id: string

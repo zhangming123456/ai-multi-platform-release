@@ -7,7 +7,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.deps import get_current_user, require_permission
+from app.core.deps import require_permission
 from app.database import get_db
 from app.models.ai_generation import AIGenerationRecord
 from app.models.content import Content
@@ -46,7 +46,7 @@ async def list_contents(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission("content:read", "read")),
 ):
     query = select(Content).where(Content.user_id == current_user.id)
     if platform:
@@ -85,7 +85,7 @@ async def list_ai_generations(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission("content:read", "read")),
 ):
     query = select(AIGenerationRecord).where(AIGenerationRecord.user_id == current_user.id)
     if platform:
@@ -100,7 +100,7 @@ async def list_ai_generations(
 async def get_content(
     content_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission("content:read", "read")),
 ):
     result = await db.execute(
         select(Content).where(Content.id == content_id, Content.user_id == current_user.id)
