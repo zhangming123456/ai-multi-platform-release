@@ -3,7 +3,7 @@ import { ref, computed, onMounted } from 'vue'
 import { Message } from '@arco-design/web-vue'
 import { IconSafe, IconLock } from '@arco-design/web-vue/es/icon'
 import PageHeader from '@/components/layout/PageHeader.vue'
-import ResourcePermissionCard from '@/components/rbac/ResourcePermissionCard.vue'
+import PermissionModuleCard from '@/components/rbac/PermissionModuleCard.vue'
 import api from '@/utils/api'
 
 interface Role {
@@ -50,12 +50,18 @@ interface RolePermission {
   grant_type: 'direct' | 'inherited'
 }
 
-type PermissionCategory = 'page' | 'action' | 'both'
+interface ModuleItemDef {
+  id: string
+  title: string
+  subtitle: string
+  readKey?: string
+  writeKeys: string[]
+}
 
-const CATEGORY_LABELS: Record<PermissionCategory, string> = {
-  page: '页面权限',
-  action: '操作权限',
-  both: '既有操作权限也有页面权限',
+interface ModuleDef {
+  key: string
+  label: string
+  items: ModuleItemDef[]
 }
 
 const loading = ref(false)
@@ -65,7 +71,6 @@ const resources = ref<Resource[]>([])
 const permissions = ref<Permission[]>([])
 const rolePermissions = ref<RolePermission[]>([])
 const selectedRoleId = ref<string | null>(null)
-const activeCategory = ref<PermissionCategory>('page')
 
 const BUILTIN_COLORS: Record<string, string> = {
   admin: 'red',
@@ -112,35 +117,205 @@ const selectedRole = computed(() => {
   return roles.value.find((r) => r.id === selectedRoleId.value) || null
 })
 
-function resourceCategory(resource: Resource): PermissionCategory {
-  if (resource.type === 'action') return 'action'
-  const ops = permissions.value
-    .filter((p) => p.resource.id === resource.id && p.is_active)
-    .map((p) => p.operation)
-  const hasRead = ops.includes('read')
-  const hasOther = ops.some((o) => o !== 'read')
-  if (hasRead && hasOther) return 'both'
-  return 'page'
-}
-
-const categoryCounts = computed(() => {
-  const counts: Record<PermissionCategory, number> = { page: 0, action: 0, both: 0 }
-  for (const resource of resources.value) {
-    counts[resourceCategory(resource)]++
-  }
-  return counts
-})
-
-const filteredResources = computed(() => {
-  return resources.value.filter((r) => resourceCategory(r) === activeCategory.value)
-})
-
 const permissionMap = computed(() => {
   const map = new Map<string, Permission>()
   for (const p of permissions.value) {
     map.set(p.id, p)
   }
   return map
+})
+
+const resourceByKey = computed(() => {
+  const map = new Map<string, Resource>()
+  for (const r of resources.value) {
+    map.set(r.key, r)
+  }
+  return map
+})
+
+const permissionByKey = computed(() => {
+  const map = new Map<string, Permission>()
+  for (const p of permissions.value) {
+    map.set(p.key, p)
+  }
+  return map
+})
+
+const PAGE_TITLE_OVERRIDES: Record<string, string> = {
+  users: '账号设置',
+}
+
+function pageItem(resource: Resource): ModuleItemDef {
+  const perms = permissions.value.filter((p) => p.resource.id === resource.id && p.is_active)
+  const readPerm = perms.find((p) => p.operation === 'read')
+  const writePerm = perms.find((p) => p.operation === 'write')
+  return {
+    id: resource.id,
+    title: PAGE_TITLE_OVERRIDES[resource.key] || resource.name,
+    subtitle: '页面访问',
+    readKey: readPerm?.key,
+    writeKeys: writePerm ? [writePerm.key] : [],
+  }
+}
+
+function actionItem(resourceKey: string, operation: string, title: string): ModuleItemDef | null {
+  const perm = permissions.value.find(
+    (p) => p.resource.key === resourceKey && p.operation === operation && p.is_active,
+  )
+  if (!perm) return null
+  return {
+    id: perm.id,
+    title,
+    subtitle: '操作权限',
+    readKey: undefined,
+    writeKeys: [perm.key],
+  }
+}
+
+const modules = computed<ModuleDef[]>(() => {
+  const pageKeys = [
+    'dashboard',
+    'platforms',
+    'content',
+    'publish',
+    'templates',
+    'review',
+    'sql_review',
+    'accounts',
+    'token_plan',
+    'api_docs',
+    'db',
+    'permissions',
+    'roles',
+    'constraints',
+    'users',
+  ]
+  const pageItems: ModuleItemDef[] = []
+  for (const key of pageKeys) {
+    const resource = resourceByKey.value.get(key)
+    if (resource) pageItems.push(pageItem(resource))
+  }
+
+  const systemItems: ModuleItemDef[] = []
+  const systemActions: Array<[string, string, string]> = [
+    ['users', 'read', '查看用户'],
+    ['users', 'write', '管理用户'],
+    ['users', 'create', '创建用户'],
+    ['users', 'update', '编辑用户'],
+    ['users', 'delete', '删除用户'],
+    ['users', 'change_password', '修改用户密码'],
+    ['model_config', 'create', '创建模型配置'],
+    ['model_config', 'update', '编辑模型配置'],
+    ['model_config', 'delete', '删除模型配置'],
+    ['db', 'execute', '执行SQL命令'],
+    ['db_history', 'read', '查看SQL历史'],
+  ]
+  for (const [rk, op, title] of systemActions) {
+    const item = actionItem(rk, op, title)
+    if (item) systemItems.push(item)
+  }
+
+  const contentItems: ModuleItemDef[] = []
+  const contentActions: Array<[string, string, string]> = [
+    ['content', 'create', '创建内容'],
+    ['content', 'update', '编辑内容'],
+    ['content', 'delete', '删除内容'],
+    ['content', 'ai_generate', 'AI生成'],
+    ['templates', 'create', '创建模板'],
+    ['templates', 'update', '编辑模板'],
+    ['templates', 'delete', '删除模板'],
+    ['publish', 'create', '创建发布任务'],
+    ['publish', 'retry', '重试发布任务'],
+  ]
+  for (const [rk, op, title] of contentActions) {
+    const item = actionItem(rk, op, title)
+    if (item) contentItems.push(item)
+  }
+
+  const reviewItems: ModuleItemDef[] = []
+  const reviewActions: Array<[string, string, string]> = [
+    ['review', 'submit', '提交内容审核'],
+    ['review', 'approve', '审核通过'],
+    ['review', 'reject', '审核驳回'],
+    ['db_change', 'submit', '提交SQL变更'],
+    ['db_change', 'approve', 'SQL变更审核通过'],
+    ['db_change', 'reject', 'SQL变更驳回'],
+  ]
+  for (const [rk, op, title] of reviewActions) {
+    const item = actionItem(rk, op, title)
+    if (item) reviewItems.push(item)
+  }
+
+  const basicItems: ModuleItemDef[] = []
+  const basicActions: Array<[string, string, string]> = [
+    ['account', 'read', '查看平台账号'],
+    ['account', 'create', '添加平台账号'],
+    ['account', 'update', '编辑平台账号'],
+    ['account', 'delete', '删除平台账号'],
+    ['account', 'check', '检测账号状态'],
+  ]
+  for (const [rk, op, title] of basicActions) {
+    const item = actionItem(rk, op, title)
+    if (item) basicItems.push(item)
+  }
+
+  const coveredKeys = new Set<string>()
+  for (const item of [...pageItems, ...systemItems, ...contentItems, ...reviewItems, ...basicItems]) {
+    if (item.readKey) coveredKeys.add(item.readKey)
+    for (const key of item.writeKeys) coveredKeys.add(key)
+  }
+
+  const otherItems: ModuleItemDef[] = []
+  const otherByResource = new Map<string, { resource: Permission['resource']; keys: string[] }>()
+  for (const perm of permissions.value) {
+    if (!perm.is_active || coveredKeys.has(perm.key)) continue
+    let group = otherByResource.get(perm.resource.key)
+    if (!group) {
+      group = { resource: perm.resource, keys: [] }
+      otherByResource.set(perm.resource.key, group)
+    }
+    group.keys.push(perm.key)
+  }
+  for (const group of otherByResource.values()) {
+    const readKey = group.keys.find((k) => k.endsWith(':read'))
+    const writeKeys = group.keys.filter((k) => k !== readKey)
+    otherItems.push({
+      id: `other-${group.resource.key}`,
+      title: group.resource.name,
+      subtitle: '其他权限',
+      readKey,
+      writeKeys,
+    })
+  }
+
+  const result: ModuleDef[] = [
+    { key: 'page', label: '页面权限', items: pageItems },
+    { key: 'system', label: '系统设置', items: systemItems },
+    { key: 'content', label: '内容管理', items: contentItems },
+    { key: 'review', label: '审核管理', items: reviewItems },
+    { key: 'basic', label: '基础', items: basicItems },
+  ]
+  if (otherItems.length > 0) {
+    result.push({ key: 'other', label: '其他权限', items: otherItems })
+  }
+  return result
+})
+
+const allPermissionKeys = computed(() => {
+  return new Set(permissions.value.filter((p) => p.is_active).map((p) => p.key))
+})
+
+const rolePermissionKeys = computed(() => {
+  return new Set(rolePermissions.value.map((rp) => rp.key))
+})
+
+const inheritedKeys = computed(() => {
+  return new Set(rolePermissions.value.filter((rp) => rp.grant_type === 'inherited').map((rp) => rp.key))
+})
+
+const effectiveKeys = computed(() => {
+  if (selectedRole.value?.is_super_admin) return allPermissionKeys.value
+  return rolePermissionKeys.value
 })
 
 async function fetchRoles() {
@@ -181,18 +356,100 @@ async function loadAll() {
   }
 }
 
-async function onRoleChange(roleId: unknown) {
-  const id = String(roleId)
-  selectedRoleId.value = id
+async function onRoleChange(roleId: string) {
+  selectedRoleId.value = roleId
   rolePermissions.value = []
-  if (!id) return
+  if (!roleId) return
   loading.value = true
   try {
-    await fetchRolePermissions(id)
+    await fetchRolePermissions(roleId)
   } catch (e: any) {
     Message.error(e.response?.data?.detail || '加载角色权限失败')
   } finally {
     loading.value = false
+  }
+}
+
+function ensurePermission(key: string) {
+  const perm = permissionByKey.value.get(key)
+  if (!perm) return null
+  return perm
+}
+
+function addRolePermission(key: string) {
+  const perm = ensurePermission(key)
+  if (!perm) return
+  if (rolePermissionKeys.value.has(key)) return
+  rolePermissions.value.push({
+    id: `direct-${key}`,
+    key,
+    operation: perm.operation,
+    resource_id: perm.resource.id,
+    resource_key: perm.resource.key,
+    resource_name: perm.resource.name,
+    grant_type: 'direct',
+  })
+}
+
+function removeRolePermission(key: string) {
+  rolePermissions.value = rolePermissions.value.filter((rp) => rp.key !== key)
+}
+
+function togglePermission(key: string) {
+  if (selectedRole.value?.is_super_admin) return
+  const existing = rolePermissions.value.find((rp) => rp.key === key)
+  if (existing?.grant_type === 'inherited') return
+  if (existing) {
+    removeRolePermission(key)
+  } else {
+    addRolePermission(key)
+  }
+}
+
+function toggleWrite(keys: string[]) {
+  if (selectedRole.value?.is_super_admin) return
+  const hasAny = keys.some((key) => rolePermissionKeys.value.has(key))
+  for (const key of keys) {
+    const existing = rolePermissions.value.find((rp) => rp.key === key)
+    if (existing?.grant_type === 'inherited') continue
+    if (hasAny) {
+      removeRolePermission(key)
+    } else {
+      addRolePermission(key)
+    }
+  }
+}
+
+function selectAllRead(module: ModuleDef) {
+  if (selectedRole.value?.is_super_admin) return
+  for (const item of module.items) {
+    if (!item.readKey) continue
+    if (inheritedKeys.value.has(item.readKey)) continue
+    addRolePermission(item.readKey)
+  }
+}
+
+function selectAllWrite(module: ModuleDef) {
+  if (selectedRole.value?.is_super_admin) return
+  for (const item of module.items) {
+    for (const key of item.writeKeys) {
+      if (inheritedKeys.value.has(key)) continue
+      addRolePermission(key)
+    }
+  }
+}
+
+function deselectAllRead(keys: string[]) {
+  if (selectedRole.value?.is_super_admin) return
+  for (const key of keys) {
+    removeRolePermission(key)
+  }
+}
+
+function deselectAllWrite(keys: string[]) {
+  if (selectedRole.value?.is_super_admin) return
+  for (const key of keys) {
+    removeRolePermission(key)
   }
 }
 
@@ -207,48 +464,6 @@ function selectedDirectPermissionIds(): string[] {
     }
   }
   return ids
-}
-
-function togglePermission(key: string, _mode: 'read' | 'write') {
-  if (selectedRole.value?.is_super_admin) return
-  const existing = rolePermissions.value.find((rp) => rp.key === key)
-  if (existing?.grant_type === 'inherited') return
-
-  const perm = permissionMap.value.get(
-    permissions.value.find((p) => p.key === key)?.id || '',
-  )
-  if (!perm) return
-
-  const currentlyHas = Boolean(existing)
-  let updated = rolePermissions.value.filter((rp) => rp.key !== key)
-
-  if (!currentlyHas) {
-    updated.push({
-      id: `direct-${key}`,
-      key,
-      operation: perm.operation,
-      resource_id: perm.resource.id,
-      resource_key: perm.resource.key,
-      resource_name: perm.resource.name,
-      grant_type: 'direct',
-    })
-  }
-
-  rolePermissions.value = updated
-}
-
-function toggleResourceRead(resource: Resource) {
-  const readPerm = permissions.value.find(
-    (p) => p.resource.id === resource.id && p.operation === 'read',
-  )
-  if (readPerm) togglePermission(readPerm.key, 'read')
-}
-
-function toggleResourceWrite(resource: Resource) {
-  const writePerm = permissions.value.find(
-    (p) => p.resource.id === resource.id && p.operation === 'write',
-  )
-  if (writePerm) togglePermission(writePerm.key, 'write')
 }
 
 async function savePermissions() {
@@ -273,7 +488,7 @@ onMounted(loadAll)
 
 <template>
   <div class="page-main">
-    <PageHeader title="权限设置" subtitle="按资源树为角色配置访问与操作权限，子角色继承的权限不可取消">
+    <PageHeader title="权限管理" subtitle="为不同角色分配页面访问和操作权限，超级管理员拥有所有权限">
       <template #actions>
         <a-button
           v-if="selectedRole && !selectedRole.is_super_admin"
@@ -288,28 +503,34 @@ onMounted(loadAll)
 
     <a-spin :loading="loading" tip="加载中..." class="w-full">
       <div class="flex flex-col lg:flex-row gap-5">
-        <div class="lg:w-[260px] shrink-0">
+        <div class="lg:w-[200px] shrink-0">
           <div class="bg-white/80 backdrop-blur-xl rounded-2xl border border-black/[0.05] p-4">
             <p class="text-[12px] text-[#86868B] font-medium px-1 pb-3">选择角色</p>
-            <a-select
-              :model-value="selectedRoleId || undefined"
-              placeholder="选择角色"
-              @change="onRoleChange"
-            >
-              <a-option
+            <div class="flex flex-col gap-2">
+              <button
                 v-for="role in sortedRoles"
                 :key="role.id"
-                :value="role.id"
-                :label="role.display_name"
+                type="button"
+                class="flex items-center justify-between w-full px-3 py-2.5 rounded-xl border text-left transition-all"
+                :class="[
+                  selectedRoleId === role.id
+                    ? 'bg-[#007AFF]/10 border-[#007AFF]/30'
+                    : 'bg-transparent border-black/[0.04] hover:bg-black/[0.02]',
+                ]"
+                @click="onRoleChange(role.id)"
               >
-                <div class="flex items-center gap-2">
-                  <a-tag :color="roleColor(role)" size="small" class="!m-0">
+                <div class="flex items-center gap-2 min-w-0">
+                  <a-tag :color="roleColor(role)" size="small" class="!m-0 shrink-0">
                     {{ role.display_name }}
                   </a-tag>
-                  <IconLock v-if="role.is_super_admin" :size="12" class="text-[#ff9500]" />
                 </div>
-              </a-option>
-            </a-select>
+                <IconLock
+                  v-if="role.is_super_admin"
+                  :size="12"
+                  class="text-[#ff9500] shrink-0 ml-2"
+                />
+              </button>
+            </div>
 
             <div
               v-if="selectedRole?.is_super_admin"
@@ -338,33 +559,22 @@ onMounted(loadAll)
           </div>
 
           <div v-else class="space-y-4">
-            <a-tabs v-model:active-key="activeCategory" type="rounded" size="medium">
-              <a-tab-pane
-                v-for="key in (['page', 'action', 'both'] as PermissionCategory[])"
-                :key="key"
-                :title="`${CATEGORY_LABELS[key]} (${categoryCounts[key]})`"
-              >
-                <div class="space-y-4 pt-2">
-                  <ResourcePermissionCard
-                    v-for="resource in filteredResources"
-                    :key="resource.id"
-                    :resource="resource"
-                    :depth="0"
-                    :selected-role="selectedRole"
-                    :role-permission-map="new Map(rolePermissions.map((rp) => [rp.key, rp]))"
-                    :permission-map="permissionMap"
-                    :permissions="permissions"
-                    @toggle-permission="togglePermission"
-                    @toggle-resource-read="toggleResourceRead"
-                    @toggle-resource-write="toggleResourceWrite"
-                  />
-                  <a-empty
-                    v-if="filteredResources.length === 0"
-                    description="该分类下暂无资源"
-                  />
-                </div>
-              </a-tab-pane>
-            </a-tabs>
+            <PermissionModuleCard
+              v-for="module in modules"
+              :key="module.key"
+              :title="module.label"
+              :count="module.items.length"
+              :items="module.items"
+              :effective-keys="effectiveKeys"
+              :inherited-keys="inheritedKeys"
+              :readonly="selectedRole.is_super_admin"
+              @toggle-read="togglePermission"
+              @toggle-write="toggleWrite"
+              @select-all-read="selectAllRead(module)"
+              @select-all-write="selectAllWrite(module)"
+              @deselect-all-read="deselectAllRead"
+              @deselect-all-write="deselectAllWrite"
+            />
           </div>
         </div>
       </div>
