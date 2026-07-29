@@ -159,7 +159,7 @@ async function submitForReview(id: string) {
 
 <template>
   <div class="content-list">
-    <PageHeader title="内容工坊" subtitle="创作并管理适配各平台的内容">
+    <PageHeader title="内容列表" subtitle="创作并管理适配各平台的内容">
       <template #actions>
         <a-button type="primary" @click="router.push('/content/create')">
           <template #icon><IconPlus /></template>

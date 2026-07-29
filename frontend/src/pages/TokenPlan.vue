@@ -456,7 +456,7 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="page-main">
-    <PageHeader title="模型管理" subtitle="配置 AI 模型服务商与自定义接入，统一管理调用配额">
+    <PageHeader title="Token方案" subtitle="配置 AI 模型服务商与自定义接入，统一管理调用配额">
       <template #actions>
         <a-tag :color="store.activePlan ? 'green' : 'red'" size="small">
           <template #icon>

@@ -11,6 +11,7 @@ from app.models.rbac_permission import RBACPermission
 from app.models.rbac_role import RBACRole
 from app.models.rbac_role_hierarchy import RBACRoleHierarchy
 from app.models.rbac_role_permission import RBACRolePermission
+from app.models.rbac_user_permission_override import RBACUserPermissionOverride
 from app.models.rbac_user_role_assignment import RBACUserRoleAssignment
 
 
@@ -185,6 +186,24 @@ async def get_user_effective_permissions(
         if operation in WRITE_OPERATIONS:
             access.write = True
 
+    # Apply user-level permission overrides (grant additional permissions or
+    # deny permissions granted by roles).
+    overrides = await db.execute(
+        select(RBACUserPermissionOverride).where(
+            RBACUserPermissionOverride.user_id == user_id,
+        )
+    )
+    for override in overrides.scalars().all():
+        if override.granted:
+            entry = access_map.get(override.permission_key)
+            if entry is None:
+                entry = PermissionAccess()
+                access_map[override.permission_key] = entry
+            entry.read = True
+            entry.write = True
+        else:
+            access_map.pop(override.permission_key, None)
+
     return access_map
 
 
@@ -284,5 +303,16 @@ async def has_permission_direct(
             return True
         if mode == "write" and operation in WRITE_OPERATIONS:
             return True
+
+    # Check user-level permission overrides.
+    override_result = await db.execute(
+        select(RBACUserPermissionOverride).where(
+            RBACUserPermissionOverride.user_id == user_id,
+            RBACUserPermissionOverride.permission_key == permission_key,
+        )
+    )
+    override = override_result.scalar_one_or_none()
+    if override is not None:
+        return override.granted
 
     return False

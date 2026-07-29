@@ -641,7 +641,7 @@ onMounted(() => {
 
 <template>
   <div class="db-page">
-    <PageHeader title="数据库管理" subtitle="执行 SQL 命令管理数据库（仅超级管理员可用）">
+    <PageHeader title="数据库控制台" subtitle="执行 SQL 命令管理数据库（仅超级管理员可用）">
       <template #actions>
         <a-tag color="red" size="small">
           <template #icon><IconStorage /></template>

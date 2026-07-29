@@ -79,7 +79,7 @@ onMounted(() => {
 
 <template>
   <div>
-    <PageHeader title="模板中心" subtitle="使用模板快速创建优质内容">
+    <PageHeader title="模板管理" subtitle="使用模板快速创建优质内容">
       <template #actions>
         <a-button type="primary">
           <template #icon><IconPlus /></template>

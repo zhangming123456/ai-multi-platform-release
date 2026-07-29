@@ -98,7 +98,8 @@ DEFAULT_ROLE_PERMISSIONS: dict[str, list[str]] = {
     "operator": [
         "dashboard:read", "platforms:read", "content:read", "publish:read",
         "templates:read", "accounts:read", "account:read", "token_plan:read", "api_docs:read",
-        "users:create", "users:update", "users:change_password",
+        "users:read", "users:create", "users:update", "users:change_password",
+        "roles:read",
         "content:create", "content:update", "content:delete", "content:ai_generate",
         "review:submit",
         "db_change:submit",

@@ -12,6 +12,7 @@ from app.core.deps import get_current_user, require_permission
 from app.core.security import hash_password, validate_password_format, verify_password
 from app.database import get_db
 from app.models.rbac_role import RBACRole
+from app.models.rbac_user_permission_override import RBACUserPermissionOverride
 from app.models.rbac_user_role_assignment import RBACUserRoleAssignment
 from app.models.user import User, UserRole
 from app.models.user_creation_request import UserCreationRequest, UserCreationStatus
@@ -269,6 +270,12 @@ async def update_user(
             detail="仅可编辑自己的信息",
         )
 
+    if not _is_manager_or_admin(current_user) and body.role_ids is not None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="仅管理员可修改角色分配，非管理员只能查看",
+        )
+
     if _is_admin(user):
         if body.role_ids is not None:
             raise HTTPException(
@@ -453,6 +460,100 @@ async def get_user_permissions(
         key: UserPermissionItem(key=key, read=access.read, write=access.write)
         for key, access in effective.items()
     }
+
+
+class PermissionOverrideEntry(BaseModel):
+    permission_key: str
+    granted: bool
+
+
+class UpdateUserPermissionOverridesRequest(BaseModel):
+    overrides: list[PermissionOverrideEntry]
+
+
+@router.get(
+    "/users/{user_id}/permission-overrides",
+    response_model=list[PermissionOverrideEntry],
+    dependencies=[Depends(require_permission("users:write", "write"))],
+)
+async def get_user_permission_overrides(
+    user_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """获取用户的自定义权限覆盖列表。"""
+    result = await db.execute(
+        select(RBACUserPermissionOverride).where(
+            RBACUserPermissionOverride.user_id == user_id,
+        ).order_by(RBACUserPermissionOverride.permission_key)
+    )
+    overrides = result.scalars().all()
+    return [
+        PermissionOverrideEntry(
+            permission_key=o.permission_key,
+            granted=o.granted,
+        )
+        for o in overrides
+    ]
+
+
+@router.put(
+    "/users/{user_id}/permission-overrides",
+    response_model=list[PermissionOverrideEntry],
+    dependencies=[Depends(require_permission("users:write", "write"))],
+)
+async def update_user_permission_overrides(
+    user_id: str,
+    body: UpdateUserPermissionOverridesRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """更新用户的自定义权限覆盖（全量替换）。"""
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="用户不存在",
+        )
+
+    if _is_admin(user):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="超级管理员账号不可修改权限覆盖",
+        )
+
+    # Delete all existing overrides for this user.
+    await db.execute(
+        delete(RBACUserPermissionOverride).where(
+            RBACUserPermissionOverride.user_id == user_id,
+        )
+    )
+
+    # Insert new overrides.
+    for entry in body.overrides:
+        db.add(RBACUserPermissionOverride(
+            user_id=user_id,
+            permission_key=entry.permission_key,
+            granted=entry.granted,
+        ))
+
+    await db.commit()
+
+    # Return the saved overrides.
+    result = await db.execute(
+        select(RBACUserPermissionOverride).where(
+            RBACUserPermissionOverride.user_id == user_id,
+        ).order_by(RBACUserPermissionOverride.permission_key)
+    )
+    overrides = result.scalars().all()
+    return [
+        PermissionOverrideEntry(
+            permission_key=o.permission_key,
+            granted=o.granted,
+        )
+        for o in overrides
+    ]
 
 
 @router.delete(

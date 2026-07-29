@@ -155,7 +155,7 @@ onMounted(() => {
 
 <template>
   <div class="sql-review-page">
-    <PageHeader title="SQL 变更审核" subtitle="审核数据库删除/修改操作，至少 2 人通过后自动执行">
+    <PageHeader title="SQL审核" subtitle="审核数据库删除/修改操作，至少 2 人通过后自动执行">
       <template #actions>
         <a-select v-model="statusFilter" style="width: 140px" @change="fetchChanges">
           <a-option value="pending">待审核</a-option>

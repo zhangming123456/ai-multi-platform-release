@@ -157,7 +157,7 @@ function handleLogout() {
 
 <template>
   <div class="profile-page">
-    <PageHeader title="个人资料" subtitle="管理您的账户信息与安全设置" />
+    <PageHeader title="个人中心" subtitle="管理您的账户信息与安全设置" />
 
     <a-spin :loading="loading" tip="加载中...">
       <div v-if="user" class="profile-content">

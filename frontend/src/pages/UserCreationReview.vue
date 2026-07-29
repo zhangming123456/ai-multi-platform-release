@@ -119,7 +119,7 @@ onMounted(async () => {
 
 <template>
   <div class="user-creation-review-page">
-    <PageHeader title="用户创建审核" subtitle="审核非管理员提交的账号创建申请" />
+    <PageHeader title="用户注册审核" subtitle="审核非管理员提交的账号创建申请" />
 
     <a-spin :loading="loading" tip="加载中...">
       <a-table

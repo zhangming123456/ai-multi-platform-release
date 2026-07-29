@@ -61,13 +61,16 @@ function hasPerm(key: string): boolean {
 const contentChildren = computed<MenuEntry[]>(() => {
   const items: MenuEntry[] = []
   if (hasPerm('content:read')) {
-    items.push({ key: 'content', name: '内容工坊', path: '/content', icon: IconFile, permKey: 'content:read' })
+    items.push({ key: 'content', name: '内容列表', path: '/content', icon: IconFile, permKey: 'content:read' })
+  }
+  if (hasPerm('content:create')) {
+    items.push({ key: 'content-create', name: '创作内容', path: '/content/create', icon: IconFile, permKey: 'content:create' })
   }
   if (hasPerm('publish:read')) {
     items.push({ key: 'publish', name: '发布管理', path: '/publish', icon: IconSend, permKey: 'publish:read' })
   }
   if (hasPerm('templates:read')) {
-    items.push({ key: 'templates', name: '模板中心', path: '/templates', icon: IconApps, permKey: 'templates:read' })
+    items.push({ key: 'templates', name: '模板管理', path: '/templates', icon: IconApps, permKey: 'templates:read' })
   }
   return items
 })
@@ -78,10 +81,10 @@ const reviewChildren = computed<MenuEntry[]>(() => {
     items.push({ key: 'review', name: '内容审核', path: '/review', icon: IconCheckCircle, permKey: 'review:read' })
   }
   if (hasPerm('sql_review:read')) {
-    items.push({ key: 'sql-review', name: 'SQL 审核', path: '/sql-review', icon: IconStorage, permKey: 'sql_review:read' })
+    items.push({ key: 'sql-review', name: 'SQL审核', path: '/sql-review', icon: IconStorage, permKey: 'sql_review:read' })
   }
   if (hasPerm('review:read')) {
-    items.push({ key: 'user-creation-review', name: '用户创建审核', path: '/settings/user-creation-review', icon: IconUser, permKey: 'review:read' })
+    items.push({ key: 'user-creation-review', name: '用户注册审核', path: '/settings/user-creation-review', icon: IconUser, permKey: 'review:read' })
   }
   return items
 })
@@ -89,16 +92,16 @@ const reviewChildren = computed<MenuEntry[]>(() => {
 const rbacChildren = computed<MenuEntry[]>(() => {
   const items: MenuEntry[] = []
   if (hasPerm('users:read')) {
-    items.push({ key: 'rbac-users', name: '账号设置', path: '/rbac/users', icon: IconSafe, permKey: 'users:read' })
+    items.push({ key: 'rbac-users', name: '用户管理', path: '/rbac/users', icon: IconSafe, permKey: 'users:read' })
   }
   if (hasPerm('roles:read')) {
-    items.push({ key: 'rbac-roles', name: '角色设置', path: '/rbac/roles', icon: IconUser, permKey: 'roles:read' })
+    items.push({ key: 'rbac-roles', name: '角色管理', path: '/rbac/roles', icon: IconUser, permKey: 'roles:read' })
   }
   if (hasPerm('permissions:read')) {
-    items.push({ key: 'rbac-permissions', name: '权限设置', path: '/rbac/permissions', icon: IconSafe, permKey: 'permissions:read' })
+    items.push({ key: 'rbac-permissions', name: '权限管理', path: '/rbac/permissions', icon: IconSafe, permKey: 'permissions:read' })
   }
   if (hasPerm('constraints:read')) {
-    items.push({ key: 'rbac-constraints', name: '职责分离', path: '/rbac/constraints', icon: IconSafe, permKey: 'constraints:read' })
+    items.push({ key: 'rbac-constraints', name: '约束管理', path: '/rbac/constraints', icon: IconSafe, permKey: 'constraints:read' })
   }
   return items
 })
@@ -106,13 +109,13 @@ const rbacChildren = computed<MenuEntry[]>(() => {
 const sysChildren = computed<MenuEntry[]>(() => {
   const items: MenuEntry[] = []
   if (hasPerm('token_plan:read')) {
-    items.push({ key: 'token-plan', name: 'Token 配置', path: '/settings/token-plan', icon: IconSettings, permKey: 'token_plan:read' })
+    items.push({ key: 'token-plan', name: 'Token方案', path: '/settings/token-plan', icon: IconSettings, permKey: 'token_plan:read' })
   }
   if (hasPerm('api_docs:read')) {
-    items.push({ key: 'api-docs', name: 'API 文档', path: '/developer/docs', icon: IconCode, permKey: 'api_docs:read' })
+    items.push({ key: 'api-docs', name: 'API文档', path: '/developer/docs', icon: IconCode, permKey: 'api_docs:read' })
   }
   if (hasPerm('db:read')) {
-    items.push({ key: 'database', name: '数据库管理', path: '/developer/database', icon: IconStorage, permKey: 'db:read' })
+    items.push({ key: 'database', name: '数据库控制台', path: '/developer/database', icon: IconStorage, permKey: 'db:read' })
   }
   return items
 })

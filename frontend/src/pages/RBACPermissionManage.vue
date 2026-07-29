@@ -142,7 +142,7 @@ const permissionByKey = computed(() => {
 })
 
 const PAGE_TITLE_OVERRIDES: Record<string, string> = {
-  users: '账号设置',
+  users: '用户设置',
 }
 
 function pageItem(resource: Resource): ModuleItemDef {

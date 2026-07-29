@@ -482,7 +482,7 @@ async function copyContent() {
 
 <template>
   <div class="space-y-6">
-    <PageHeader title="AI 内容创建" subtitle="输入主题，一键生成适配各平台风格的内容变体">
+    <PageHeader title="创作内容" subtitle="输入主题，一键生成适配各平台风格的内容变体">
       <template #actions>
         <a-tag
           :color="store.activePlan ? 'green' : 'orange'"

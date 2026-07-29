@@ -7,6 +7,7 @@ import {
   IconLock,
   IconRefresh,
   IconSafe,
+  IconSettings,
 } from '@arco-design/web-vue/es/icon'
 import { Message, Modal } from '@arco-design/web-vue'
 import PageHeader from '@/components/layout/PageHeader.vue'
@@ -114,7 +115,8 @@ async function fetchData() {
 
 onMounted(fetchData)
 
-function isSelf(user: UserListItem): boolean {
+function isSelf(user: UserListItem | null | undefined): boolean {
+  if (!user) return false
   return userStore.userInfo?.id === user.id
 }
 
@@ -296,11 +298,134 @@ function onAddRoleIdsChange(value: unknown) {
 function onEditRoleIdsChange(value: unknown) {
   editForm.value.role_ids = Array.isArray(value) ? value.map(String) : []
 }
+
+// ---- Permission Overrides (用户自定义权限) ----
+interface AllPermission {
+  id: string
+  key: string
+  operation: string
+  resource: {
+    id: string
+    key: string
+    name: string
+    type: string
+  }
+}
+
+interface PermOverrideEntry {
+  permission_key: string
+  granted: boolean
+}
+
+interface UserEffectivePerm {
+  key: string
+  read: boolean
+  write: boolean
+}
+
+const permOverrideVisible = ref(false)
+const permOverrideSaving = ref(false)
+const permOverrideUser = ref<UserListItem | null>(null)
+const allPermissions = ref<AllPermission[]>([])
+const userRoleBasedPerms = ref<Record<string, UserEffectivePerm>>({})
+
+// Current override state: permission_key -> { granted: bool | null }
+// null = use role default, true = force grant, false = force deny
+const overrideState = ref<Record<string, boolean | null>>({})
+
+async function openPermOverride(user: UserListItem) {
+  permOverrideUser.value = user
+  permOverrideVisible.value = true
+
+  // Fetch all permissions, user effective role-based permissions, and current overrides
+  try {
+    const [allPermsRes, userPermsRes, overridesRes] = await Promise.all([
+      api.get<AllPermission[]>('/v2/permissions'),
+      api.get<Record<string, UserEffectivePerm>>(`/v2/users/${user.id}/permissions`),
+      api.get<PermOverrideEntry[]>(`/v2/users/${user.id}/permission-overrides`),
+    ])
+    allPermissions.value = Array.isArray(allPermsRes.data) ? allPermsRes.data : []
+    userRoleBasedPerms.value = userPermsRes.data || {}
+
+    const overrides = Array.isArray(overridesRes.data) ? overridesRes.data : []
+    const state: Record<string, boolean | null> = {}
+    for (const p of allPermissions.value) {
+      const override = overrides.find((o) => o.permission_key === p.key)
+      state[p.key] = override ? override.granted : null
+    }
+    overrideState.value = state
+  } catch (e: any) {
+    Message.error(e.response?.data?.detail || '加载权限数据失败')
+    permOverrideVisible.value = false
+  }
+}
+
+async function savePermOverride() {
+  if (!permOverrideUser.value) return
+  permOverrideSaving.value = true
+  try {
+    const overrides: PermOverrideEntry[] = []
+    for (const [key, granted] of Object.entries(overrideState.value)) {
+      if (granted !== null) {
+        overrides.push({ permission_key: key, granted })
+      }
+    }
+    await api.put(`/v2/users/${permOverrideUser.value.id}/permission-overrides`, {
+      overrides,
+    })
+    Message.success('用户权限已更新')
+    permOverrideVisible.value = false
+  } catch (e: any) {
+    Message.error(e.response?.data?.detail || '保存权限失败')
+  } finally {
+    permOverrideSaving.value = false
+  }
+}
+
+// Group permissions by resource key prefix
+const permGroups = computed(() => {
+  const groups: Record<string, { label: string; perms: AllPermission[] }> = {}
+  const groupLabels: Record<string, string> = {
+    dashboard: '仪表盘',
+    platforms: '平台管理',
+    content: '内容管理',
+    publish: '发布管理',
+    templates: '模板管理',
+    review: '内容审核',
+    sql_review: 'SQL审核',
+    token_plan: 'Token方案',
+    api_docs: 'API文档',
+    db: '数据库',
+    users: '用户管理',
+    roles: '角色管理',
+    permissions: '权限管理',
+    constraints: '约束管理',
+  }
+
+  for (const p of allPermissions.value) {
+    const prefix = p.key.split(':')[0]
+    if (!groups[prefix]) {
+      groups[prefix] = { label: groupLabels[prefix] || prefix, perms: [] }
+    }
+    groups[prefix].perms.push(p)
+  }
+
+  return Object.values(groups)
+})
+
+function hasRolePerm(key: string): string {
+  const p = userRoleBasedPerms.value[key]
+  if (!p) return '无'
+  if (p.read && p.write) return '读写'
+  if (p.write) return '写入'
+  if (p.read) return '只读'
+  return '无'
+}
 </script>
 
 <template>
   <div class="page-main">
-    <PageHeader title="账号设置" subtitle="管理系统用户账号与 RBAC3 角色分配">
+    <PageHeader title="用户管理" subtitle="管理系统用户账号与 RBAC3 角色分配">
       <template #actions>
         <a-button v-if="canCreate" type="primary" @click="openAdd">
           <template #icon><IconPlus /></template>
@@ -339,6 +464,15 @@ function onEditRoleIdsChange(value: unknown) {
         </template>
         <template #actions="{ record }">
           <a-space :size="4">
+            <a-button
+              v-if="canUpdate && canManageUsers && !isBuiltInAdmin(record)"
+              type="text"
+              size="small"
+              title="自定义权限"
+              @click="openPermOverride(record)"
+            >
+              <template #icon><IconSettings /></template>
+            </a-button>
             <a-button
               v-if="canChangePassword && (canManageUsers || isSelf(record))"
               type="text"
@@ -452,12 +586,15 @@ function onEditRoleIdsChange(value: unknown) {
             :model-value="editForm.role_ids"
             placeholder="选择角色"
             multiple
-            :disabled="isBuiltInAdmin(editingUser)"
+            :disabled="isBuiltInAdmin(editingUser) || (!canManageUsers && isSelf(editingUser))"
             :options="roleOptions"
             @change="onEditRoleIdsChange"
           />
           <template v-if="isBuiltInAdmin(editingUser)" #extra>
             <span class="text-[11px] text-[#ff3b30]">超级管理员角色不可修改</span>
+          </template>
+          <template v-else-if="!canManageUsers && isSelf(editingUser)" #extra>
+            <span class="text-[11px] text-[#86868b]">仅管理员可修改角色分配，当前为查看模式</span>
           </template>
         </a-form-item>
       </a-form>
@@ -493,6 +630,48 @@ function onEditRoleIdsChange(value: unknown) {
           </div>
         </a-form>
       </a-spin>
+    </a-modal>
+
+    <!-- 用户自定义权限 Modal -->
+    <a-modal
+      v-model:visible="permOverrideVisible"
+      :title="`自定义权限 - ${permOverrideUser?.nickname || ''}`"
+      :width="640"
+      :ok-loading="permOverrideSaving"
+      ok-text="保存"
+      @ok="savePermOverride"
+    >
+      <div class="text-[13px] text-[#86868b] mb-4">
+        开启开关则强制授予该权限，关闭则强制禁止该权限。
+        保持默认状态（不开启不关闭）则继续使用角色权限。
+        角色默认权限：<span class="text-[#1D1D1F] font-medium">{{ permOverrideUser?.roles?.map(r => r.display_name).join('、') || '无' }}</span>
+      </div>
+
+      <div class="max-h-[50vh] overflow-y-auto pr-2 space-y-4">
+        <div v-for="group in permGroups" :key="group.label" class="border border-[#E5E5EA] rounded-lg p-3">
+          <div class="text-[13px] font-semibold text-[#1D1D1F] mb-2">{{ group.label }}</div>
+          <div class="space-y-1">
+            <div
+              v-for="perm in group.perms"
+              :key="perm.key"
+              class="flex items-center justify-between py-1.5 px-2 rounded-md hover:bg-[#F5F5F7] transition-colors"
+            >
+              <div class="flex items-center gap-2 min-w-0">
+                <span class="text-[13px] text-[#1D1D1F] truncate">{{ perm.resource.name }}{{ perm.operation !== 'read' ? ` (${perm.operation})` : '' }}</span>
+              </div>
+              <div class="flex items-center gap-3 shrink-0">
+                <span class="text-[11px] text-[#86868b] w-8 text-right">{{ hasRolePerm(perm.key) }}</span>
+                <a-switch
+                  size="small"
+                  :model-value="overrideState[perm.key]"
+                  :disabled="permOverrideSaving"
+                  @change="(val: boolean) => overrideState[perm.key] = val"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </a-modal>
   </div>
 </template>

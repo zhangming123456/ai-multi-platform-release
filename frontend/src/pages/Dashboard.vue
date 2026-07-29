@@ -109,7 +109,7 @@ onMounted(loadDashboard)
 
 <template>
   <div>
-    <PageHeader title="数据概览" subtitle="今天是发布矩阵的好日子，这是您的实时数据概览">
+    <PageHeader title="仪表盘" subtitle="今天是发布矩阵的好日子，这是您的实时数据概览">
       <template #actions>
         <a-tag color="green" size="small">
           <template #icon>

@@ -18,7 +18,7 @@ onMounted(async () => {
 
 <template>
   <div class="flex flex-col h-full">
-    <PageHeader title="API 文档" subtitle="在线接口调试与文档" />
+    <PageHeader title="API文档" subtitle="在线接口调试与文档" />
     <div class="flex-1 overflow-auto p-6">
       <div
         id="swagger-ui-container"

@@ -10,6 +10,7 @@ from app.models.rbac_resource import RBACResource
 from app.models.rbac_role import RBACRole
 from app.models.rbac_role_hierarchy import RBACRoleHierarchy
 from app.models.rbac_role_permission import RBACRolePermission
+from app.models.rbac_user_permission_override import RBACUserPermissionOverride
 from app.models.rbac_user_role_assignment import RBACUserRoleAssignment
 from app.models.sql_change_request import SqlChangeRequest, SqlChangeStatus, SqlChangeType
 from app.models.sql_history import SqlHistory
@@ -36,6 +37,7 @@ __all__ = [
     "RBACRoleHierarchy",
     "RBACRolePermission",
     "RBACUserRoleAssignment",
+    "RBACUserPermissionOverride",
     "RBACConstraint",
     "RBACConstraintRoleAssociation",
     "SqlHistory",

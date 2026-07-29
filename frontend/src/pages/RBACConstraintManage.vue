@@ -301,7 +301,7 @@ function onPrerequisiteRoleIdsChange(value: unknown) {
 
 <template>
   <div class="page-main">
-    <PageHeader title="职责分离" subtitle="管理角色互斥、先决条件与成员基数约束">
+    <PageHeader title="约束管理" subtitle="管理角色互斥、先决条件与成员基数约束">
       <template #actions>
         <a-button v-if="canWrite" type="primary" @click="openAdd">
           <template #icon><IconPlus /></template>

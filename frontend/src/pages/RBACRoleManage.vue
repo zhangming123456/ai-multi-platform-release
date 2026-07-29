@@ -294,7 +294,7 @@ function formatConstraintRoles(constraint: Constraint, roleId: string): string {
 
 <template>
   <div class="page-main">
-    <PageHeader title="角色设置" subtitle="管理系统角色、自定义角色与角色继承关系">
+    <PageHeader title="角色管理" subtitle="管理系统角色、自定义角色与角色继承关系">
       <template #actions>
         <a-button type="primary" @click="openAdd">
           <template #icon><IconPlus /></template>

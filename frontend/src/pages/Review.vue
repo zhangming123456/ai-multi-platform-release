@@ -122,7 +122,7 @@ onMounted(() => {
 <template>
   <div class="review-page">
     <div class="page-header">
-      <h2>审核管理</h2>
+      <h2>内容审核</h2>
       <p class="page-desc">审核用户提交的内容</p>
     </div>
 

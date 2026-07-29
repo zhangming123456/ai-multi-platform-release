@@ -26,7 +26,7 @@ const breadcrumbMap: Record<string, string> = {
   '/templates': '模板中心',
   '/settings/token-plan': 'Token 配置',
   '/developer/docs': 'API 文档',
-  '/rbac/users': '账号设置',
+  '/rbac/users': '用户设置',
   '/rbac/roles': '角色设置',
   '/rbac/permissions': '权限设置',
   '/rbac/constraints': '职责分离',

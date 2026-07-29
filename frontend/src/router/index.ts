@@ -10,7 +10,7 @@ const router = createRouter({
       path: '/login',
       name: 'Login',
       component: () => import('@/pages/Login.vue'),
-      meta: { public: true },
+      meta: { title: '登录', public: true },
     },
     {
       path: '/',
@@ -20,109 +20,109 @@ const router = createRouter({
           path: '',
           name: 'Dashboard',
           component: () => import('@/pages/Dashboard.vue'),
-          meta: { permKey: 'dashboard:read' },
+          meta: { title: '仪表盘', permKey: 'dashboard:read' },
         },
         {
           path: '403',
           name: 'Forbidden',
           component: () => import('@/pages/Forbidden.vue'),
-          meta: { skipPermCheck: true },
+          meta: { title: '无权限', skipPermCheck: true },
         },
         {
           path: 'profile',
           name: 'Profile',
           component: () => import('@/pages/Profile.vue'),
-          meta: { skipPermCheck: true },
+          meta: { title: '个人中心', skipPermCheck: true },
         },
         {
           path: 'platforms',
           name: 'Platforms',
           component: () => import('@/pages/Platforms.vue'),
-          meta: { permKey: 'platforms:read' },
+          meta: { title: '平台管理', permKey: 'platforms:read' },
         },
         {
           path: 'content',
           name: 'ContentList',
           component: () => import('@/pages/ContentList.vue'),
-          meta: { permKey: 'content:read' },
+          meta: { title: '内容列表', permKey: 'content:read' },
         },
         {
           path: 'content/create',
           name: 'ContentCreate',
           component: () => import('@/pages/ContentCreate.vue'),
-          meta: { permKey: 'content:create' },
+          meta: { title: '创作内容', permKey: 'content:create' },
         },
         {
           path: 'publish',
           name: 'Publish',
           component: () => import('@/pages/Publish.vue'),
-          meta: { permKey: 'publish:read' },
+          meta: { title: '发布管理', permKey: 'publish:read' },
         },
         {
           path: 'review',
           name: 'Review',
           component: () => import('@/pages/Review.vue'),
-          meta: { permKey: 'review:read' },
+          meta: { title: '内容审核', permKey: 'review:read' },
         },
         {
           path: 'sql-review',
           name: 'SqlReview',
           component: () => import('@/pages/SqlReview.vue'),
-          meta: { permKey: 'sql_review:read' },
+          meta: { title: 'SQL审核', permKey: 'sql_review:read' },
         },
         {
           path: 'templates',
           name: 'Templates',
           component: () => import('@/pages/Templates.vue'),
-          meta: { permKey: 'templates:read' },
+          meta: { title: '模板管理', permKey: 'templates:read' },
         },
         {
           path: 'settings/token-plan',
           name: 'TokenPlan',
           component: () => import('@/pages/TokenPlan.vue'),
-          meta: { permKey: 'token_plan:read' },
+          meta: { title: 'Token方案', permKey: 'token_plan:read' },
         },
         {
           path: 'developer/docs',
           name: 'ApiDocs',
           component: () => import('@/pages/ApiDocs.vue'),
-          meta: { permKey: 'api_docs:read' },
+          meta: { title: 'API文档', permKey: 'api_docs:read' },
         },
         {
           path: 'developer/database',
           name: 'DatabaseConsole',
           component: () => import('@/pages/DatabaseConsole.vue'),
-          meta: { permKey: 'db:read' },
+          meta: { title: '数据库控制台', permKey: 'db:read' },
         },
         {
           path: 'settings/user-creation-review',
           name: 'UserCreationReview',
           component: () => import('@/pages/UserCreationReview.vue'),
-          meta: { permKey: 'review:read' },
+          meta: { title: '用户注册审核', permKey: 'review:read' },
         },
         {
           path: 'rbac/users',
           name: 'RBACUserManage',
           component: () => import('@/pages/RBACUserManage.vue'),
-          meta: { permKey: 'users:read' },
+          meta: { title: '用户管理', permKey: 'users:read' },
         },
         {
           path: 'rbac/roles',
           name: 'RBACRoleManage',
           component: () => import('@/pages/RBACRoleManage.vue'),
-          meta: { permKey: 'roles:read' },
+          meta: { title: '角色管理', permKey: 'roles:read' },
         },
         {
           path: 'rbac/permissions',
           name: 'RBACPermissionManage',
           component: () => import('@/pages/RBACPermissionManage.vue'),
-          meta: { permKey: 'permissions:read' },
+          meta: { title: '权限管理', permKey: 'permissions:read' },
         },
         {
           path: 'rbac/constraints',
           name: 'RBACConstraintManage',
           component: () => import('@/pages/RBACConstraintManage.vue'),
-          meta: { permKey: 'constraints:read' },
+          meta: { title: '约束管理', permKey: 'constraints:read' },
         },
       ],
     },
@@ -179,6 +179,11 @@ router.beforeEach(async (to) => {
   }
 
   return true
+})
+
+router.afterEach((to) => {
+  const title = to.meta.title as string | undefined
+  document.title = title ? `${title} - 多平台矩阵管理` : '多平台矩阵管理系统'
 })
 
 export default router
