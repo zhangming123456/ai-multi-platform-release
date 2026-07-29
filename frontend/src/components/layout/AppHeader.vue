@@ -29,6 +29,7 @@ const breadcrumbMap: Record<string, string> = {
   '/rbac/users': '用户设置',
   '/rbac/roles': '角色设置',
   '/rbac/permissions': '权限设置',
+  '/rbac/permissions/enum': '权限定义编辑',
   '/rbac/constraints': '职责分离',
 }
 

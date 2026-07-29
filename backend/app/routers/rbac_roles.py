@@ -150,7 +150,7 @@ async def list_roles(
     "/roles",
     response_model=RoleDetailResponse,
     status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(require_permission("roles:write", "write"))],
+    dependencies=[Depends(require_permission("roles:manage:write", "write"))],
 )
 async def create_role(
     body: CreateRoleRequest,
@@ -221,7 +221,7 @@ async def get_role(
 @router.put(
     "/roles/{role_id}",
     response_model=RoleDetailResponse,
-    dependencies=[Depends(require_permission("roles:write", "write"))],
+    dependencies=[Depends(require_permission("roles:manage:write", "write"))],
 )
 async def update_role(
     role_id: str,
@@ -257,7 +257,7 @@ async def update_role(
 @router.delete(
     "/roles/{role_id}",
     status_code=status.HTTP_204_NO_CONTENT,
-    dependencies=[Depends(require_permission("roles:write", "write"))],
+    dependencies=[Depends(require_permission("roles:manage:write", "write"))],
 )
 async def delete_role(
     role_id: str,
@@ -291,7 +291,7 @@ async def delete_role(
 @router.post(
     "/roles/{role_id}/parents",
     response_model=RoleDetailResponse,
-    dependencies=[Depends(require_permission("roles:write", "write"))],
+    dependencies=[Depends(require_permission("roles:manage:write", "write"))],
 )
 async def add_parent_role(
     role_id: str,
@@ -348,7 +348,7 @@ async def add_parent_role(
 @router.delete(
     "/roles/{role_id}/parents/{parent_id}",
     response_model=RoleDetailResponse,
-    dependencies=[Depends(require_permission("roles:write", "write"))],
+    dependencies=[Depends(require_permission("roles:manage:write", "write"))],
 )
 async def remove_parent_role(
     role_id: str,
@@ -394,8 +394,7 @@ async def _role_permission_item(
 
 @router.get(
     "/roles/{role_id}/permissions",
-    response_model=list[RolePermissionItem],
-    dependencies=[Depends(require_permission("roles:read", "read"))],
+    response_model=dict[str, str],
 )
 async def get_role_permissions(
     role_id: str,
@@ -414,8 +413,8 @@ async def get_role_permissions(
     all_role_ids = {role_id} | ancestor_ids
 
     result = await db.execute(
-        select(RBACRolePermission, RBACPermission, RBACResource)
-        .join(RBACPermission, RBACRolePermission.permission_id == RBACPermission.id)
+        select(RBACPermission.key, RBACResource.name)
+        .join(RBACRolePermission, RBACRolePermission.permission_id == RBACPermission.id)
         .join(RBACResource, RBACPermission.resource_id == RBACResource.id)
         .where(
             RBACRolePermission.role_id.in_(all_role_ids),
@@ -423,16 +422,11 @@ async def get_role_permissions(
         )
     )
 
-    seen_permission_ids: set[str] = set()
-    items: list[RolePermissionItem] = []
-    for role_permission, permission, resource in result.all():
-        if permission.id in seen_permission_ids:
-            continue
-        seen_permission_ids.add(permission.id)
-        grant_type = "direct" if role_permission.role_id == role_id else "inherited"
-        items.append(await _role_permission_item(role_permission, permission, resource, grant_type))
+    effective: dict[str, str] = {}
+    for key, name in result.all():
+        effective[key] = name
 
-    return items
+    return effective
 
 
 @router.get(
@@ -478,13 +472,42 @@ async def get_role_permissions_detail(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    return await get_role_permissions(role_id, db, current_user)
+    role = await db.execute(select(RBACRole).where(RBACRole.id == role_id))
+    if role.scalar_one_or_none() is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="角色不存在",
+        )
+
+    ancestors = await get_role_ancestors(role_id, db)
+    ancestor_ids = {ancestor.id for ancestor in ancestors}
+    all_role_ids = {role_id} | ancestor_ids
+
+    result = await db.execute(
+        select(RBACRolePermission, RBACPermission, RBACResource)
+        .join(RBACPermission, RBACRolePermission.permission_id == RBACPermission.id)
+        .join(RBACResource, RBACPermission.resource_id == RBACResource.id)
+        .where(
+            RBACRolePermission.role_id.in_(all_role_ids),
+            RBACPermission.is_active.is_(True),
+        )
+    )
+
+    items: list[RolePermissionItem] = []
+    for rp, perm, resource in result.all():
+        is_inherited = rp.role_id in ancestor_ids
+        items.append(await _role_permission_item(
+            rp, perm, resource,
+            "inherited" if is_inherited else "direct",
+        ))
+
+    return items
 
 
 @router.put(
     "/roles/{role_id}/permissions",
     response_model=list[RolePermissionItem],
-    dependencies=[Depends(require_permission("roles:write", "write"))],
+    dependencies=[Depends(require_permission("roles:manage:write", "write"))],
 )
 async def update_role_permissions(
     role_id: str,

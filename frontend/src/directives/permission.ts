@@ -3,21 +3,18 @@ import { usePermissionStore } from '@/stores/permission'
 
 interface PermBinding {
   key: string
-  mode?: 'read' | 'write'
 }
 
 const vPerm: ObjectDirective<HTMLElement, PermBinding> = {
   mounted(el: HTMLElement, binding: DirectiveBinding<PermBinding>) {
     const permStore = usePermissionStore()
-    const { key, mode = 'read' } = binding.value
-    if (!permStore.hasPermission(key, mode)) {
+    if (!permStore.hasPermission(binding.value.key)) {
       el.style.display = 'none'
     }
   },
   updated(el: HTMLElement, binding: DirectiveBinding<PermBinding>) {
     const permStore = usePermissionStore()
-    const { key, mode = 'read' } = binding.value
-    el.style.display = permStore.hasPermission(key, mode) ? '' : 'none'
+    el.style.display = permStore.hasPermission(binding.value.key) ? '' : 'none'
   },
 }
 

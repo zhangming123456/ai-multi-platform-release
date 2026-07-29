@@ -16,9 +16,10 @@ class Token(BaseModel):
     token_type: str = "bearer"
 
 
-class PermissionAccessInfo(BaseModel):
-    read: bool = True
-    write: bool = True
+class UserRoleRef(BaseModel):
+    id: str
+    name: str
+    display_name: str
 
 
 class UserInfo(BaseModel):
@@ -33,8 +34,9 @@ class UserInfo(BaseModel):
     model_config = {"from_attributes": True}
 
 
-class UserInfoWithPermissions(UserInfo):
-    permissions: dict[str, PermissionAccessInfo] = {}
+class UserInfoWithRoles(UserInfo):
+    roles: list[UserRoleRef] = []
+    permissions: dict[str, str] = {}
 
 
 class LoginResponse(BaseModel):

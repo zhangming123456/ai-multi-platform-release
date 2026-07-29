@@ -1,8 +1,3 @@
-export interface PermissionAccess {
-  read: boolean
-  write: boolean
-}
-
 export interface UserInfo {
   id: string
   username: string
@@ -11,7 +6,6 @@ export interface UserInfo {
   role: string
   avatar_url: string | null
   created_at: string
-  permissions?: Record<string, PermissionAccess>
 }
 
 export interface Account {

@@ -62,30 +62,29 @@ function onWriteChange(item: ModuleItem, checked: boolean | string | number) {
   }
 }
 
+const readableItems = computed(() => props.items.filter((i) => i.readKey && !props.inheritedKeys.has(i.readKey)))
+const writableItems = computed(() => props.items.filter((i) => i.writeKeys.length > 0 && !i.writeKeys.some((k) => props.inheritedKeys.has(k))))
+
 const allReadChecked = computed(() => {
-  const readable = props.items.filter((i) => i.readKey)
-  if (readable.length === 0) return false
-  return readable.every((i) => hasRead(i))
+  if (readableItems.value.length === 0) return false
+  return readableItems.value.every((i) => hasRead(i))
 })
 
 const allReadIndeterminate = computed(() => {
-  const readable = props.items.filter((i) => i.readKey)
-  if (readable.length === 0) return false
-  const checkedCount = readable.filter((i) => hasRead(i)).length
-  return checkedCount > 0 && checkedCount < readable.length
+  if (readableItems.value.length === 0) return false
+  const checkedCount = readableItems.value.filter((i) => hasRead(i)).length
+  return checkedCount > 0 && checkedCount < readableItems.value.length
 })
 
 const allWriteChecked = computed(() => {
-  const writable = props.items.filter((i) => i.writeKeys.length > 0)
-  if (writable.length === 0) return false
-  return writable.every((i) => hasWrite(i))
+  if (writableItems.value.length === 0) return false
+  return writableItems.value.every((i) => hasWrite(i))
 })
 
 const allWriteIndeterminate = computed(() => {
-  const writable = props.items.filter((i) => i.writeKeys.length > 0)
-  if (writable.length === 0) return false
-  const checkedCount = writable.filter((i) => hasWrite(i)).length
-  return checkedCount > 0 && checkedCount < writable.length
+  if (writableItems.value.length === 0) return false
+  const checkedCount = writableItems.value.filter((i) => hasWrite(i)).length
+  return checkedCount > 0 && checkedCount < writableItems.value.length
 })
 
 function onSelectAllRead(checked: boolean | (string | number | boolean)[]) {
@@ -93,9 +92,9 @@ function onSelectAllRead(checked: boolean | (string | number | boolean)[]) {
   if (checked === true) {
     emit('select-all-read')
   } else if (checked === false) {
-    const keys = props.items
-      .filter((i) => i.readKey && !props.inheritedKeys.has(i.readKey))
+    const keys = readableItems.value
       .map((i) => i.readKey as string)
+      .filter(Boolean)
     emit('deselect-all-read', keys)
   }
 }
@@ -105,9 +104,8 @@ function onSelectAllWrite(checked: boolean | (string | number | boolean)[]) {
   if (checked === true) {
     emit('select-all-write')
   } else if (checked === false) {
-    const keys = props.items
+    const keys = writableItems.value
       .flatMap((i) => i.writeKeys)
-      .filter((key) => !props.inheritedKeys.has(key))
     emit('deselect-all-write', keys)
   }
 }
@@ -122,6 +120,7 @@ function onSelectAllWrite(checked: boolean | (string | number | boolean)[]) {
       </div>
       <div class="flex items-center gap-4">
         <a-checkbox
+          v-if="readableItems.length > 0"
           :model-value="allReadChecked"
           :indeterminate="allReadIndeterminate"
           :disabled="readonly"
@@ -130,6 +129,7 @@ function onSelectAllWrite(checked: boolean | (string | number | boolean)[]) {
           <span class="text-[12px] text-[#1D1D1F]">全选读</span>
         </a-checkbox>
         <a-checkbox
+          v-if="writableItems.length > 0"
           :model-value="allWriteChecked"
           :indeterminate="allWriteIndeterminate"
           :disabled="readonly"
@@ -152,6 +152,7 @@ function onSelectAllWrite(checked: boolean | (string | number | boolean)[]) {
         </div>
         <div class="flex items-center gap-3 shrink-0">
           <a-switch
+            v-if="item.readKey"
             :model-value="hasRead(item)"
             :disabled="isReadDisabled(item)"
             size="small"
@@ -161,6 +162,7 @@ function onSelectAllWrite(checked: boolean | (string | number | boolean)[]) {
             @change="(v: boolean | string | number) => onReadChange(item, v)"
           />
           <a-switch
+            v-if="item.writeKeys.length > 0"
             :model-value="hasWrite(item)"
             :disabled="isWriteDisabled(item)"
             size="small"

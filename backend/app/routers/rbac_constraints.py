@@ -201,7 +201,7 @@ async def list_constraints(
     "/constraints",
     response_model=ConstraintDetailResponse,
     status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(require_permission("constraints:write", "write"))],
+    dependencies=[Depends(require_permission("constraints:manage:write", "write"))],
 )
 async def create_constraint(
     body: CreateConstraintRequest,
@@ -263,7 +263,7 @@ async def get_constraint(
 @router.put(
     "/constraints/{constraint_id}",
     response_model=ConstraintDetailResponse,
-    dependencies=[Depends(require_permission("constraints:write", "write"))],
+    dependencies=[Depends(require_permission("constraints:manage:write", "write"))],
 )
 async def update_constraint(
     constraint_id: str,
@@ -319,7 +319,7 @@ async def update_constraint(
 @router.delete(
     "/constraints/{constraint_id}",
     status_code=status.HTTP_204_NO_CONTENT,
-    dependencies=[Depends(require_permission("constraints:write", "write"))],
+    dependencies=[Depends(require_permission("constraints:manage:write", "write"))],
 )
 async def delete_constraint(
     constraint_id: str,

@@ -89,7 +89,7 @@ async def list_user_creation_requests(
 async def approve_user_creation(
     request_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_permission("review:approve", "write")),
+    current_user: User = Depends(require_permission("review:approve:write", "write")),
 ):
     result = await db.execute(
         select(UserCreationRequest).where(UserCreationRequest.id == request_id)
@@ -148,7 +148,7 @@ async def reject_user_creation(
     request_id: str,
     body: RejectRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_permission("review:reject", "write")),
+    current_user: User = Depends(require_permission("review:reject:write", "write")),
 ):
     result = await db.execute(
         select(UserCreationRequest).where(UserCreationRequest.id == request_id)

@@ -22,7 +22,6 @@ interface Resource {
   key: string
   name: string
   description: string | null
-  type: 'page' | 'action'
   parent_id: string | null
   is_active: boolean
   children: Resource[]
@@ -37,7 +36,6 @@ interface Permission {
     id: string
     key: string
     name: string
-    type: string
   }
 }
 
@@ -177,8 +175,13 @@ function operationLabel(operation: string): string {
   return map[operation] || operation
 }
 
-function resourceIcon(type: string) {
-  return type === 'page' ? IconNav : IconCode
+function _isPageKey(key: string): boolean {
+  const parts = key.split(':')
+  return parts.length === 2 && (parts[1] === 'read' || parts[1] === 'write')
+}
+
+function resourceIcon(key: string) {
+  return _isPageKey(key) ? IconNav : IconCode
 }
 
 function cardClass(): string {
@@ -205,7 +208,7 @@ function cardClass(): string {
       class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-5 py-3.5 border-b border-black/[0.04] bg-black/[0.01]"
     >
       <div class="flex items-center gap-2.5 min-w-0">
-        <component :is="resourceIcon(resource.type)" :size="16" class="text-[#86868b] shrink-0" />
+        <component :is="resourceIcon(resource.key)" :size="16" class="text-[#86868b] shrink-0" />
         <div class="min-w-0">
           <div class="flex items-center gap-2">
             <span class="text-[14px] font-semibold text-[#1D1D1F]">{{ resource.name }}</span>

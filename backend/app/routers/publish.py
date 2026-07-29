@@ -40,7 +40,7 @@ async def list_tasks(
 async def create_task(
     request: PublishTaskCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_permission("publish:create", "write")),
+    current_user: User = Depends(require_permission("publish:create:write", "write")),
 ):
     task = await create_publish_task(db, request)
     return task
@@ -63,7 +63,7 @@ async def get_task(
 async def retry_publish_task(
     task_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_permission("publish:retry", "write")),
+    current_user: User = Depends(require_permission("publish:retry:write", "write")),
 ):
     task = await retry_task(db, task_id)
     if not task:

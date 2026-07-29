@@ -50,7 +50,7 @@ const router = createRouter({
           path: 'content/create',
           name: 'ContentCreate',
           component: () => import('@/pages/ContentCreate.vue'),
-          meta: { title: '创作内容', permKey: 'content:create' },
+          meta: { title: '创作内容', permKey: 'content:read' },
         },
         {
           path: 'publish',
@@ -107,6 +107,30 @@ const router = createRouter({
           meta: { title: '用户管理', permKey: 'users:read' },
         },
         {
+          path: 'rbac/users/create',
+          name: 'RBACUserCreate',
+          component: () => import('@/pages/RBACUserCreate.vue'),
+          meta: { title: '创建用户', permKey: 'users:create:write' },
+        },
+        {
+          path: 'rbac/users/:id/edit',
+          name: 'RBACUserEdit',
+          component: () => import('@/pages/RBACUserEdit.vue'),
+          meta: { title: '编辑用户', permKey: 'users:update:write' },
+        },
+        {
+          path: 'rbac/users/:id/password',
+          name: 'RBACUserPassword',
+          component: () => import('@/pages/RBACUserPassword.vue'),
+          meta: { title: '修改密码', permKey: 'users:change_password:write' },
+        },
+        {
+          path: 'rbac/users/:id/permissions',
+          name: 'RBACUserPermissionCustomize',
+          component: () => import('@/pages/RBACUserPermissionCustomize.vue'),
+          meta: { title: '自定义权限', skipPermCheck: true },
+        },
+        {
           path: 'rbac/roles',
           name: 'RBACRoleManage',
           component: () => import('@/pages/RBACRoleManage.vue'),
@@ -117,6 +141,12 @@ const router = createRouter({
           name: 'RBACPermissionManage',
           component: () => import('@/pages/RBACPermissionManage.vue'),
           meta: { title: '权限管理', permKey: 'permissions:read' },
+        },
+        {
+          path: 'rbac/permissions/enum',
+          name: 'RBACPermissionEnumManage',
+          component: () => import('@/pages/RBACPermissionEnumManage.vue'),
+          meta: { title: '权限定义编辑', permKey: 'permissions:read' },
         },
         {
           path: 'rbac/constraints',
@@ -134,7 +164,7 @@ function hasPerm(to: RouteLocationNormalized): boolean {
   const permKey = to.meta.permKey as string | undefined
   if (!permKey) return true
   const permStore = usePermissionStore()
-  return permStore.hasPermission(permKey, 'read')
+  return permStore.hasPermission(permKey)
 }
 
 router.beforeEach(async (to) => {

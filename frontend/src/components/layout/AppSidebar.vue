@@ -17,6 +17,7 @@ import {
   IconTool,
   IconCheckCircle,
   IconUser,
+  IconEdit,
 } from '@arco-design/web-vue/es/icon'
 
 interface MenuEntry {
@@ -55,7 +56,7 @@ const userStore = useUserStore()
 const permStore = usePermissionStore()
 
 function hasPerm(key: string): boolean {
-  return permStore.hasPermission(key, 'read')
+  return permStore.hasPermission(key)
 }
 
 const contentChildren = computed<MenuEntry[]>(() => {
@@ -63,8 +64,8 @@ const contentChildren = computed<MenuEntry[]>(() => {
   if (hasPerm('content:read')) {
     items.push({ key: 'content', name: '内容列表', path: '/content', icon: IconFile, permKey: 'content:read' })
   }
-  if (hasPerm('content:create')) {
-    items.push({ key: 'content-create', name: '创作内容', path: '/content/create', icon: IconFile, permKey: 'content:create' })
+  if (hasPerm('content:read')) {
+    items.push({ key: 'content-create', name: '创作内容', path: '/content/create', icon: IconFile, permKey: 'content:read' })
   }
   if (hasPerm('publish:read')) {
     items.push({ key: 'publish', name: '发布管理', path: '/publish', icon: IconSend, permKey: 'publish:read' })
@@ -99,6 +100,9 @@ const rbacChildren = computed<MenuEntry[]>(() => {
   }
   if (hasPerm('permissions:read')) {
     items.push({ key: 'rbac-permissions', name: '权限管理', path: '/rbac/permissions', icon: IconSafe, permKey: 'permissions:read' })
+  }
+  if (userStore.userInfo?.role === 'admin' && hasPerm('permissions:read')) {
+    items.push({ key: 'rbac-permissions-enum', name: '权限定义编辑', path: '/rbac/permissions/enum', icon: IconEdit, permKey: 'permissions:read' })
   }
   if (hasPerm('constraints:read')) {
     items.push({ key: 'rbac-constraints', name: '约束管理', path: '/rbac/constraints', icon: IconSafe, permKey: 'constraints:read' })

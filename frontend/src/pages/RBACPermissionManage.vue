@@ -1,10 +1,13 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { Message } from '@arco-design/web-vue'
-import { IconSafe, IconLock } from '@arco-design/web-vue/es/icon'
+import { IconSafe, IconLock, IconEdit } from '@arco-design/web-vue/es/icon'
 import PageHeader from '@/components/layout/PageHeader.vue'
-import PermissionModuleCard from '@/components/rbac/PermissionModuleCard.vue'
 import api from '@/utils/api'
+import { isAdminTypePermission } from '@/utils/rbac'
+
+const router = useRouter()
 
 interface Role {
   id: string
@@ -16,15 +19,11 @@ interface Role {
   is_builtin: boolean
 }
 
-interface Resource {
+interface ResourceRef {
   id: string
   key: string
   name: string
-  description: string | null
-  type: 'page' | 'action'
-  parent_id: string | null
-  is_active: boolean
-  children: Resource[]
+  description?: string | null
 }
 
 interface Permission {
@@ -32,12 +31,12 @@ interface Permission {
   key: string
   operation: string
   is_active: boolean
-  resource: {
-    id: string
-    key: string
-    name: string
-    type: string
-  }
+  resource: ResourceRef
+}
+
+function _isPageKey(key: string): boolean {
+  const parts = key.split(':')
+  return parts.length === 2 && (parts[1] === 'read' || parts[1] === 'write')
 }
 
 interface RolePermission {
@@ -51,9 +50,11 @@ interface RolePermission {
 }
 
 interface ModuleItemDef {
-  id: string
+  permId: string
+  resourceId: string
   title: string
   subtitle: string
+  resourceName: string
   readKey?: string
   writeKeys: string[]
 }
@@ -67,7 +68,6 @@ interface ModuleDef {
 const loading = ref(false)
 const saving = ref(false)
 const roles = ref<Role[]>([])
-const resources = ref<Resource[]>([])
 const permissions = ref<Permission[]>([])
 const rolePermissions = ref<RolePermission[]>([])
 const selectedRoleId = ref<string | null>(null)
@@ -117,6 +117,17 @@ const selectedRole = computed(() => {
   return roles.value.find((r) => r.id === selectedRoleId.value) || null
 })
 
+const isNonAdminRole = computed(() => selectedRole.value?.role_type === 'other')
+
+function filterModuleItems(items: ModuleItemDef[]): ModuleItemDef[] {
+  if (!isNonAdminRole.value) return items
+  return items.filter((item) => {
+    const checkKey = item.readKey || item.writeKeys[0]
+    if (!checkKey) return false
+    return !isAdminTypePermission(checkKey)
+  })
+}
+
 const permissionMap = computed(() => {
   const map = new Map<string, Permission>()
   for (const p of permissions.value) {
@@ -125,184 +136,119 @@ const permissionMap = computed(() => {
   return map
 })
 
-const resourceByKey = computed(() => {
-  const map = new Map<string, Resource>()
-  for (const r of resources.value) {
-    map.set(r.key, r)
-  }
-  return map
+const activePermissions = computed(() => {
+  return permissions.value.filter((p) => p.is_active)
 })
 
-const permissionByKey = computed(() => {
-  const map = new Map<string, Permission>()
-  for (const p of permissions.value) {
-    map.set(p.key, p)
-  }
-  return map
+const pageItemDefs = computed<ModuleItemDef[]>(() => {
+  return activePermissions.value
+    .filter((p) => _isPageKey(p.key))
+    .map((p) => ({
+      permId: p.id,
+      resourceId: p.resource.id,
+      title: p.resource.name,
+      subtitle: '页面访问',
+      resourceName: p.resource.name,
+      readKey: p.key,
+      writeKeys: [] as string[],
+    }))
 })
 
-const PAGE_TITLE_OVERRIDES: Record<string, string> = {
-  users: '用户设置',
+function buildActionGroupMap(filterKeys?: string[]): Map<string, { readPerm?: Permission; writePerm?: Permission }> {
+  const groups = new Map<string, { readPerm?: Permission; writePerm?: Permission }>()
+  for (const perm of activePermissions.value) {
+    if (_isPageKey(perm.key)) continue
+    const rk = perm.resource.key.split(':')[0]
+    if (filterKeys && !filterKeys.includes(rk)) continue
+    const parts = perm.key.split(':')
+    const baseKey = `${parts[0]}:${parts[1]}`
+    if (!groups.has(baseKey)) {
+      groups.set(baseKey, {})
+    }
+    const group = groups.get(baseKey)!
+    if (parts.length >= 3 && parts[2] === 'write') {
+      group.writePerm = perm
+    } else {
+      group.readPerm = perm
+    }
+  }
+  return groups
 }
 
-function pageItem(resource: Resource): ModuleItemDef {
-  const perms = permissions.value.filter((p) => p.resource.id === resource.id && p.is_active)
-  const readPerm = perms.find((p) => p.operation === 'read')
-  const writePerm = perms.find((p) => p.operation === 'write')
-  return {
-    id: resource.id,
-    title: PAGE_TITLE_OVERRIDES[resource.key] || resource.name,
-    subtitle: '页面访问',
-    readKey: readPerm?.key,
-    writeKeys: writePerm ? [writePerm.key] : [],
+function groupMapToItems(groups: Map<string, { readPerm?: Permission; writePerm?: Permission }>): ModuleItemDef[] {
+  const items: ModuleItemDef[] = []
+  for (const [, group] of groups) {
+    const writePerm = group.writePerm
+    const readPerm = group.readPerm
+    const displayPerm = writePerm || readPerm!
+    items.push({
+      permId: displayPerm.id,
+      resourceId: displayPerm.resource.id,
+      title: displayPerm.resource.name,
+      subtitle: '操作权限',
+      resourceName: displayPerm.resource.name,
+      readKey: readPerm?.key,
+      writeKeys: writePerm ? [writePerm.key] : [],
+    })
   }
+  return items
 }
 
-function actionItem(resourceKey: string, operation: string, title: string): ModuleItemDef | null {
-  const perm = permissions.value.find(
-    (p) => p.resource.key === resourceKey && p.operation === operation && p.is_active,
-  )
-  if (!perm) return null
-  return {
-    id: perm.id,
-    title,
-    subtitle: '操作权限',
-    readKey: undefined,
-    writeKeys: [perm.key],
-  }
+function actionItemsForKeys(resourceKeys: string[]): ModuleItemDef[] {
+  return groupMapToItems(buildActionGroupMap(resourceKeys))
 }
 
 const modules = computed<ModuleDef[]>(() => {
-  const pageKeys = [
-    'dashboard',
-    'platforms',
-    'content',
-    'publish',
-    'templates',
-    'review',
-    'sql_review',
-    'accounts',
-    'token_plan',
-    'api_docs',
-    'db',
-    'permissions',
-    'roles',
-    'constraints',
-    'users',
-  ]
-  const pageItems: ModuleItemDef[] = []
-  for (const key of pageKeys) {
-    const resource = resourceByKey.value.get(key)
-    if (resource) pageItems.push(pageItem(resource))
-  }
+  const systemItems = actionItemsForKeys([
+    'users', 'permissions', 'roles', 'constraints', 'model_config',
+  ])
 
-  const systemItems: ModuleItemDef[] = []
-  const systemActions: Array<[string, string, string]> = [
-    ['users', 'read', '查看用户'],
-    ['users', 'write', '管理用户'],
-    ['users', 'create', '创建用户'],
-    ['users', 'update', '编辑用户'],
-    ['users', 'delete', '删除用户'],
-    ['users', 'change_password', '修改用户密码'],
-    ['model_config', 'create', '创建模型配置'],
-    ['model_config', 'update', '编辑模型配置'],
-    ['model_config', 'delete', '删除模型配置'],
-    ['db', 'execute', '执行SQL命令'],
-    ['db_history', 'read', '查看SQL历史'],
-  ]
-  for (const [rk, op, title] of systemActions) {
-    const item = actionItem(rk, op, title)
-    if (item) systemItems.push(item)
-  }
+  const contentItems = actionItemsForKeys([
+    'content', 'templates', 'publish',
+  ])
 
-  const contentItems: ModuleItemDef[] = []
-  const contentActions: Array<[string, string, string]> = [
-    ['content', 'create', '创建内容'],
-    ['content', 'update', '编辑内容'],
-    ['content', 'delete', '删除内容'],
-    ['content', 'ai_generate', 'AI生成'],
-    ['templates', 'create', '创建模板'],
-    ['templates', 'update', '编辑模板'],
-    ['templates', 'delete', '删除模板'],
-    ['publish', 'create', '创建发布任务'],
-    ['publish', 'retry', '重试发布任务'],
-  ]
-  for (const [rk, op, title] of contentActions) {
-    const item = actionItem(rk, op, title)
-    if (item) contentItems.push(item)
-  }
+  const reviewItems = actionItemsForKeys([
+    'review', 'db_change',
+  ])
 
-  const reviewItems: ModuleItemDef[] = []
-  const reviewActions: Array<[string, string, string]> = [
-    ['review', 'submit', '提交内容审核'],
-    ['review', 'approve', '审核通过'],
-    ['review', 'reject', '审核驳回'],
-    ['db_change', 'submit', '提交SQL变更'],
-    ['db_change', 'approve', 'SQL变更审核通过'],
-    ['db_change', 'reject', 'SQL变更驳回'],
-  ]
-  for (const [rk, op, title] of reviewActions) {
-    const item = actionItem(rk, op, title)
-    if (item) reviewItems.push(item)
-  }
-
-  const basicItems: ModuleItemDef[] = []
-  const basicActions: Array<[string, string, string]> = [
-    ['account', 'read', '查看平台账号'],
-    ['account', 'create', '添加平台账号'],
-    ['account', 'update', '编辑平台账号'],
-    ['account', 'delete', '删除平台账号'],
-    ['account', 'check', '检测账号状态'],
-  ]
-  for (const [rk, op, title] of basicActions) {
-    const item = actionItem(rk, op, title)
-    if (item) basicItems.push(item)
-  }
+  const basicItems = actionItemsForKeys([
+    'account', 'db', 'db_history',
+  ])
 
   const coveredKeys = new Set<string>()
-  for (const item of [...pageItems, ...systemItems, ...contentItems, ...reviewItems, ...basicItems]) {
-    if (item.readKey) coveredKeys.add(item.readKey)
-    for (const key of item.writeKeys) coveredKeys.add(key)
+  for (const items of [pageItemDefs.value, systemItems, contentItems, reviewItems, basicItems]) {
+    for (const item of items) {
+      if (item.readKey) coveredKeys.add(item.readKey)
+      for (const k of item.writeKeys) coveredKeys.add(k)
+    }
   }
 
-  const otherItems: ModuleItemDef[] = []
-  const otherByResource = new Map<string, { resource: Permission['resource']; keys: string[] }>()
-  for (const perm of permissions.value) {
-    if (!perm.is_active || coveredKeys.has(perm.key)) continue
-    let group = otherByResource.get(perm.resource.key)
-    if (!group) {
-      group = { resource: perm.resource, keys: [] }
-      otherByResource.set(perm.resource.key, group)
-    }
-    group.keys.push(perm.key)
-  }
-  for (const group of otherByResource.values()) {
-    const readKey = group.keys.find((k) => k.endsWith(':read'))
-    const writeKeys = group.keys.filter((k) => k !== readKey)
-    otherItems.push({
-      id: `other-${group.resource.key}`,
-      title: group.resource.name,
-      subtitle: '其他权限',
-      readKey,
-      writeKeys,
-    })
-  }
+  const otherGroups = buildActionGroupMap()
+  const otherItems = groupMapToItems(otherGroups).filter((item) => {
+    const k = item.readKey || item.writeKeys[0]
+    return !coveredKeys.has(k)
+  })
+
+  const filteredPage = filterModuleItems(pageItemDefs.value)
+  const filteredSystem = filterModuleItems(systemItems)
+  const filteredContent = filterModuleItems(contentItems)
+  const filteredReview = filterModuleItems(reviewItems)
+  const filteredBasic = filterModuleItems(basicItems)
+  const filteredOther = filterModuleItems(otherItems)
 
   const result: ModuleDef[] = [
-    { key: 'page', label: '页面权限', items: pageItems },
-    { key: 'system', label: '系统设置', items: systemItems },
-    { key: 'content', label: '内容管理', items: contentItems },
-    { key: 'review', label: '审核管理', items: reviewItems },
-    { key: 'basic', label: '基础', items: basicItems },
+    { key: 'page', label: '页面权限', items: filteredPage },
   ]
-  if (otherItems.length > 0) {
-    result.push({ key: 'other', label: '其他权限', items: otherItems })
-  }
+  if (filteredSystem.length > 0) result.push({ key: 'system', label: '系统设置', items: filteredSystem })
+  if (filteredContent.length > 0) result.push({ key: 'content', label: '内容管理', items: filteredContent })
+  if (filteredReview.length > 0) result.push({ key: 'review', label: '审核管理', items: filteredReview })
+  if (filteredBasic.length > 0) result.push({ key: 'basic', label: '基础操作', items: filteredBasic })
+  if (filteredOther.length > 0) result.push({ key: 'other', label: '其他权限', items: filteredOther })
   return result
 })
 
 const allPermissionKeys = computed(() => {
-  return new Set(permissions.value.filter((p) => p.is_active).map((p) => p.key))
+  return new Set(activePermissions.value.map((p) => p.key))
 })
 
 const rolePermissionKeys = computed(() => {
@@ -318,6 +264,90 @@ const effectiveKeys = computed(() => {
   return rolePermissionKeys.value
 })
 
+function getModuleReadKeys(module: ModuleDef): string[] {
+  const keys: string[] = []
+  for (const item of module.items) {
+    if (item.readKey) keys.push(item.readKey)
+  }
+  return keys
+}
+
+function getModuleWriteKeys(module: ModuleDef): string[] {
+  const keys: string[] = []
+  for (const item of module.items) {
+    for (const k of item.writeKeys) keys.push(k)
+  }
+  return keys
+}
+
+function moduleReadChecked(module: ModuleDef): boolean {
+  const keys = getModuleReadKeys(module)
+  if (keys.length === 0) return false
+  return keys.every((k) => effectiveKeys.value.has(k))
+}
+
+function moduleReadIndeterminate(module: ModuleDef): boolean {
+  const keys = getModuleReadKeys(module)
+  const checkedCount = keys.filter((k) => effectiveKeys.value.has(k)).length
+  return checkedCount > 0 && checkedCount < keys.length
+}
+
+function moduleWriteChecked(module: ModuleDef): boolean {
+  const keys = getModuleWriteKeys(module)
+  if (keys.length === 0) return false
+  return keys.every((k) => effectiveKeys.value.has(k))
+}
+
+function moduleWriteIndeterminate(module: ModuleDef): boolean {
+  const keys = getModuleWriteKeys(module)
+  const checkedCount = keys.filter((k) => effectiveKeys.value.has(k)).length
+  return checkedCount > 0 && checkedCount < keys.length
+}
+
+function toggleModuleAllRead(module: ModuleDef, checked: boolean) {
+  if (selectedRole.value?.is_super_admin) return
+  for (const key of getModuleReadKeys(module)) {
+    if (inheritedKeys.value.has(key)) continue
+    if (checked) {
+      addRolePermission(key)
+    } else {
+      removeRolePermission(key)
+    }
+  }
+}
+
+function toggleModuleAllWrite(module: ModuleDef, checked: boolean) {
+  if (selectedRole.value?.is_super_admin) return
+  for (const key of getModuleWriteKeys(module)) {
+    if (inheritedKeys.value.has(key)) continue
+    if (checked) {
+      addRolePermission(key)
+    } else {
+      removeRolePermission(key)
+    }
+  }
+}
+
+function toggleReadKey(key: string) {
+  if (selectedRole.value?.is_super_admin) return
+  if (inheritedKeys.value.has(key)) return
+  if (effectiveKeys.value.has(key)) {
+    removeRolePermission(key)
+  } else {
+    addRolePermission(key)
+  }
+}
+
+function toggleWriteKey(key: string) {
+  if (selectedRole.value?.is_super_admin) return
+  if (inheritedKeys.value.has(key)) return
+  if (effectiveKeys.value.has(key)) {
+    removeRolePermission(key)
+  } else {
+    addRolePermission(key)
+  }
+}
+
 async function fetchRoles() {
   const res = await api.get<Role[]>('/v2/roles')
   roles.value = Array.isArray(res.data) ? res.data : []
@@ -325,11 +355,6 @@ async function fetchRoles() {
     const firstEditable = sortedRoles.value.find((r) => !r.is_super_admin)
     selectedRoleId.value = firstEditable?.id || sortedRoles.value[0].id
   }
-}
-
-async function fetchResources() {
-  const res = await api.get<Resource[]>('/v2/resources')
-  resources.value = Array.isArray(res.data) ? res.data : []
 }
 
 async function fetchPermissions() {
@@ -345,7 +370,7 @@ async function fetchRolePermissions(roleId: string) {
 async function loadAll() {
   loading.value = true
   try {
-    await Promise.all([fetchRoles(), fetchResources(), fetchPermissions()])
+    await Promise.all([fetchRoles(), fetchPermissions()])
     if (selectedRoleId.value) {
       await fetchRolePermissions(selectedRoleId.value)
     }
@@ -370,16 +395,12 @@ async function onRoleChange(roleId: string) {
   }
 }
 
-function ensurePermission(key: string) {
-  const perm = permissionByKey.value.get(key)
-  if (!perm) return null
-  return perm
-}
-
 function addRolePermission(key: string) {
-  const perm = ensurePermission(key)
-  if (!perm) return
   if (rolePermissionKeys.value.has(key)) return
+  const perm = permissionMap.value.get(
+    activePermissions.value.find((p) => p.key === key)?.id || '',
+  )
+  if (!perm) return
   rolePermissions.value.push({
     id: `direct-${key}`,
     key,
@@ -395,71 +416,11 @@ function removeRolePermission(key: string) {
   rolePermissions.value = rolePermissions.value.filter((rp) => rp.key !== key)
 }
 
-function togglePermission(key: string) {
-  if (selectedRole.value?.is_super_admin) return
-  const existing = rolePermissions.value.find((rp) => rp.key === key)
-  if (existing?.grant_type === 'inherited') return
-  if (existing) {
-    removeRolePermission(key)
-  } else {
-    addRolePermission(key)
-  }
-}
-
-function toggleWrite(keys: string[]) {
-  if (selectedRole.value?.is_super_admin) return
-  const hasAny = keys.some((key) => rolePermissionKeys.value.has(key))
-  for (const key of keys) {
-    const existing = rolePermissions.value.find((rp) => rp.key === key)
-    if (existing?.grant_type === 'inherited') continue
-    if (hasAny) {
-      removeRolePermission(key)
-    } else {
-      addRolePermission(key)
-    }
-  }
-}
-
-function selectAllRead(module: ModuleDef) {
-  if (selectedRole.value?.is_super_admin) return
-  for (const item of module.items) {
-    if (!item.readKey) continue
-    if (inheritedKeys.value.has(item.readKey)) continue
-    addRolePermission(item.readKey)
-  }
-}
-
-function selectAllWrite(module: ModuleDef) {
-  if (selectedRole.value?.is_super_admin) return
-  for (const item of module.items) {
-    for (const key of item.writeKeys) {
-      if (inheritedKeys.value.has(key)) continue
-      addRolePermission(key)
-    }
-  }
-}
-
-function deselectAllRead(keys: string[]) {
-  if (selectedRole.value?.is_super_admin) return
-  for (const key of keys) {
-    removeRolePermission(key)
-  }
-}
-
-function deselectAllWrite(keys: string[]) {
-  if (selectedRole.value?.is_super_admin) return
-  for (const key of keys) {
-    removeRolePermission(key)
-  }
-}
-
 function selectedDirectPermissionIds(): string[] {
   const ids: string[] = []
   for (const rp of rolePermissions.value) {
     if (rp.grant_type === 'direct') {
-      const perm = permissionMap.value.get(
-        permissions.value.find((p) => p.key === rp.key)?.id || '',
-      )
+      const perm = activePermissions.value.find((p) => p.key === rp.key)
       if (perm) ids.push(perm.id)
     }
   }
@@ -490,6 +451,13 @@ onMounted(loadAll)
   <div class="page-main">
     <PageHeader title="权限管理" subtitle="为不同角色分配页面访问和操作权限，超级管理员拥有所有权限">
       <template #actions>
+        <a-button
+          type="outline"
+          @click="router.push({ name: 'RBACPermissionEnumManage' })"
+        >
+          <template #icon><IconEdit :size="14" /></template>
+          权限定义管理
+        </a-button>
         <a-button
           v-if="selectedRole && !selectedRole.is_super_admin"
           type="primary"
@@ -559,22 +527,73 @@ onMounted(loadAll)
           </div>
 
           <div v-else class="space-y-4">
-            <PermissionModuleCard
+            <div
               v-for="module in modules"
               :key="module.key"
-              :title="module.label"
-              :count="module.items.length"
-              :items="module.items"
-              :effective-keys="effectiveKeys"
-              :inherited-keys="inheritedKeys"
-              :readonly="selectedRole.is_super_admin"
-              @toggle-read="togglePermission"
-              @toggle-write="toggleWrite"
-              @select-all-read="selectAllRead(module)"
-              @select-all-write="selectAllWrite(module)"
-              @deselect-all-read="deselectAllRead"
-              @deselect-all-write="deselectAllWrite"
-            />
+              class="bg-white/80 backdrop-blur-xl rounded-2xl border border-black/[0.05] p-5"
+            >
+              <div class="flex items-center justify-between mb-4">
+                <div class="flex items-center gap-2">
+                  <h3 class="text-[15px] font-semibold text-[#1D1D1F] m-0">{{ module.label }}</h3>
+                  <span class="text-[12px] text-[#86868B] font-medium">{{ module.items.length }}</span>
+                </div>
+                <div class="flex items-center gap-3">
+                  <a-checkbox
+                    v-if="module.items.some((i) => i.readKey)"
+                    :model-value="moduleReadChecked(module)"
+                    :indeterminate="moduleReadIndeterminate(module)"
+                    :disabled="selectedRole.is_super_admin"
+                    @change="toggleModuleAllRead(module, $event)"
+                  >
+                    读
+                  </a-checkbox>
+                  <a-checkbox
+                    v-if="module.items.some((i) => i.writeKeys.length > 0)"
+                    :model-value="moduleWriteChecked(module)"
+                    :indeterminate="moduleWriteIndeterminate(module)"
+                    :disabled="selectedRole.is_super_admin"
+                    @change="toggleModuleAllWrite(module, $event)"
+                  >
+                    写
+                  </a-checkbox>
+                </div>
+              </div>
+
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div
+                  v-for="item in module.items"
+                  :key="item.permId"
+                  class="flex items-center justify-between px-4 py-3 rounded-xl border border-black/[0.04] bg-black/[0.01] hover:bg-black/[0.02] transition-colors"
+                >
+                  <div class="min-w-0 mr-3 flex items-center gap-2">
+                    <div class="min-w-0">
+                      <div class="flex items-center gap-2">
+                        <p class="text-[13px] font-medium text-[#1D1D1F] m-0 truncate">{{ item.title }}</p>
+                      </div>
+                      <p class="text-[11px] text-[#86868B] m-0 truncate">{{ item.subtitle }}</p>
+                    </div>
+                  </div>
+                  <div class="flex flex-col items-end gap-1 shrink-0">
+                    <a-checkbox
+                      v-if="item.readKey"
+                      :model-value="effectiveKeys.has(item.readKey)"
+                      :disabled="selectedRole.is_super_admin || inheritedKeys.has(item.readKey)"
+                      @change="toggleReadKey(item.readKey!)"
+                    >
+                      读
+                    </a-checkbox>
+                    <a-checkbox
+                      v-if="item.writeKeys.length > 0"
+                      :model-value="item.writeKeys.some((k) => effectiveKeys.has(k))"
+                      :disabled="selectedRole.is_super_admin || item.writeKeys.some((k) => inheritedKeys.has(k))"
+                      @change="toggleWriteKey(item.writeKeys[0])"
+                    >
+                      写
+                    </a-checkbox>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>

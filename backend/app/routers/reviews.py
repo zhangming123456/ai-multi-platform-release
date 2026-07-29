@@ -101,7 +101,7 @@ async def list_pending_reviews(
 async def submit_for_review(
     content_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_permission("review:submit")),
+    current_user: User = Depends(require_permission("review:submit:write")),
 ):
     """提交内容审核"""
     result = await db.execute(select(Content).where(Content.id == content_id))
@@ -161,7 +161,7 @@ async def submit_for_review(
 async def approve_content(
     content_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_permission("review:approve", "write")),
+    current_user: User = Depends(require_permission("review:approve:write", "write")),
 ):
     """审核通过"""
 
@@ -211,7 +211,7 @@ async def reject_content(
     content_id: str,
     reason: str = Body(..., embed=True),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_permission("review:reject")),
+    current_user: User = Depends(require_permission("review:reject:write")),
 ):
     """审核驳回"""
 

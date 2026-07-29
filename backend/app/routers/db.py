@@ -100,7 +100,7 @@ def _sort_key(value: Any) -> str:
 async def list_history(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=200),
-    current_user: User = Depends(require_permission("db:history:read", "read")),
+    current_user: User = Depends(require_permission("db_history:read:read", "read")),
 ):
     async with async_session_factory() as session:
         count_result = await session.execute(
@@ -140,7 +140,7 @@ async def list_history(
 @router.post("/execute", response_model=SqlResponse)
 async def execute_sql(
     request: SqlRequest,
-    current_user: User = Depends(require_permission("db:execute", "write")),
+    current_user: User = Depends(require_permission("db:execute:write", "write")),
 ):
     sql = request.sql.strip()
     if not sql:

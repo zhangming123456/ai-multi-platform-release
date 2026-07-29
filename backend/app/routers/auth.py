@@ -1,9 +1,14 @@
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import get_current_user
 from app.core.security import hash_password, verify_password
 from app.database import get_db
+from app.models.rbac_permission import RBACPermission
+from app.models.rbac_resource import RBACResource
+from app.models.rbac_role import RBACRole
+from app.models.rbac_user_role_assignment import RBACUserRoleAssignment
 from app.models.user import User
 from app.schemas.auth import (
     LoginRequest,
@@ -12,7 +17,8 @@ from app.schemas.auth import (
     ProfileUpdate,
     UserCreate,
     UserInfo,
-    UserInfoWithPermissions,
+    UserInfoWithRoles,
+    UserRoleRef,
 )
 from app.services.auth_service import (
     authenticate_user,
@@ -64,20 +70,41 @@ async def register(request: UserCreate, db: AsyncSession = Depends(get_db)):
     return UserInfo.model_validate(user)
 
 
-@router.get("/me", response_model=UserInfoWithPermissions)
+@router.get("/me", response_model=UserInfoWithRoles)
 async def get_me(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    from app.services.rbac_service import get_user_effective_permissions
+    roles_result = await db.execute(
+        select(RBACRole)
+        .join(RBACUserRoleAssignment, RBACRole.id == RBACUserRoleAssignment.role_id)
+        .where(RBACUserRoleAssignment.user_id == current_user.id)
+    )
+    roles = [
+        UserRoleRef(id=role.id, name=role.name, display_name=role.display_name)
+        for role in roles_result.scalars().all()
+    ]
 
-    effective = await get_user_effective_permissions(current_user.id, db)
-    user_info = UserInfo.model_validate(current_user)
-    permissions_info = {
-        key: {"read": access.read, "write": access.write}
-        for key, access in effective.items()
-    }
-    return UserInfoWithPermissions(**user_info.model_dump(), permissions=permissions_info)
+    perm_result = await db.execute(
+        select(RBACPermission.key, RBACResource.name)
+        .join(RBACResource, RBACPermission.resource_id == RBACResource.id)
+        .where(RBACPermission.is_active.is_(True))
+    )
+    permissions: dict[str, str] = {}
+    for key, name in perm_result.all():
+        permissions[key] = name
+
+    return UserInfoWithRoles(
+        id=current_user.id,
+        username=current_user.username,
+        email=current_user.email,
+        nickname=current_user.nickname,
+        role=current_user.role,
+        avatar_url=current_user.avatar_url,
+        created_at=current_user.created_at,
+        roles=roles,
+        permissions=permissions,
+    )
 
 
 @router.put("/profile", response_model=UserInfo)

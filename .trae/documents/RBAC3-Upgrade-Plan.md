@@ -37,11 +37,12 @@
 
 ### 1.3 核心变化
 
-1. **权限表达式**：从扁平字符串 `permission_key` 变为 `resource:operation`（例：`content:update`）。
+1. **权限表达式**：从扁平字符串 `permission_key` 变为标准化的 `{name}:{operation}:{read|write}` 或 `{name}:read` 格式。权限类型根据 key 格式自动推断，无需在数据库中存储显式 type 字段。
 2. **角色不再只一个**：用户可同时拥有多个角色，会话中可激活子集。
-3. **继承显式化**：子角色自动获得父角色权限，权限卡片中可区分“继承”与“自定义”。
+3. **继承显式化**：子角色自动获得父角色权限，权限卡片中可区分"继承"与"自定义"。
 4. **约束引擎**：新增互斥角色、先决角色、角色成员数量限制。
 5. **权限中台化**：`require_permission` 统一走 RBAC3 服务，不再读取旧 `RolePermission`。
+6. **权限描述**：每个权限枚举均需配置 `description`，前端权限管理界面展示权限描述信息。
 
 ---
 
@@ -67,17 +68,33 @@ class RBACRole(Base):
 
 ```python
 # backend/app/models/rbac_resource.py
+
+def _infer_resource_type(key: str) -> str:
+    """根据权限 key 格式自动推断资源类型：
+       - {name}:read                → page（页面级权限）
+       - {name}:{operation}:{read|write} → action（操作级权限）
+    """
+    parts = key.split(":")
+    if len(parts) == 2 and parts[1] in ("read", "write"):
+        return "page"
+    return "action"
+
+
 class RBACResource(Base):
     __tablename__ = "rbac_resources"
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    key = Column(String(100), unique=True, nullable=False)          # dashboard / content / account
-    name = Column(String(100), nullable=False)
-    description = Column(Text, nullable=True)
-    type = Column(String(20), nullable=False)                       # page / action
+    key = Column(String(100), unique=True, nullable=False)          # 权限 key，如 dashboard:read / content:create:write
+    name = Column(String(100), nullable=False)                      # 中文显示名称
+    description = Column(Text, nullable=True)                       # 权限描述说明
     parent_id = Column(String(36), ForeignKey("rbac_resources.id"), nullable=True)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+    @property
+    def type(self) -> str:
+        """从 key 格式推断类型，不再存储为数据库字段"""
+        return _infer_resource_type(self.key)
 ```
 
 ```python
@@ -88,7 +105,7 @@ class RBACPermission(Base):
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     resource_id = Column(String(36), ForeignKey("rbac_resources.id"), nullable=False)
     operation = Column(String(50), nullable=False)                  # read / write / create / update / delete / approve / reject / execute
-    key = Column(String(150), unique=True, nullable=False)          # resource:operation
+    key = Column(String(150), unique=True, nullable=False)          # {name}:{operation}:{read|write} 或 {name}:read
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 ```
@@ -186,11 +203,24 @@ async def get_user_effective_permissions(
     active_role_ids: Optional[list[str]] = None,
 ) -> dict[str, PermissionAccess]:
     """
-    1. 超级管理员 -> 所有权限全开。
+    1. 超级管理员 -> 所有权限全开（不受自定义权限约束）。
     2. 查询用户已分配角色。
     3. 若 active_role_ids 提供，则取交集（会话级授权）。
-    4. 对每个角色取祖先闭包。
-    5. 聚合所有权限的 read/write。
+    4. 对每个角色取祖先闭包，聚合角色权限（role_access_map）。
+    5. 查询用户自定义权限覆盖（user_permission_overrides）。
+    6. 无自定义覆盖 → 返回全部角色权限。
+    7. 有自定义覆盖 → 取交集：有效 = 角色权限 ∩ {key | override.granted=true}。
+    """
+    ...
+
+async def flatten_effective_permissions(
+    effective: dict[str, PermissionAccess],
+    db: AsyncSession,
+) -> dict[str, str]:
+    """
+    将 PermissionAccess 展平为 { key: name } 格式。
+    - read/write 权限分别展开为独立的 key
+    - write 权限隐含授予对应 read 权限和父页面 read 权限
     """
     ...
 
@@ -259,7 +289,7 @@ async def validate_role_hierarchy(
 | DELETE | `/api/v2/roles/{id}` | 删除角色 |
 | POST | `/api/v2/roles/{id}/parents` | 添加父角色 |
 | DELETE | `/api/v2/roles/{id}/parents/{parent_id}` | 移除父角色 |
-| GET | `/api/v2/roles/{id}/permissions` | 有效权限 |
+| GET | `/api/v2/roles/{id}/permissions` | 有效权限（返回 `{ key: name }` 格式，含继承） |
 | GET | `/api/v2/roles/{id}/permissions/direct` | 直接权限 |
 | GET | `/api/v2/roles/{id}/permissions/detail` | 继承 + 直接权限（带 grant_type） |
 | PUT | `/api/v2/roles/{id}/permissions` | 更新直接权限 |
@@ -268,10 +298,35 @@ async def validate_role_hierarchy(
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| GET | `/api/v2/resources` | 资源树 |
+| GET | `/api/v2/resources` | 资源树（含 `description` 字段，类型由 key 推断） |
 | GET | `/api/v2/permissions` | 权限列表 |
-| POST | `/api/v2/resources` | 新增资源 |
-| POST | `/api/v2/permissions` | 新增权限 |
+| GET | `/api/v2/permission-enums` | 权限枚举列表（key + name + description） |
+| GET | `/api/v2/permission-pages` | 页面权限枚举（根据 key 最后 segment 为 `read` 筛选） |
+| POST | `/api/v2/resources` | 新增资源（key + name + description，key 格式校验） |
+| PUT | `/api/v2/resources/{id}` | 更新资源（支持修改 name、key、description） |
+| DELETE | `/api/v2/resources/{id}` | 删除资源及其关联权限 |
+| POST | `/api/v2/permissions` | 新增权限（key 格式校验） |
+| PUT | `/api/v2/permissions/{id}` | 更新权限 |
+| DELETE | `/api/v2/permissions/{id}` | 删除权限 |
+
+**权限 key 格式规范：**
+
+| 类型 | 格式 | 示例 | 说明 |
+|------|------|------|------|
+| 页面权限 | `{name}:read` | `dashboard:read`、`content:read` | 2 段式，控制页面/菜单可见性 |
+| 操作权限 | `{name}:{operation}:{read|write}` | `content:create:write`、`users:update:read` | 3 段式，控制具体操作 |
+
+**权限 key 校验规则（`_is_valid_permission_key`）：**
+- 2 段式：两段均非空，第一段不含 `read`/`write`
+- 3 段式：三段均非空，第三段为 `read` 或 `write`，第一二段不含 `read`/`write`
+
+**页面权限筛选（`_is_page_permission_key`）：**
+- 2 段式且第二段为 `read` 或 `write` 即为页面权限
+- 前端路由守卫通过 `route.meta.permKey` 配置对应的页面权限 key
+
+**资源类型推断（`_infer_resource_type`）：**
+- `{name}:read` 或 `{name}:write` → `"page"`
+- 其它格式 → `"action"`
 
 ### 4.4 约束（`rbac_constraints.py`）
 
@@ -284,20 +339,33 @@ async def validate_role_hierarchy(
 
 ### 4.5 认证接口（`auth.py`）
 
-`GET /api/auth/me` 返回当前用户有效权限映射，供前端渲染菜单与按钮：
+`GET /api/auth/me` 返回当前用户信息、角色和项目全部权限枚举：
 
 ```json
 {
   "id": "1",
   "username": "admin",
   "nickname": "超级管理员",
-  "roles": [{ "id": "...", "name": "admin", "display_name": "超级管理员" }],
+  "role": "admin",
+  "roles": [
+    { "id": "role-uuid-1", "name": "admin", "display_name": "超级管理员" }
+  ],
   "permissions": {
-    "dashboard": { "read": true, "write": true },
-    "content:update": { "read": true, "write": true }
+    "dashboard:read": "仪表盘",
+    "content:read": "内容列表",
+    "users:create:write": "创建用户"
   }
 }
 ```
+
+- `roles`：用户当前分配的角色列表，前端根据 `role.id` 调用 `/api/v2/roles/{id}/permissions` 获取角色权限
+- `permissions`：项目所有权限枚举 `{ key: name }`，用于前端展示权限名称
+
+用户有效权限由 `/api/v2/me/permissions` 获取（返回 `{ key: name }`），后端已内置**交集计算**：
+- 无自定义权限覆盖 → 返回角色权限的全部
+- 有自定义权限覆盖 → 返回角色权限 ∩ 自定义权限（仅两者共有的权限生效）
+
+前端 `permissionStore.loadPermissions()` 直接调用 `/api/v2/me/permissions` 获取最终有效权限。
 
 ### 4.6 依赖注入
 
@@ -361,22 +429,63 @@ async def sync_user_role_assignments(db: AsyncSession):
 
 初始不预设父子关系，管理员后续可在「角色设置」中配置。
 
-### 5.3 资源权限映射
+### 5.3 资源权限定义
 
-将旧 `ALL_PERMISSIONS` 映射到 `rbac_resources` + `rbac_permissions`：
+`RBAC_RESOURCES` 在 `backend/app/services/rbac_init_service.py` 中定义，每个资源包含 `key`、`name` 和 `description`，权限类型由 key 格式自动推断：
 
-| 旧 key | 资源 key | 操作 |
-|--------|----------|------|
-| `dashboard` | `dashboard` | `read` |
-| `accounts` | `users` | `read` |
-| `user:create` | `users` | `create` |
-| `user:update` | `users` | `update` |
-| `content:ai_generate` | `content` | `ai_generate` |
-| `account:create` | `account` | `create` |
-| `db:execute` | `db` | `execute` |
-| `db:history:read` | `db_history` | `read` |
+| key | name | description | 类型 |
+|-----|------|-------------|------|
+| `dashboard:read` | 仪表盘 | 系统首页仪表盘，展示核心数据概览 | 页面 |
+| `platforms:read` | 平台管理 | 管理已接入的第三方内容平台 | 页面 |
+| `content:read` | 内容列表 | 查看和管理所有内容列表 | 页面 |
+| `publish:read` | 发布管理 | 管理内容发布任务和发布计划 | 页面 |
+| `templates:read` | 模板管理 | 管理内容创作模板 | 页面 |
+| `review:read` | 内容审核 | 管理内容审核流程 | 页面 |
+| `sql_review:read` | SQL审核 | 管理SQL变更审核流程 | 页面 |
+| `accounts:read` | 平台账号 | 管理各平台的登录账号信息 | 页面 |
+| `token_plan:read` | Token方案 | 管理API Token用量方案 | 页面 |
+| `api_docs:read` | API文档 | 查看系统API接口文档 | 页面 |
+| `db:read` | 数据库控制台 | 访问数据库控制台 | 页面 |
+| `users:read` | 用户管理 | 管理系统用户列表和基本信息 | 页面 |
+| `permissions:read` | 权限管理 | 管理角色权限分配 | 页面 |
+| `roles:read` | 角色管理 | 管理角色定义和角色继承关系 | 页面 |
+| `constraints:read` | 约束管理 | 管理职责分离约束规则 | 页面 |
+| `permissions:manage:write` | 维护权限定义 | 创建、编辑、删除权限资源定义 | 操作 |
+| `roles:manage:write` | 维护角色 | 创建、编辑、删除角色定义和层级关系 | 操作 |
+| `constraints:manage:write` | 维护约束 | 创建、编辑、删除职责分离约束规则 | 操作 |
+| `content:create:write` | 创建内容 | 创建新的内容条目 | 操作 |
+| `content:update:write` | 编辑内容 | 编辑已有内容条目的标题、正文等信息 | 操作 |
+| `content:delete:write` | 删除内容 | 删除已有内容条目 | 操作 |
+| `content:ai_generate:write` | AI生成内容 | 使用AI辅助生成内容 | 操作 |
+| `publish:create:write` | 创建发布 | 创建内容发布任务 | 操作 |
+| `publish:retry:write` | 重试发布 | 重新执行失败的发布任务 | 操作 |
+| `templates:create:write` | 创建模板 | 创建新的内容模板 | 操作 |
+| `templates:update:write` | 编辑模板 | 编辑已有的内容模板 | 操作 |
+| `templates:delete:write` | 删除模板 | 删除已有的内容模板 | 操作 |
+| `review:submit:write` | 提交审核 | 将内容提交至审核流程 | 操作 |
+| `review:approve:write` | 通过审核 | 批准待审核的内容 | 操作 |
+| `review:reject:write` | 驳回审核 | 驳回审核不通过的内容 | 操作 |
+| `db:execute:write` | 执行SQL | 在数据库控制台中执行SQL语句 | 操作 |
+| `users:create:write` | 创建用户 | 创建新的系统用户 | 操作 |
+| `users:update:read` | 查看用户 | 查看用户详细信息 | 操作 |
+| `users:update:write` | 编辑用户 | 编辑用户的昵称、邮箱等基本信息 | 操作 |
+| `users:delete:write` | 删除用户 | 删除系统用户 | 操作 |
+| `users:change_password:write` | 修改用户密码 | 修改用户的登录密码 | 操作 |
+| `users:custom_permissions:write` | 自定义用户权限 | 为个别用户配置自定义权限覆盖 | 操作 |
+| `account:view:read` | 查看平台账号 | 查看平台账号的详细信息 | 操作 |
+| `account:create:write` | 创建平台账号 | 创建新的平台登录账号 | 操作 |
+| `account:update:write` | 编辑平台账号 | 编辑平台账号信息 | 操作 |
+| `account:delete:write` | 删除平台账号 | 删除平台登录账号 | 操作 |
+| `account:check:write` | 校验平台账号 | 校验平台账号的有效性 | 操作 |
+| `db_change:submit:write` | 提交SQL变更 | 提交SQL变更申请 | 操作 |
+| `db_change:approve:write` | 通过SQL变更 | 批准SQL变更申请 | 操作 |
+| `db_change:reject:write` | 驳回SQL变更 | 驳回SQL变更申请 | 操作 |
+| `model_config:create:write` | 创建模型配置 | 创建新的AI模型配置 | 操作 |
+| `model_config:update:write` | 编辑模型配置 | 编辑AI模型配置参数 | 操作 |
+| `model_config:delete:write` | 删除模型配置 | 删除AI模型配置 | 操作 |
+| `db_history:view:read` | 查看SQL历史 | 查看SQL执行历史记录 | 操作 |
 
-对于页面权限，默认同时生成 `read` 操作；对于操作权限，按原 key 解析为资源 + 操作。
+每个权限资源对应一条 `rbac_resources` 记录和一条 `rbac_permissions` 记录。operation 从 key 中提取：2 段式取第二段，3 段式取中间段。
 
 ### 5.4 旧权限数据迁移
 
@@ -394,22 +503,27 @@ async def sync_user_role_assignments(db: AsyncSession):
 
 ```typescript
 export const usePermissionStore = defineStore('permission', () => {
-  const permissions = ref<Record<string, { read: boolean; write: boolean }>>({})
+  const permissions = ref<Record<string, string>>({})
 
-  function hasPermission(key: string, mode: 'read' | 'write' = 'read'): boolean {
-    const access = permissions.value[key]
-    if (!access) return false
-    return mode === 'read' ? access.read : access.write
+  function hasPermission(key: string, _mode: 'read' | 'write' = 'read'): boolean {
+    return key in permissions.value
   }
 
-  async function loadPermissions() {
-    const { data } = await api.get('/auth/me')
-    permissions.value = data.permissions || {}
+  async function loadPermissions(userId?: string) {
+    const { data } = await api.get<Record<string, string>>('/v2/me/permissions')
+    permissions.value = data || {}
+    lastPermissionsUserId.value = userId ?? null
   }
 
-  return { permissions, hasPermission, loadPermissions }
+  return { permissions, hasPermission, loadPermissions, clearPermissions }
 })
 ```
+
+权限数据流：
+1. `/api/auth/me` 返回 `roles`（用户角色列表）和 `permissions`（项目全部权限枚举 `{key: name}`）
+2. 前端调用 `/api/v2/me/permissions` 获取用户最终有效权限 `{key: name}`
+3. 后端在 `get_user_effective_permissions` 中完成交集计算：角色权限 ∩ 自定义权限覆盖
+4. `hasPermission(key)` 检查 `key` 是否在有效权限集合中
 
 ### 6.2 路由守卫（`frontend/src/router/index.ts`）
 
@@ -422,7 +536,7 @@ router.beforeEach(async (to) => {
   if (!userStore.token) return '/login'
 
   if (!userStore.userInfo) await userStore.fetchUserInfo()
-  if (!permStore.permissions || Object.keys(permStore.permissions).length === 0) {
+  if (Object.keys(permStore.permissions).length === 0) {
     await permStore.loadPermissions()
   }
 
@@ -455,40 +569,42 @@ export default vPerm
 app.directive('perm', vPerm)
 ```
 
-### 6.4 侧边栏（`AppSidebar.vue`）
+### 6.4 权限类型判断（前端通用工具函数）
+
+```typescript
+/**
+ * 根据权限 key 判断是否为页面权限：
+ * - {name}:read 或 {name}:write → 页面权限（2段式）
+ * - {name}:{operation}:{read|write} → 操作权限（3段式）
+ */
+function _isPageKey(key: string): boolean {
+  const parts = key.split(':')
+  return parts.length === 2 && (parts[1] === 'read' || parts[1] === 'write')
+}
+```
+
+所有前端组件（`RBACPermissionManage.vue`、`RBACUserPermissionCustomize.vue`、`RBACPermissionEnumManage.vue`、`ResourcePermissionCard.vue`）均使用此函数判断权限类型，不再依赖后端返回的 `type` 字段。
+
+### 6.5 侧边栏（`AppSidebar.vue`）
 
 菜单项统一使用 `permissionStore.hasPermission(permKey, 'read')` 过滤；不再使用 `userStore.userInfo.role` 硬编码。
 
-分组结构：
-
-- 内容管理
-- 审核管理
-- 平台管理
-- 权限管理
-  - 账号设置（`users:read`）
-  - 角色设置（`roles:read`）
-  - 权限设置（`permissions:read`）
-  - 职责分离（`constraints:read`）
-- 系统管理
-  - Token 配置
-  - API 文档
-  - 数据库管理
-
-### 6.5 管理页面
+### 6.6 管理页面
 
 | 页面 | 路径 | 核心功能 |
 |------|------|----------|
 | `RBACUserManage.vue` | `/rbac/users` | 用户列表、创建、编辑、角色分配 |
 | `RBACRoleManage.vue` | `/rbac/roles` | 角色 CRUD、父子关系、约束提示 |
-| `RBACPermissionManage.vue` | `/rbac/permissions` | 按资源树配置角色权限，区分继承/直接 |
+| `RBACPermissionManage.vue` | `/rbac/permissions` | 按资源树配置角色权限，区分继承/直接，显示权限描述 |
+| `RBACPermissionEnumManage.vue` | `/rbac/permission-enum` | 超级管理员专用：权限枚举 CRUD（key、名称、描述编辑） |
+| `RBACUserPermissionCustomize.vue` | `/rbac/user-permissions` | 用户级自定义权限覆盖 |
 | `RBACConstraintManage.vue` | `/rbac/constraints` | 互斥/先决/基数约束管理 |
 
-设计原则（调用 `frontend-design` 技能细化）：
-
-- Apple HIG 风格：大圆角、柔和阴影、玻璃态面板。
-- 响应式：左侧树/列表 + 右侧详情/卡片。
-- 权限卡片使用颜色区分：蓝色=自定义，绿色=继承，灰色=未授权。
-- 全选读/写仅作用于可配置（非继承）权限。
+权限描述展示与编辑：
+- 权限枚举列表中，每个权限显示 `description` 字段
+- 超管可在 `RBACPermissionEnumManage.vue` 中编辑权限的 key、名称和描述
+- 创建新权限时需填写 key、名称、描述三个字段
+- 权限卡片组件 `ResourcePermissionCard.vue` 中使用 `_isPageKey()` 判断权限图标
 
 ---
 
@@ -500,7 +616,7 @@ backend/app/
 │   └── deps.py                    # require_permission 切到 RBAC3
 ├── models/
 │   ├── rbac_role.py
-│   ├── rbac_resource.py
+│   ├── rbac_resource.py           # 移除 type 字段，添加 _infer_resource_type()、description
 │   ├── rbac_permission.py
 │   ├── rbac_role_hierarchy.py
 │   ├── rbac_role_permission.py
@@ -514,7 +630,7 @@ backend/app/
 ├── routers/
 │   ├── rbac_users.py
 │   ├── rbac_roles.py
-│   ├── rbac_permissions.py
+│   ├── rbac_permissions.py        # 新增 description、权限 key 校验、页面权限筛选
 │   ├── rbac_constraints.py
 │   ├── users.py                   # 删除
 │   ├── roles.py                   # 删除
@@ -522,20 +638,27 @@ backend/app/
 ├── services/
 │   ├── rbac_service.py
 │   ├── rbac_constraint_service.py
-│   └── rbac_init_service.py
+│   └── rbac_init_service.py      # RBAC_RESOURCES 含 description，type 由 key 推断
 frontend/src/
 ├── stores/
-│   └── permission.ts
+│   └── permission.ts             # 权限状态管理，权限为 {open, name} 结构
 ├── directives/
 │   └── permission.ts
 ├── router/
 │   └── index.ts
 ├── components/layout/
 │   └── AppSidebar.vue
+├── components/rbac/
+│   └── ResourcePermissionCard.vue # 使用 _isPageKey() 判断权限图标
 └── pages/
     ├── RBACUserManage.vue
+    ├── RBACUserCreate.vue
+    ├── RBACUserEdit.vue
+    ├── RBACUserPassword.vue
     ├── RBACRoleManage.vue
     ├── RBACPermissionManage.vue
+    ├── RBACPermissionEnumManage.vue  # 权限枚举管理（含 description 编辑）
+    ├── RBACUserPermissionCustomize.vue
     ├── RBACConstraintManage.vue
     ├── Accounts.vue               # 删除
     ├── RoleManage.vue             # 删除
@@ -605,14 +728,77 @@ frontend/src/
 ## 10. 风险与注意点
 
 1. **旧用户角色同步**：`users.role` 字段保留，仅作为初始角色分配来源；后续以 `rbac_user_role_assignments` 为准。
-2. **权限键映射**：部分旧 key（如 `db:history:read`）拆分为 `db_history:read` 资源，需要在初始化服务中显式映射。
+2. **权限键映射**：部分旧 key（如 `db:history:read`）拆分为 `db_history:view:read` 资源，需要在初始化服务中显式映射。
 3. **前端硬编码 role 检查**：`AppSidebar.vue` 和页面中所有 `userInfo.role === 'admin'` 都要替换为权限检查。
 4. **会话激活**：第一版默认激活用户所有角色；如需会话级角色切换，后续扩展 `active_role_ids` 参数。
 5. **约束性能**：互斥约束在用户角色分配时校验，角色继承扩展后用户数大时需注意查询性能（可缓存）。
+6. **权限类型推断**：权限类型不再存储在数据库中，通过 `_infer_resource_type(key)` 函数根据 key 格式动态计算。确保所有新增权限遵循 `{name}:{operation}:{read|write}` 命名规范。
+7. **权限描述必填**：`RBAC_RESOURCES` 中每条记录需填写 `description`，前端权限管理界面依赖此字段展示。系统启动时 `_ensure_resources_and_permissions()` 自动将描述写入数据库。
 
 ---
 
-## 11. 附录：关键权限键对照表
+## 11. 附录：权限枚举完整对照表
+
+### 11.1 页面权限（2段式 `{name}:read`）
+
+| 权限 key | 名称 | 描述 |
+|----------|------|------|
+| `dashboard:read` | 仪表盘 | 系统首页仪表盘，展示核心数据概览 |
+| `platforms:read` | 平台管理 | 管理已接入的第三方内容平台 |
+| `content:read` | 内容列表 | 查看和管理所有内容列表 |
+| `publish:read` | 发布管理 | 管理内容发布任务和发布计划 |
+| `templates:read` | 模板管理 | 管理内容创作模板 |
+| `review:read` | 内容审核 | 管理内容审核流程 |
+| `sql_review:read` | SQL审核 | 管理SQL变更审核流程 |
+| `accounts:read` | 平台账号 | 管理各平台的登录账号信息 |
+| `token_plan:read` | Token方案 | 管理API Token用量方案 |
+| `api_docs:read` | API文档 | 查看系统API接口文档 |
+| `db:read` | 数据库控制台 | 访问数据库控制台 |
+| `users:read` | 用户管理 | 管理系统用户列表和基本信息 |
+| `permissions:read` | 权限管理 | 管理角色权限分配 |
+| `roles:read` | 角色管理 | 管理角色定义和角色继承关系 |
+| `constraints:read` | 约束管理 | 管理职责分离约束规则 |
+
+### 11.2 操作权限（3段式 `{name}:{operation}:{read|write}`）
+
+| 权限 key | 名称 | 描述 |
+|----------|------|------|
+| `permissions:manage:write` | 维护权限定义 | 创建、编辑、删除权限资源定义 |
+| `roles:manage:write` | 维护角色 | 创建、编辑、删除角色定义和层级关系 |
+| `constraints:manage:write` | 维护约束 | 创建、编辑、删除职责分离约束规则 |
+| `content:create:write` | 创建内容 | 创建新的内容条目 |
+| `content:update:write` | 编辑内容 | 编辑已有内容条目的标题、正文等信息 |
+| `content:delete:write` | 删除内容 | 删除已有内容条目 |
+| `content:ai_generate:write` | AI生成内容 | 使用AI辅助生成内容 |
+| `publish:create:write` | 创建发布 | 创建内容发布任务 |
+| `publish:retry:write` | 重试发布 | 重新执行失败的发布任务 |
+| `templates:create:write` | 创建模板 | 创建新的内容模板 |
+| `templates:update:write` | 编辑模板 | 编辑已有的内容模板 |
+| `templates:delete:write` | 删除模板 | 删除已有的内容模板 |
+| `review:submit:write` | 提交审核 | 将内容提交至审核流程 |
+| `review:approve:write` | 通过审核 | 批准待审核的内容 |
+| `review:reject:write` | 驳回审核 | 驳回审核不通过的内容 |
+| `db:execute:write` | 执行SQL | 在数据库控制台中执行SQL语句 |
+| `users:create:write` | 创建用户 | 创建新的系统用户 |
+| `users:update:read` | 查看用户 | 查看用户详细信息 |
+| `users:update:write` | 编辑用户 | 编辑用户的昵称、邮箱等基本信息 |
+| `users:delete:write` | 删除用户 | 删除系统用户 |
+| `users:change_password:write` | 修改用户密码 | 修改用户的登录密码 |
+| `users:custom_permissions:write` | 自定义用户权限 | 为个别用户配置自定义权限覆盖 |
+| `account:view:read` | 查看平台账号 | 查看平台账号的详细信息 |
+| `account:create:write` | 创建平台账号 | 创建新的平台登录账号 |
+| `account:update:write` | 编辑平台账号 | 编辑平台账号信息 |
+| `account:delete:write` | 删除平台账号 | 删除平台登录账号 |
+| `account:check:write` | 校验平台账号 | 校验平台账号的有效性 |
+| `db_change:submit:write` | 提交SQL变更 | 提交SQL变更申请 |
+| `db_change:approve:write` | 通过SQL变更 | 批准SQL变更申请 |
+| `db_change:reject:write` | 驳回SQL变更 | 驳回SQL变更申请 |
+| `model_config:create:write` | 创建模型配置 | 创建新的AI模型配置 |
+| `model_config:update:write` | 编辑模型配置 | 编辑AI模型配置参数 |
+| `model_config:delete:write` | 删除模型配置 | 删除AI模型配置 |
+| `db_history:view:read` | 查看SQL历史 | 查看SQL执行历史记录 |
+
+### 11.3 旧权限键迁移对照
 
 | 旧权限键 | RBAC3 权限键 | 说明 |
 |----------|--------------|------|
@@ -628,36 +814,47 @@ frontend/src/
 | `api_docs` | `api_docs:read` | API 文档 |
 | `database` | `db:read` | 数据库管理 |
 | `permission_manage` | `permissions:read` | 权限设置页面 |
-| `user:create` | `users:create` | 创建用户 |
-| `user:update` | `users:update` | 编辑用户 |
-| `user:delete` | `users:delete` | 删除用户 |
-| `user:change_password` | `users:change_password` | 修改密码 |
-| `content:create` | `content:create` | 创建内容 |
-| `content:update` | `content:update` | 编辑内容 |
-| `content:delete` | `content:delete` | 删除内容 |
-| `content:ai_generate` | `content:ai_generate` | AI 生成 |
-| `review:submit` | `review:submit` | 提交审核 |
-| `review:approve` | `review:approve` | 审核通过 |
-| `review:reject` | `review:reject` | 审核驳回 |
-| `db_change:submit` | `db_change:submit` | 提交 SQL 变更 |
-| `db_change:approve` | `db_change:approve` | SQL 变更通过 |
-| `db_change:reject` | `db_change:reject` | SQL 变更驳回 |
-| `template:create` | `templates:create` | 创建模板 |
-| `template:update` | `templates:update` | 编辑模板 |
-| `template:delete` | `templates:delete` | 删除模板 |
-| `account:create` | `account:create` | 添加平台账号 |
-| `account:update` | `account:update` | 编辑平台账号 |
-| `account:delete` | `account:delete` | 删除平台账号 |
-| `account:check` | `account:check` | 检测账号状态 |
-| `publish:create` | `publish:create` | 创建发布任务 |
-| `publish:retry` | `publish:retry` | 重试发布任务 |
-| `model_config:create` | `model_config:create` | 创建模型配置 |
-| `model_config:update` | `model_config:update` | 编辑模型配置 |
-| `model_config:delete` | `model_config:delete` | 删除模型配置 |
-| `db:execute` | `db:execute` | 执行 SQL |
-| `db:history:read` | `db_history:read` | 查看 SQL 历史 |
+| `user:create` | `users:create:write` | 创建用户 |
+| `user:update` | `users:update:write` | 编辑用户 |
+| `user:delete` | `users:delete:write` | 删除用户 |
+| `user:change_password` | `users:change_password:write` | 修改密码 |
+| `content:create` | `content:create:write` | 创建内容 |
+| `content:update` | `content:update:write` | 编辑内容 |
+| `content:delete` | `content:delete:write` | 删除内容 |
+| `content:ai_generate` | `content:ai_generate:write` | AI 生成 |
+| `review:submit` | `review:submit:write` | 提交审核 |
+| `review:approve` | `review:approve:write` | 审核通过 |
+| `review:reject` | `review:reject:write` | 审核驳回 |
+| `db_change:submit` | `db_change:submit:write` | 提交 SQL 变更 |
+| `db_change:approve` | `db_change:approve:write` | SQL 变更通过 |
+| `db_change:reject` | `db_change:reject:write` | SQL 变更驳回 |
+| `template:create` | `templates:create:write` | 创建模板 |
+| `template:update` | `templates:update:write` | 编辑模板 |
+| `template:delete` | `templates:delete:write` | 删除模板 |
+| `account:create` | `account:create:write` | 添加平台账号 |
+| `account:update` | `account:update:write` | 编辑平台账号 |
+| `account:delete` | `account:delete:write` | 删除平台账号 |
+| `account:check` | `account:check:write` | 检测账号状态 |
+| `publish:create` | `publish:create:write` | 创建发布任务 |
+| `publish:retry` | `publish:retry:write` | 重试发布任务 |
+| `model_config:create` | `model_config:create:write` | 创建模型配置 |
+| `model_config:update` | `model_config:update:write` | 编辑模型配置 |
+| `model_config:delete` | `model_config:delete:write` | 删除模型配置 |
+| `db:execute` | `db:execute:write` | 执行 SQL |
+| `db:history:read` | `db_history:view:read` | 查看 SQL 历史 |
+
+**迁移规则**（`rbac_init_service.py` 中的 `_map_legacy_permission()`）：
+
+1. `db:history:read` → `db_history:view:read`（特殊映射）
+2. `db:execute` → `db:execute:write`（特殊映射）
+3. `user:*` 系列 → `users:*:write`（统一加 `users:` 前缀和 `:write` 后缀）
+4. `template:*` 系列 → `templates:*:write`（统一加 `templates:` 前缀和 `:write` 后缀）
+5. 其他 2 段式：操作是 write 类型的（`create`/`update`/`delete`/`approve`/`reject`/`submit`/`retry`/`check`/`execute`/`ai_generate`/`change_password`/`custom_permissions`）→ 加 `:write` 后缀；操作是 `read` → 加 `:read` 后缀
+6. 单段式：`permission_manage` → `permissions:read`；`database` → `db:read`；其他 → 加 `:read` 后缀
 
 ---
 
-*文档版本：v1.0*
-*编写时间：2026-07-25*
+*文档版本：v1.2*
+*最后更新：2026-07-29*
+*变更说明：v1.2 - 重构权限接口数据格式：/api/auth/me 的 permissions 改为 { key: name } 返回全部权限枚举，用户有效权限改由 /api/v2/roles/{id}/permissions 获取（也返回 { key: name }）；前端权限 store 改为汇总多角色权限；更新 API 接口文档。*
+*v1.1 - 移除 RBACResource.type 字段，改为基于 key 格式推断类型；添加 description 字段到权限枚举；更新前后端权限筛选逻辑；更新 API 接口文档。*

@@ -32,7 +32,7 @@ async def list_templates(
 async def create_template(
     request: TemplateCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_permission("template:create", "write")),
+    current_user: User = Depends(require_permission("templates:create:write", "write")),
 ):
     template = Template(
         name=request.name,
@@ -64,7 +64,7 @@ async def update_template(
     template_id: str,
     request: TemplateUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_permission("template:update", "write")),
+    current_user: User = Depends(require_permission("templates:update:write", "write")),
 ):
     result = await db.execute(select(Template).where(Template.id == template_id))
     template = result.scalar_one_or_none()
@@ -84,7 +84,7 @@ async def update_template(
 async def delete_template(
     template_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_permission("template:delete", "write")),
+    current_user: User = Depends(require_permission("templates:delete:write", "write")),
 ):
     result = await db.execute(select(Template).where(Template.id == template_id))
     template = result.scalar_one_or_none()

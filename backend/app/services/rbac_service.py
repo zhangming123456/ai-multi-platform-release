@@ -8,17 +8,26 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.rbac_permission import RBACPermission
+from app.models.rbac_resource import RBACResource
 from app.models.rbac_role import RBACRole
 from app.models.rbac_role_hierarchy import RBACRoleHierarchy
 from app.models.rbac_role_permission import RBACRolePermission
 from app.models.rbac_user_permission_override import RBACUserPermissionOverride
 from app.models.rbac_user_role_assignment import RBACUserRoleAssignment
 
+READ_OPERATIONS = {"read", "execute", "custom_permissions"}
+WRITE_OPERATIONS = {"create", "update", "delete", "approve", "reject", "execute", "custom_permissions"}
 
-# Execute is intentionally treated as both read and write: performing an action
-# implies both viewing it and writing/mutating state.
-READ_OPERATIONS = {"read", "execute"}
-WRITE_OPERATIONS = {"create", "update", "delete", "approve", "reject", "execute"}
+# Actions whose write permission also grants view access to the corresponding page.
+ACTION_PARENT_PAGE: dict[str, str] = {
+    "content": "content:read",
+    "publish": "publish:read",
+    "templates": "templates:read",
+    "review": "review:read",
+    "db_change": "sql_review:read",
+    "db": "db:read",
+    "db_history": "db:read",
+}
 
 
 @dataclass
@@ -27,13 +36,117 @@ class PermissionAccess:
     write: bool = False
 
 
-async def get_role_ancestors(role_id: str, db: AsyncSession) -> list[RBACRole]:
-    """Return all ancestor roles by walking up the hierarchy (child -> parent).
+def _permission_scope(perm_key: str) -> str:
+    parts = perm_key.split(":")
+    if len(parts) >= 3:
+        return parts[2]
+    return parts[-1] if len(parts) == 2 else "read"
 
-    Uses a batched BFS so that all parents of the current frontier are fetched
-    in a single query per hierarchy level. Defensively handles cycles by
-    tracking visited role IDs.
-    """
+
+def resolve_read_keys(perm_key: str) -> list[str]:
+    parts = perm_key.split(":")
+    if len(parts) == 2:
+        return [perm_key]
+    if len(parts) == 3:
+        scope = parts[2]
+        if scope == "read":
+            return [perm_key]
+        return [perm_key, f"{parts[0]}:{parts[1]}:read"]
+    return [perm_key]
+
+
+def resolve_write_keys(perm_key: str) -> list[str]:
+    parts = perm_key.split(":")
+    if len(parts) == 2:
+        return [perm_key]
+    if len(parts) == 3:
+        if parts[2] == "write":
+            return [perm_key]
+    return [perm_key]
+
+
+def _implied_read_keys(perm_key: str) -> list[str]:
+    """Extra read keys implicitly granted when an action write key is granted."""
+    parts = perm_key.split(":")
+    if len(parts) != 3 or parts[2] != "write":
+        return []
+    implied: list[str] = []
+    if not (parts[1] == "read"):
+        implied.append(f"{parts[0]}:{parts[1]}:read")
+    parent = ACTION_PARENT_PAGE.get(parts[0])
+    if parent:
+        implied.append(parent)
+    return implied
+
+
+async def flatten_effective_permissions(
+    effective: dict[str, PermissionAccess],
+    db: AsyncSession,
+    denied_keys: set[str] | None = None,
+) -> dict[str, str]:
+    deny = denied_keys or set()
+    flat: set[str] = set()
+    for perm_key, access in effective.items():
+        if access.read or access.write:
+            for read_key in resolve_read_keys(perm_key):
+                flat.add(read_key)
+        if access.write:
+            for write_key in resolve_write_keys(perm_key):
+                flat.add(write_key)
+            for implied in _implied_read_keys(perm_key):
+                flat.add(implied)
+
+    flat -= deny
+
+    if not flat:
+        return {}
+
+    names = await get_permission_display_names(list(flat), db)
+    result: dict[str, str] = {}
+    for key in flat:
+        result[key] = names.get(key, key)
+    return result
+
+
+async def get_permission_display_names(keys: list[str], db: AsyncSession) -> dict[str, str]:
+    if not keys:
+        return {}
+    result = await db.execute(
+        select(RBACPermission.key, RBACResource.name)
+        .join(RBACResource, RBACPermission.resource_id == RBACResource.id)
+        .where(RBACPermission.key.in_(keys))
+    )
+    names: dict[str, str] = {}
+    for key, name in result.all():
+        parts = key.split(":")
+        is_action = len(parts) == 3
+        if is_action and parts[2] == "read":
+            names[key] = f"查看{name}" if not name.startswith("查看") else name
+        else:
+            names[key] = name
+
+    for key in keys:
+        if key in names:
+            continue
+        parts = key.split(":")
+        if len(parts) != 3:
+            continue
+        resource, op, scope = parts
+        if scope == "read":
+            counterpart_key = f"{resource}:{op}:write"
+        else:
+            counterpart_key = f"{resource}:{op}:read"
+        counterpart = names.get(counterpart_key)
+        if counterpart:
+            if scope == "read":
+                names[key] = f"查看{counterpart}" if not counterpart.startswith("查看") else counterpart
+            else:
+                names[key] = counterpart
+
+    return names
+
+
+async def get_role_ancestors(role_id: str, db: AsyncSession) -> list[RBACRole]:
     ancestors: list[RBACRole] = []
     seen: set[str] = {role_id}
     frontier: set[str] = {role_id}
@@ -59,12 +172,6 @@ async def get_role_ancestors(role_id: str, db: AsyncSession) -> list[RBACRole]:
 
 
 async def get_role_descendants(role_id: str, db: AsyncSession) -> list[RBACRole]:
-    """Return all descendant roles by walking down the hierarchy (parent -> child).
-
-    Uses a batched BFS so that all children of the current frontier are fetched
-    in a single query per hierarchy level. Defensively handles cycles by
-    tracking visited role IDs.
-    """
     descendants: list[RBACRole] = []
     seen: set[str] = {role_id}
     frontier: set[str] = {role_id}
@@ -94,11 +201,15 @@ async def get_user_effective_permissions(
     db: AsyncSession,
     active_role_ids: Optional[list[str]] = None,
 ) -> dict[str, PermissionAccess]:
-    """Compute the user's effective permission map.
-
-    Super-admin roles grant read/write access to every active permission.
-    Otherwise, permissions are aggregated from the user's valid role
-    assignments and their ancestor role closures.
+    """
+    1. 超级管理员 -> 所有权限全开（不受自定义权限约束）。
+    2. 查询用户已分配角色。
+    3. 若 active_role_ids 提供，则取交集（会话级授权）。
+    4. 对每个角色取祖先闭包，聚合角色权限（role_access_map）。
+    5. 查询用户自定义权限覆盖（user_permission_overrides）。
+    6. 无自定义覆盖 → 返回全部角色权限。
+    7. 有自定义覆盖 → 有效 = 角色权限 - {key | override.granted=false}。
+       仅移除明确拒绝的权限，未覆盖的权限保持角色默认值。
     """
     now = datetime.utcnow()
 
@@ -124,8 +235,6 @@ async def get_user_effective_permissions(
     if not assigned_role_ids:
         return {}
 
-    # If any directly assigned role is a super admin, grant everything without
-    # building the ancestor closure.
     super_admin_result = await db.execute(
         select(RBACRole).where(
             RBACRole.id.in_(assigned_role_ids),
@@ -141,14 +250,12 @@ async def get_user_effective_permissions(
             for permission in all_permissions.scalars().all()
         }
 
-    # Build the ancestor closure for each assigned role once.
     all_role_ids: set[str] = set()
     for role_id in assigned_role_ids:
         all_role_ids.add(role_id)
         ancestors = await get_role_ancestors(role_id, db)
         all_role_ids.update(ancestor.id for ancestor in ancestors)
 
-    # If any role in the closure is a super admin, grant everything.
     super_admin_result = await db.execute(
         select(RBACRole).where(
             RBACRole.id.in_(all_role_ids),
@@ -164,7 +271,6 @@ async def get_user_effective_permissions(
             for permission in all_permissions.scalars().all()
         }
 
-    # Aggregate permissions from the role closure.
     result = await db.execute(
         select(RBACRolePermission, RBACPermission)
         .join(RBACPermission, RBACRolePermission.permission_id == RBACPermission.id)
@@ -174,78 +280,52 @@ async def get_user_effective_permissions(
         )
     )
 
-    access_map: dict[str, PermissionAccess] = {}
+    role_access_map: dict[str, PermissionAccess] = {}
     for role_permission, permission in result.all():
-        operation = permission.operation.lower()
-        access = access_map.get(permission.key)
+        scope = _permission_scope(permission.key)
+        access = role_access_map.get(permission.key)
         if access is None:
             access = PermissionAccess()
-            access_map[permission.key] = access
-        if operation in READ_OPERATIONS:
+            role_access_map[permission.key] = access
+        if scope == "read":
             access.read = True
-        if operation in WRITE_OPERATIONS:
+        elif scope == "write":
             access.write = True
+        else:
+            if permission.operation.lower() in READ_OPERATIONS:
+                access.read = True
+            if permission.operation.lower() in WRITE_OPERATIONS:
+                access.write = True
 
-    # Apply user-level permission overrides (grant additional permissions or
-    # deny permissions granted by roles).
     overrides = await db.execute(
         select(RBACUserPermissionOverride).where(
             RBACUserPermissionOverride.user_id == user_id,
         )
     )
-    for override in overrides.scalars().all():
-        if override.granted:
-            entry = access_map.get(override.permission_key)
-            if entry is None:
-                entry = PermissionAccess()
-                access_map[override.permission_key] = entry
-            entry.read = True
-            entry.write = True
-        else:
-            access_map.pop(override.permission_key, None)
+    overrides_list = overrides.scalars().all()
+
+    if not overrides_list:
+        return role_access_map
+
+    denied_keys: set[str] = {
+        override.permission_key
+        for override in overrides_list
+        if not override.granted
+    }
+
+    access_map: dict[str, PermissionAccess] = {}
+    for key, access in role_access_map.items():
+        if key not in denied_keys:
+            access_map[key] = access
 
     return access_map
 
 
-async def has_permission(
+async def _role_closure_role_ids(
     user_id: str,
-    permission_key: str,
-    mode: str,
     db: AsyncSession,
     active_role_ids: Optional[list[str]] = None,
-) -> bool:
-    """Return True if the user has the requested permission mode."""
-    if mode not in {"read", "write"}:
-        raise ValueError(f"Unsupported permission mode: {mode}")
-    effective = await get_user_effective_permissions(
-        user_id,
-        db,
-        active_role_ids=active_role_ids,
-    )
-    access = effective.get(permission_key)
-    if access is None:
-        return False
-    if mode == "read":
-        return access.read
-    return access.write
-
-
-async def has_permission_direct(
-    user_id: str,
-    permission_key: str,
-    mode: str,
-    db: AsyncSession,
-    active_role_ids: Optional[list[str]] = None,
-) -> bool:
-    """Return True if the user has the requested permission mode.
-
-    This is a targeted check that avoids building the user's full effective
-    permission map. It still walks the ancestor closure for assigned roles to
-    honor inherited role permissions.
-    """
-    if mode not in {"read", "write"}:
-        raise ValueError(f"Unsupported permission mode: {mode}")
-
+) -> set[str]:
     now = datetime.utcnow()
     result = await db.execute(
         select(RBACUserRoleAssignment).where(
@@ -267,52 +347,93 @@ async def has_permission_direct(
         assigned_role_ids &= set(active_role_ids)
 
     if not assigned_role_ids:
-        return False
+        return set()
 
-    # If any directly assigned role is a super admin, grant the permission.
-    super_admin_result = await db.execute(
-        select(RBACRole).where(
-            RBACRole.id.in_(assigned_role_ids),
-            RBACRole.is_super_admin.is_(True),
-        )
-    )
-    if super_admin_result.scalars().first() is not None:
-        return True
-
-    # Build the ancestor closure for each assigned role once.
     all_role_ids: set[str] = set(assigned_role_ids)
     for role_id in assigned_role_ids:
         ancestors = await get_role_ancestors(role_id, db)
         all_role_ids.update(ancestor.id for ancestor in ancestors)
+    return all_role_ids
 
-    # Check whether any role in the closure has the requested permission with a
-    # sufficient operation.
+
+async def _closure_has_super_admin(role_ids: set[str], db: AsyncSession) -> bool:
+    if not role_ids:
+        return False
     result = await db.execute(
-        select(RBACRolePermission, RBACPermission)
-        .join(RBACPermission, RBACRolePermission.permission_id == RBACPermission.id)
+        select(RBACRole).where(
+            RBACRole.id.in_(role_ids),
+            RBACRole.is_super_admin.is_(True),
+        )
+    )
+    return result.scalars().first() is not None
+
+
+async def has_permission(
+    user_id: str,
+    permission_key: str,
+    mode: str,
+    db: AsyncSession,
+    active_role_ids: Optional[list[str]] = None,
+) -> bool:
+    if mode not in {"read", "write"}:
+        raise ValueError(f"Unsupported permission mode: {mode}")
+    effective = await get_user_effective_permissions(
+        user_id,
+        db,
+        active_role_ids=active_role_ids,
+    )
+    access = effective.get(permission_key)
+    if access is None:
+        return False
+    if mode == "read":
+        return access.read or access.write
+    return access.write
+
+
+async def has_permission_direct(
+    user_id: str,
+    permission_key: str,
+    mode: str,
+    db: AsyncSession,
+    active_role_ids: Optional[list[str]] = None,
+) -> bool:
+    if mode not in {"read", "write"}:
+        raise ValueError(f"Unsupported permission mode: {mode}")
+
+    all_role_ids = await _role_closure_role_ids(user_id, db, active_role_ids)
+    if not all_role_ids:
+        return False
+
+    if await _closure_has_super_admin(all_role_ids, db):
+        return True
+
+    candidate_keys = resolve_read_keys(permission_key) if mode == "read" else resolve_write_keys(permission_key)
+
+    result = await db.execute(
+        select(RBACPermission.key)
+        .join(RBACRolePermission, RBACRolePermission.permission_id == RBACPermission.id)
         .where(
             RBACRolePermission.role_id.in_(all_role_ids),
-            RBACPermission.key == permission_key,
+            RBACPermission.key.in_(candidate_keys),
             RBACPermission.is_active.is_(True),
         )
     )
+    granted_keys = {row[0] for row in result.all()}
 
-    for role_permission, permission in result.all():
-        operation = permission.operation.lower()
-        if mode == "read" and operation in READ_OPERATIONS:
-            return True
-        if mode == "write" and operation in WRITE_OPERATIONS:
-            return True
+    write_candidates = set(resolve_write_keys(permission_key))
+    read_candidates = set(resolve_read_keys(permission_key))
 
-    # Check user-level permission overrides.
-    override_result = await db.execute(
+    deny_result = await db.execute(
         select(RBACUserPermissionOverride).where(
             RBACUserPermissionOverride.user_id == user_id,
-            RBACUserPermissionOverride.permission_key == permission_key,
+            RBACUserPermissionOverride.permission_key.in_(list(read_candidates | write_candidates)),
+            RBACUserPermissionOverride.granted.is_(False),
         )
     )
-    override = override_result.scalar_one_or_none()
-    if override is not None:
-        return override.granted
+    explicitly_denied = deny_result.scalars().first() is not None
+    if explicitly_denied:
+        return False
 
-    return False
+    if mode == "read":
+        return bool(granted_keys & (read_candidates | write_candidates))
+    return bool(granted_keys & write_candidates)

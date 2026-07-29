@@ -44,7 +44,7 @@ interface Constraint {
 }
 
 const permStore = usePermissionStore()
-const canWrite = computed(() => permStore.hasPermission('constraints:write', 'write'))
+const canWrite = computed(() => permStore.hasPermission('constraints:manage:write'))
 
 const loading = ref(false)
 const roles = ref<Role[]>([])

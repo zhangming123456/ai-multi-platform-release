@@ -140,7 +140,7 @@ async def _execute_change(db: AsyncSession, req: SqlChangeRequest) -> tuple[bool
 async def submit_change(
     body: SubmitChangeRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_permission("db_change:submit")),
+    current_user: User = Depends(require_permission("db_change:submit:write")),
 ):
     """提交 DELETE/UPDATE 变更审核请求"""
     sql = body.sql.strip()
@@ -189,7 +189,7 @@ async def submit_change(
 async def list_changes(
     status_filter: Optional[str] = Query(default=None, alias="status"),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_permission("db_change:approve", "read")),
+    current_user: User = Depends(require_permission("sql_review:read", "read")),
 ):
     """获取 SQL 变更审核列表"""
     stmt = select(SqlChangeRequest).order_by(SqlChangeRequest.created_at.desc())
@@ -216,7 +216,7 @@ async def list_changes(
 async def approve_change(
     change_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_permission("db_change:approve", "write")),
+    current_user: User = Depends(require_permission("db_change:approve:write", "write")),
 ):
     """审核通过 SQL 变更（达到 2 人通过后自动执行）"""
 
@@ -294,7 +294,7 @@ async def reject_change(
     change_id: str,
     reason: str = Body(default="", embed=True),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_permission("db_change:reject", "write")),
+    current_user: User = Depends(require_permission("db_change:reject:write", "write")),
 ):
     """驳回 SQL 变更请求"""
 

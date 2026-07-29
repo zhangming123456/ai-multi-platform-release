@@ -18,7 +18,7 @@ from app.models.user import User, UserRole
 from app.models.user_creation_request import UserCreationRequest, UserCreationStatus
 from app.schemas.auth import UserInfo
 from app.services.rbac_constraint_service import validate_user_role_assignments
-from app.services.rbac_service import get_user_effective_permissions
+from app.services.rbac_service import get_user_effective_permissions, has_permission_direct, flatten_effective_permissions
 
 router = APIRouter(prefix="/api/v2", tags=["RBAC 用户管理"])
 
@@ -27,6 +27,7 @@ class RoleAssignmentInfo(BaseModel):
     id: str
     name: str
     display_name: str
+    role_type: str = "other"
 
     model_config = {"from_attributes": True}
 
@@ -65,12 +66,6 @@ class UpdateUserPasswordRequest(BaseModel):
     old_password: Optional[str] = None
 
 
-class UserPermissionItem(BaseModel):
-    key: str
-    read: bool
-    write: bool
-
-
 async def _user_roles(user_id: str, db: AsyncSession) -> list[RoleAssignmentInfo]:
     result = await db.execute(
         select(RBACRole)
@@ -81,7 +76,7 @@ async def _user_roles(user_id: str, db: AsyncSession) -> list[RoleAssignmentInfo
         .where(RBACUserRoleAssignment.user_id == user_id)
     )
     return [
-        RoleAssignmentInfo(id=role.id, name=role.name, display_name=role.display_name)
+        RoleAssignmentInfo(id=role.id, name=role.name, display_name=role.display_name, role_type=role.role_type)
         for role in result.scalars().all()
     ]
 
@@ -100,6 +95,36 @@ def _is_manager_or_admin(user: User) -> bool:
     return str(user.role) in {UserRole.admin.value, UserRole.manager.value}
 
 
+async def _get_user_role_names(user: User, db: AsyncSession) -> set[str]:
+    """Get all role names assigned to a user."""
+    result = await db.execute(
+        select(RBACRole.name).join(
+            RBACUserRoleAssignment, RBACRole.id == RBACUserRoleAssignment.role_id
+        ).where(RBACUserRoleAssignment.user_id == user.id)
+    )
+    return {row[0] for row in result.all()}
+
+
+async def _can_access_user_target(
+    current_user: User,
+    target_user: User,
+    db: AsyncSession,
+    allow_self: bool = True,
+) -> bool:
+    """Check if current_user can access/manage target_user.
+    
+    Admin/manager roles can access all users.
+    Non-admin roles (operator, reviewer) can only access users with the same role.
+    """
+    if _is_manager_or_admin(current_user):
+        return True
+    if allow_self and current_user.id == target_user.id:
+        return True
+    current_roles = await _get_user_role_names(current_user, db)
+    target_roles = await _get_user_role_names(target_user, db)
+    return bool(current_roles & target_roles)
+
+
 @router.get(
     "/users",
     response_model=list[UserDetailResponse],
@@ -111,6 +136,19 @@ async def list_users(
 ):
     result = await db.execute(select(User).order_by(User.created_at.desc()))
     users = result.scalars().all()
+
+    if not _is_manager_or_admin(current_user):
+        current_roles = await _get_user_role_names(current_user, db)
+        filtered: list[User] = []
+        for user in users:
+            if user.id == current_user.id:
+                filtered.append(user)
+                continue
+            target_roles = await _get_user_role_names(user, db)
+            if current_roles & target_roles:
+                filtered.append(user)
+        users = filtered
+
     return [await _build_user_item(user, db) for user in users]
 
 
@@ -118,7 +156,7 @@ async def list_users(
     "/users",
     response_model=UserDetailResponse,
     status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(require_permission("users:create", "write"))],
+    dependencies=[Depends(require_permission("users:create:write", "write"))],
 )
 async def create_user(
     body: CreateUserRequest,
@@ -242,13 +280,18 @@ async def get_user(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="用户不存在",
         )
+    if not await _can_access_user_target(current_user, user, db):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="无法访问该用户：非管理角色只能操作同角色用户",
+        )
     return await _build_user_item(user, db)
 
 
 @router.put(
     "/users/{user_id}",
     response_model=UserDetailResponse,
-    dependencies=[Depends(require_permission("users:update", "write"))],
+    dependencies=[Depends(require_permission("users:update:write", "write"))],
 )
 async def update_user(
     user_id: str,
@@ -264,16 +307,16 @@ async def update_user(
             detail="用户不存在",
         )
 
-    if not _is_manager_or_admin(current_user) and user.id != current_user.id:
+    if not await _can_access_user_target(current_user, user, db):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="仅可编辑自己的信息",
+            detail="无法访问该用户：非管理角色只能操作同角色用户",
         )
 
     if not _is_manager_or_admin(current_user) and body.role_ids is not None:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="仅管理员可修改角色分配，非管理员只能查看",
+            detail="仅管理员可修改角色分配",
         )
 
     if _is_admin(user):
@@ -333,7 +376,7 @@ async def update_user(
 @router.put(
     "/users/{user_id}/roles",
     response_model=UserDetailResponse,
-    dependencies=[Depends(require_permission("users:write", "write"))],
+    dependencies=[Depends(require_permission("users:update:write", "write"))],
 )
 async def update_user_roles(
     user_id: str,
@@ -353,6 +396,12 @@ async def update_user_roles(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="超级管理员角色不可修改",
+        )
+
+    if not await _can_access_user_target(current_user, user, db, allow_self=True):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="无法访问该用户：非管理角色只能操作同角色用户",
         )
 
     violations = await validate_user_role_assignments(
@@ -384,7 +433,7 @@ async def update_user_roles(
 
 @router.put(
     "/users/{user_id}/password",
-    dependencies=[Depends(require_permission("users:change_password", "write"))],
+    dependencies=[Depends(require_permission("users:change_password:write", "write"))],
 )
 async def change_user_password(
     user_id: str,
@@ -400,10 +449,10 @@ async def change_user_password(
             detail="用户不存在",
         )
 
-    if not _is_manager_or_admin(current_user) and user.id != current_user.id:
+    if not await _can_access_user_target(current_user, user, db, allow_self=True):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="仅可修改自己的密码",
+            detail="无法访问该用户：非管理角色只能操作同角色用户",
         )
 
     valid, msg = validate_password_format(body.new_password)
@@ -439,8 +488,7 @@ async def change_user_password(
 
 @router.get(
     "/users/{user_id}/permissions",
-    response_model=dict[str, UserPermissionItem],
-    dependencies=[Depends(require_permission("users:read", "read"))],
+    response_model=dict[str, str],
 )
 async def get_user_permissions(
     user_id: str,
@@ -455,11 +503,28 @@ async def get_user_permissions(
             detail="用户不存在",
         )
 
+    is_self = user_id == current_user.id
+    if not is_self:
+        if not await _can_access_user_target(current_user, user, db, allow_self=False):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="无法访问该用户：非管理角色只能操作同角色用户",
+            )
+        if not await has_permission_direct(current_user.id, "users:custom_permissions:write", "read", db):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="无权查看其他用户的自定义权限",
+            )
+
     effective = await get_user_effective_permissions(user_id, db)
-    return {
-        key: UserPermissionItem(key=key, read=access.read, write=access.write)
-        for key, access in effective.items()
-    }
+    deny_result = await db.execute(
+        select(RBACUserPermissionOverride.permission_key).where(
+            RBACUserPermissionOverride.user_id == user_id,
+            RBACUserPermissionOverride.granted.is_(False),
+        )
+    )
+    denied_keys = {row[0] for row in deny_result.all()}
+    return await flatten_effective_permissions(effective, db, denied_keys)
 
 
 class PermissionOverrideEntry(BaseModel):
@@ -474,7 +539,6 @@ class UpdateUserPermissionOverridesRequest(BaseModel):
 @router.get(
     "/users/{user_id}/permission-overrides",
     response_model=list[PermissionOverrideEntry],
-    dependencies=[Depends(require_permission("users:write", "write"))],
 )
 async def get_user_permission_overrides(
     user_id: str,
@@ -482,6 +546,25 @@ async def get_user_permission_overrides(
     current_user: User = Depends(get_current_user),
 ):
     """获取用户的自定义权限覆盖列表。"""
+    is_self = user_id == current_user.id
+    if not is_self:
+        result = await db.execute(select(User).where(User.id == user_id))
+        target_user = result.scalar_one_or_none()
+        if target_user is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="用户不存在",
+            )
+        if not await _can_access_user_target(current_user, target_user, db, allow_self=False):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="无法访问该用户：非管理角色只能操作同角色用户",
+            )
+        if not await has_permission_direct(current_user.id, "users:custom_permissions:write", "read", db):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="无权查看其他用户的自定义权限覆盖",
+            )
     result = await db.execute(
         select(RBACUserPermissionOverride).where(
             RBACUserPermissionOverride.user_id == user_id,
@@ -500,7 +583,7 @@ async def get_user_permission_overrides(
 @router.put(
     "/users/{user_id}/permission-overrides",
     response_model=list[PermissionOverrideEntry],
-    dependencies=[Depends(require_permission("users:write", "write"))],
+    dependencies=[Depends(require_permission("users:update:write", "write"))],
 )
 async def update_user_permission_overrides(
     user_id: str,
@@ -521,6 +604,12 @@ async def update_user_permission_overrides(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="超级管理员账号不可修改权限覆盖",
+        )
+
+    if not await _can_access_user_target(current_user, user, db, allow_self=False):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="无法访问该用户：非管理角色只能操作同角色用户",
         )
 
     # Delete all existing overrides for this user.
@@ -559,7 +648,7 @@ async def update_user_permission_overrides(
 @router.delete(
     "/users/{user_id}",
     status_code=status.HTTP_204_NO_CONTENT,
-    dependencies=[Depends(require_permission("users:delete", "write"))],
+    dependencies=[Depends(require_permission("users:delete:write", "write"))],
 )
 async def delete_user(
     user_id: str,
@@ -582,6 +671,11 @@ async def delete_user(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="不能删除自己的账号",
+        )
+    if not await _can_access_user_target(current_user, user, db, allow_self=False):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="无法访问该用户：非管理角色只能操作同角色用户",
         )
 
     await db.execute(
