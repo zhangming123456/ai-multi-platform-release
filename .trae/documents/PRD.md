@@ -79,7 +79,7 @@
 | /rbac/users/:id/permissions | 自定义权限 | 用户级权限覆盖配置 | users:custom_permissions:write |
 | /rbac/roles | 角色管理 | 角色 CRUD、父子关系配置 | roles:read |
 | /rbac/permissions | 权限管理 | 按资源树配置角色权限 | permissions:read |
-| /rbac/permissions/enum | 权限字典编辑 | 超级管理员专用：权限枚举编辑 | permissions:read |
+| /rbac/permissions/enum | 权限字典管理 | 超级管理员专用：权限枚举编辑 | permissions:read |
 | /rbac/constraints | 约束管理 | 互斥/先决/基数约束 | constraints:read |
 | /profile | 个人中心 | 当前用户信息查看与编辑 | 登录即可 |
 | /403 | 无权限页 | 权限不足提示页 | 无条件放行 |

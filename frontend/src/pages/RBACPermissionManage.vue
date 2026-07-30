@@ -159,7 +159,9 @@ const pageItemDefs = computed<ModuleItemDef[]>(() => {
     }))
 })
 
-function buildActionGroupMap(filterKeys?: string[]): Map<string, { readPerm?: Permission; writePerm?: Permission }> {
+function buildActionGroupMap(
+  filterKeys?: string[],
+): Map<string, { readPerm?: Permission; writePerm?: Permission }> {
   const groups = new Map<string, { readPerm?: Permission; writePerm?: Permission }>()
   for (const perm of activePermissions.value) {
     if (_isPageKey(perm.key)) continue
@@ -180,7 +182,9 @@ function buildActionGroupMap(filterKeys?: string[]): Map<string, { readPerm?: Pe
   return groups
 }
 
-function groupMapToItems(groups: Map<string, { readPerm?: Permission; writePerm?: Permission }>): ModuleItemDef[] {
+function groupMapToItems(
+  groups: Map<string, { readPerm?: Permission; writePerm?: Permission }>,
+): ModuleItemDef[] {
   const items: ModuleItemDef[] = []
   for (const [, group] of groups) {
     const writePerm = group.writePerm
@@ -205,20 +209,18 @@ function actionItemsForKeys(resourceKeys: string[]): ModuleItemDef[] {
 
 const modules = computed<ModuleDef[]>(() => {
   const systemItems = actionItemsForKeys([
-    'users', 'permissions', 'roles', 'constraints', 'model_config',
+    'users',
+    'permissions',
+    'roles',
+    'constraints',
+    'model_config',
   ])
 
-  const contentItems = actionItemsForKeys([
-    'content', 'templates', 'publish',
-  ])
+  const contentItems = actionItemsForKeys(['content', 'templates', 'publish'])
 
-  const reviewItems = actionItemsForKeys([
-    'review', 'db_change',
-  ])
+  const reviewItems = actionItemsForKeys(['review', 'db_change'])
 
-  const basicItems = actionItemsForKeys([
-    'account', 'db', 'db_history',
-  ])
+  const basicItems = actionItemsForKeys(['account', 'db', 'db_history'])
 
   const coveredKeys = new Set<string>()
   for (const items of [pageItemDefs.value, systemItems, contentItems, reviewItems, basicItems]) {
@@ -241,14 +243,17 @@ const modules = computed<ModuleDef[]>(() => {
   const filteredBasic = filterModuleItems(basicItems)
   const filteredOther = filterModuleItems(otherItems)
 
-  const result: ModuleDef[] = [
-    { key: 'page', label: '页面权限', items: filteredPage },
-  ]
-  if (filteredSystem.length > 0) result.push({ key: 'system', label: '系统设置', items: filteredSystem })
-  if (filteredContent.length > 0) result.push({ key: 'content', label: '内容管理', items: filteredContent })
-  if (filteredReview.length > 0) result.push({ key: 'review', label: '审核管理', items: filteredReview })
-  if (filteredBasic.length > 0) result.push({ key: 'basic', label: '基础操作', items: filteredBasic })
-  if (filteredOther.length > 0) result.push({ key: 'other', label: '其他权限', items: filteredOther })
+  const result: ModuleDef[] = [{ key: 'page', label: '页面权限', items: filteredPage }]
+  if (filteredSystem.length > 0)
+    result.push({ key: 'system', label: '系统设置', items: filteredSystem })
+  if (filteredContent.length > 0)
+    result.push({ key: 'content', label: '内容管理', items: filteredContent })
+  if (filteredReview.length > 0)
+    result.push({ key: 'review', label: '审核管理', items: filteredReview })
+  if (filteredBasic.length > 0)
+    result.push({ key: 'basic', label: '基础操作', items: filteredBasic })
+  if (filteredOther.length > 0)
+    result.push({ key: 'other', label: '其他权限', items: filteredOther })
   return result
 })
 
@@ -261,7 +266,9 @@ const rolePermissionKeys = computed(() => {
 })
 
 const inheritedKeys = computed(() => {
-  return new Set(rolePermissions.value.filter((rp) => rp.grant_type === 'inherited').map((rp) => rp.key))
+  return new Set(
+    rolePermissions.value.filter((rp) => rp.grant_type === 'inherited').map((rp) => rp.key),
+  )
 })
 
 const effectiveKeys = computed(() => {
@@ -402,9 +409,7 @@ async function onRoleChange(roleId: string) {
 
 function addRolePermission(key: string) {
   if (rolePermissionKeys.value.has(key)) return
-  const perm = permissionMap.value.get(
-    activePermissions.value.find((p) => p.key === key)?.id || '',
-  )
+  const perm = permissionMap.value.get(activePermissions.value.find((p) => p.key === key)?.id || '')
   if (!perm) return
   rolePermissions.value.push({
     id: `direct-${key}`,
@@ -454,10 +459,14 @@ onMounted(loadAll)
 
 <template>
   <div class="page-main">
-    <PageHeader title="权限管理" subtitle="为不同角色分配页面访问和操作权限，超级管理员拥有所有权限">
+    <PageHeader
+      title="权限管理"
+      subtitle="为不同角色分配页面访问和操作权限，超级管理员拥有所有权限"
+    >
       <template #actions>
         <a-button
           type="outline"
+          v-perm="'permissions:manage:read'"
           @click="router.push({ name: 'RBACPermissionEnumManage' })"
         >
           <template #icon><IconEdit :size="14" /></template>
@@ -540,7 +549,9 @@ onMounted(loadAll)
               <div class="flex items-center justify-between mb-4">
                 <div class="flex items-center gap-2">
                   <h3 class="text-[15px] font-semibold text-[#1D1D1F] m-0">{{ module.label }}</h3>
-                  <span class="text-[12px] text-[#86868B] font-medium">{{ module.items.length }}</span>
+                  <span class="text-[12px] text-[#86868B] font-medium">{{
+                    module.items.length
+                  }}</span>
                 </div>
                 <div class="flex items-center gap-3">
                   <a-checkbox
@@ -573,7 +584,9 @@ onMounted(loadAll)
                   <div class="min-w-0 mr-3 flex items-center gap-2">
                     <div class="min-w-0">
                       <div class="flex items-center gap-2">
-                        <p class="text-[13px] font-medium text-[#1D1D1F] m-0 truncate">{{ item.title }}</p>
+                        <p class="text-[13px] font-medium text-[#1D1D1F] m-0 truncate">
+                          {{ item.title }}
+                        </p>
                       </div>
                       <p class="text-[11px] text-[#86868B] m-0 truncate">{{ item.subtitle }}</p>
                     </div>
@@ -590,7 +603,10 @@ onMounted(loadAll)
                     <a-checkbox
                       v-if="item.writeKeys.length > 0"
                       :model-value="item.writeKeys.some((k) => effectiveKeys.has(k))"
-                      :disabled="selectedRole.is_super_admin || item.writeKeys.some((k) => inheritedKeys.has(k))"
+                      :disabled="
+                        selectedRole.is_super_admin ||
+                        item.writeKeys.some((k) => inheritedKeys.has(k))
+                      "
                       @change="toggleWriteKey(item.writeKeys[0])"
                     >
                       写

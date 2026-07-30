@@ -102,7 +102,7 @@ const rbacChildren = computed<MenuEntry[]>(() => {
     items.push({ key: 'rbac-permissions', name: '权限管理', path: '/rbac/permissions', icon: IconSafe, permKey: 'permissions:read' })
   }
   if (permStore.hasPermission('permissions:read&isSuperAdmin()')) {
-    items.push({ key: 'rbac-permissions-enum', name: '权限字典编辑', path: '/rbac/permissions/enum', icon: IconEdit, permKey: 'permissions:read' })
+    items.push({ key: 'rbac-permissions-enum', name: '权限字典管理', path: '/rbac/permissions/enum', icon: IconEdit, permKey: 'permissions:read' })
   }
   if (hasPerm('constraints:read')) {
     items.push({ key: 'rbac-constraints', name: '约束管理', path: '/rbac/constraints', icon: IconSafe, permKey: 'constraints:read' })

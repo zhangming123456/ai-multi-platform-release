@@ -523,7 +523,7 @@ const vPerm = {
 - 显示权限描述信息
 - 超级管理员显示为只读"已拥有"状态
 
-### 7.4 权限字典编辑（RBACPermissionEnumManage.vue）
+### 7.4 权限字典管理（RBACPermissionEnumManage.vue）
 
 **功能**：
 - 权限枚举 CRUD（key、名称、描述编辑）
@@ -629,7 +629,7 @@ frontend/src/
 │   ├── RBACUserPermissionCustomize.vue  # 用户自定义权限
 │   ├── RBACRoleManage.vue         # 角色管理
 │   ├── RBACPermissionManage.vue   # 权限管理
-│   ├── RBACPermissionEnumManage.vue  # 权限字典编辑
+│   ├── RBACPermissionEnumManage.vue  # 权限字典管理
 │   ├── RBACConstraintManage.vue   # 约束管理
 │   └── UserCreationReview.vue     # 用户创建审核
 ├── stores/

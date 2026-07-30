@@ -95,7 +95,7 @@ frontend/src/
 | /rbac/users/:id/permissions | RBACUserPermissionCustomize | RBACUserPermissionCustomize.vue | 需鉴权 | skipPermCheck | 自定义权限 |
 | /rbac/roles | RBACRoleManage | RBACRoleManage.vue | 需鉴权 | roles:read | 角色管理 |
 | /rbac/permissions | RBACPermissionManage | RBACPermissionManage.vue | 需鉴权 | permissions:read | 权限管理 |
-| /rbac/permissions/enum | RBACPermissionEnumManage | RBACPermissionEnumManage.vue | 需鉴权 | permissions:read | 权限字典编辑 |
+| /rbac/permissions/enum | RBACPermissionEnumManage | RBACPermissionEnumManage.vue | 需鉴权 | permissions:read | 权限字典管理 |
 | /rbac/constraints | RBACConstraintManage | RBACConstraintManage.vue | 需鉴权 | constraints:read | 约束管理 |
 
 ### 路由守卫

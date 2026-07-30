@@ -146,19 +146,19 @@ const router = createRouter({
           path: 'rbac/permissions/enum',
           name: 'RBACPermissionEnumManage',
           component: () => import('@/pages/RBACPermissionEnumManage.vue'),
-          meta: { title: '权限字典编辑', permKey: 'permissions:read' },
+          meta: { title: '权限字典管理', permKey: 'permissions:manage:read' },
         },
         {
           path: 'rbac/permissions/enum/create',
           name: 'RBACPermissionEnumCreate',
           component: () => import('@/pages/RBACPermissionEnumEdit.vue'),
-          meta: { title: '新增权限字典', permKey: 'permissions:read' },
+          meta: { title: '新增权限字典', permKey: 'permissions:manage:write' },
         },
         {
           path: 'rbac/permissions/enum/edit/:resourceId',
           name: 'RBACPermissionEnumEdit',
           component: () => import('@/pages/RBACPermissionEnumEdit.vue'),
-          meta: { title: '编辑权限字典', permKey: 'permissions:read' },
+          meta: { title: '编辑权限字典', permKey: 'permissions:manage:write' },
         },
         {
           path: 'rbac/constraints',

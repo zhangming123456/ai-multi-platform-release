@@ -99,7 +99,7 @@ flowchart TB
 | /rbac/users/:id/permissions | RBACUserPermissionCustomize | RBACUserPermissionCustomize.vue | 需鉴权 | 自定义权限 |
 | /rbac/roles | RBACRoleManage | RBACRoleManage.vue | 需鉴权 | 角色管理 |
 | /rbac/permissions | RBACPermissionManage | RBACPermissionManage.vue | 需鉴权 | 权限管理 |
-| /rbac/permissions/enum | RBACPermissionEnumManage | RBACPermissionEnumManage.vue | 需鉴权 | 权限字典编辑 |
+| /rbac/permissions/enum | RBACPermissionEnumManage | RBACPermissionEnumManage.vue | 需鉴权 | 权限字典管理 |
 | /rbac/constraints | RBACConstraintManage | RBACConstraintManage.vue | 需鉴权 | 约束管理 |
 
 ### 3.1 路由守卫
@@ -763,7 +763,7 @@ frontend/src/
     ├── RBACUserPermissionCustomize.vue  # 用户自定义权限
     ├── RBACRoleManage.vue      # 角色管理
     ├── RBACPermissionManage.vue        # 权限管理
-    ├── RBACPermissionEnumManage.vue    # 权限字典编辑
+    ├── RBACPermissionEnumManage.vue    # 权限字典管理
     └── RBACConstraintManage.vue        # 约束管理
 ```
 
