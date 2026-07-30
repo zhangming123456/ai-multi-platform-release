@@ -14,13 +14,14 @@ from app.database import get_db
 from app.models.rbac_permission import RBACPermission
 from app.models.rbac_resource import RBACResource
 from app.models.rbac_role import RBACRole
+from app.models.rbac_role_permission import RBACRolePermission
 from app.models.rbac_user_permission_override import RBACUserPermissionOverride
 from app.models.rbac_user_role_assignment import RBACUserRoleAssignment
 from app.models.user import User, UserRole
 from app.models.user_creation_request import UserCreationRequest, UserCreationStatus
 from app.schemas.auth import UserInfo
 from app.services.rbac_constraint_service import validate_user_role_assignments
-from app.services.rbac_service import get_user_effective_permissions, has_permission_direct, flatten_effective_permissions
+from app.services.rbac_service import get_user_effective_permissions, has_permission_direct, flatten_effective_permissions, _role_closure_role_ids, _closure_has_super_admin
 
 router = APIRouter(prefix="/api/v2", tags=["RBAC 用户管理"], route_class=PermAPIRoute)
 
@@ -553,9 +554,28 @@ async def get_user_permissions(
     denied_keys = {row[0] for row in deny_result.all()}
     effective_permissions = await flatten_effective_permissions(effective, db, denied_keys)
 
+    all_role_ids = await _role_closure_role_ids(user_id, db)
+    if await _closure_has_super_admin(all_role_ids, db):
+        role_permission_keys: set[str] = set()
+        perm_keys_result = await db.execute(
+            select(RBACPermission.key).where(RBACPermission.is_active.is_(True))
+        )
+        role_permission_keys = {row[0] for row in perm_keys_result.all()}
+    else:
+        role_perm_result = await db.execute(
+            select(RBACPermission.key)
+            .join(RBACRolePermission, RBACRolePermission.permission_id == RBACPermission.id)
+            .where(
+                RBACRolePermission.role_id.in_(all_role_ids),
+                RBACPermission.is_active.is_(True),
+            )
+        )
+        role_permission_keys = {row[0] for row in role_perm_result.all()}
+
     perm_result = await db.execute(
         select(RBACPermission, RBACResource)
         .join(RBACResource, RBACPermission.resource_id == RBACResource.id)
+        .where(RBACPermission.key.in_(role_permission_keys))
         .order_by(RBACPermission.created_at.asc())
     )
     available_permissions: list[AvailablePermission] = []

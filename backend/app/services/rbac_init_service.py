@@ -64,6 +64,7 @@ RBAC_RESOURCES: list[dict] = [
     {"key": "roles:read", "name": "角色管理", "description": "管理角色定义和角色继承关系"},
     {"key": "constraints:read", "name": "约束管理", "description": "管理职责分离约束规则"},
     # ---------- 系统管理操作 ----------
+    {"key": "permissions:manage:read", "name": "查看权限字典", "description": "创建、编辑、删除权限资源定义"},
     {"key": "permissions:manage:write", "name": "维护权限字典", "description": "创建、编辑、删除权限资源定义"},
     {"key": "roles:manage:write", "name": "维护角色", "description": "创建、编辑、删除角色定义和层级关系"},
     {"key": "constraints:manage:write", "name": "维护约束", "description": "创建、编辑、删除职责分离约束规则"},
@@ -119,7 +120,7 @@ DEFAULT_ROLE_PERMISSIONS: dict[str, list[str]] = {
         "templates:read", "review:read", "sql_review:read", "accounts:read",
         "token_plan:read", "api_docs:read",
         "permissions:read", "roles:read", "constraints:read",
-        "permissions:manage:write", "roles:manage:write", "constraints:manage:write",
+        "permissions:manage:read", "permissions:manage:write", "roles:manage:write", "constraints:manage:write",
         "users:read", "users:create:write", "users:update:read", "users:update:write",
         "users:delete:write", "users:change_password:write", "users:custom_permissions:write",
         "content:create:write", "content:update:write", "content:delete:write", "content:ai_generate:write",

@@ -85,6 +85,15 @@ async def flatten_effective_permissions(
     denied_keys: set[str] | None = None,
 ) -> dict[str, str]:
     deny = denied_keys or set()
+
+    if deny:
+        derivable: set[str] = set()
+        for perm_key in effective:
+            derivable.update(resolve_read_keys(perm_key))
+            derivable.update(resolve_write_keys(perm_key))
+            derivable.update(_implied_read_keys(perm_key))
+        deny = deny & derivable
+
     flat: set[str] = set()
     for perm_key, access in effective.items():
         if access.read or access.write:

@@ -20,19 +20,50 @@ import {
   IconEdit,
 } from '@arco-design/web-vue/es/icon'
 
+const iconRegistry: Record<string, Component> = {
+  home: IconHome,
+  file: IconFile,
+  send: IconSend,
+  apps: IconApps,
+  settings: IconSettings,
+  code: IconCode,
+  safe: IconSafe,
+  storage: IconStorage,
+  tool: IconTool,
+  check: IconCheckCircle,
+  user: IconUser,
+  edit: IconEdit,
+}
+
+interface SidebarGroupConfig {
+  name: string
+  icon: string
+  order: number
+  wrapGroup: boolean
+}
+
+const SIDEBAR_GROUPS: Record<string, SidebarGroupConfig> = {
+  top: { name: '', icon: '', order: 0, wrapGroup: false },
+  content: { name: '内容管理', icon: 'file', order: 1, wrapGroup: true },
+  review: { name: '审核管理', icon: 'check', order: 2, wrapGroup: true },
+  platforms: { name: '平台管理', icon: 'apps', order: 3, wrapGroup: false },
+  rbac: { name: '权限管理', icon: 'safe', order: 4, wrapGroup: true },
+  system: { name: '系统管理', icon: 'tool', order: 5, wrapGroup: true },
+}
+
 interface MenuEntry {
   key: string
   name: string
   path: string
-  icon: Component
-  permKey: string
+  icon?: Component
+  permKey?: string
 }
 
 interface MenuGroup {
   key: string
   name: string
-  icon: Component
-  children: MenuEntry[]
+  icon?: Component
+  children?: MenuEntry[]
 }
 
 type MenuItem = MenuEntry | MenuGroup
@@ -55,120 +86,62 @@ const router = useRouter()
 const userStore = useUserStore()
 const permStore = usePermissionStore()
 
-function hasPerm(key: string): boolean {
-  return permStore.hasPermission(key)
+function hasPerm(key: string, ctx?: any): boolean {
+  return permStore.hasPermission(key, ctx)
 }
 
-const contentChildren = computed<MenuEntry[]>(() => {
-  const items: MenuEntry[] = []
-  if (hasPerm('content:read')) {
-    items.push({ key: 'content', name: '内容列表', path: '/content', icon: IconFile, permKey: 'content:read' })
-  }
-  if (hasPerm('content:read')) {
-    items.push({ key: 'content-create', name: '创作内容', path: '/content/create', icon: IconFile, permKey: 'content:read' })
-  }
-  if (hasPerm('publish:read')) {
-    items.push({ key: 'publish', name: '发布管理', path: '/publish', icon: IconSend, permKey: 'publish:read' })
-  }
-  if (hasPerm('templates:read')) {
-    items.push({ key: 'templates', name: '模板管理', path: '/templates', icon: IconApps, permKey: 'templates:read' })
-  }
-  return items
-})
-
-const reviewChildren = computed<MenuEntry[]>(() => {
-  const items: MenuEntry[] = []
-  if (hasPerm('review:read')) {
-    items.push({ key: 'review', name: '内容审核', path: '/review', icon: IconCheckCircle, permKey: 'review:read' })
-  }
-  if (hasPerm('sql_review:read')) {
-    items.push({ key: 'sql-review', name: 'SQL审核', path: '/sql-review', icon: IconStorage, permKey: 'sql_review:read' })
-  }
-  if (hasPerm('review:read')) {
-    items.push({ key: 'user-creation-review', name: '用户注册审核', path: '/settings/user-creation-review', icon: IconUser, permKey: 'review:read' })
-  }
-  return items
-})
-
-const rbacChildren = computed<MenuEntry[]>(() => {
-  const items: MenuEntry[] = []
-  if (hasPerm('users:read')) {
-    items.push({ key: 'rbac-users', name: '用户管理', path: '/rbac/users', icon: IconSafe, permKey: 'users:read' })
-  }
-  if (hasPerm('roles:read')) {
-    items.push({ key: 'rbac-roles', name: '角色管理', path: '/rbac/roles', icon: IconUser, permKey: 'roles:read' })
-  }
-  if (hasPerm('permissions:read')) {
-    items.push({ key: 'rbac-permissions', name: '权限管理', path: '/rbac/permissions', icon: IconSafe, permKey: 'permissions:read' })
-  }
-  if (permStore.hasPermission('permissions:read&isSuperAdmin()')) {
-    items.push({ key: 'rbac-permissions-enum', name: '权限字典管理', path: '/rbac/permissions/enum', icon: IconEdit, permKey: 'permissions:read' })
-  }
-  if (hasPerm('constraints:read')) {
-    items.push({ key: 'rbac-constraints', name: '约束管理', path: '/rbac/constraints', icon: IconSafe, permKey: 'constraints:read' })
-  }
-  return items
-})
-
-const sysChildren = computed<MenuEntry[]>(() => {
-  const items: MenuEntry[] = []
-  if (hasPerm('token_plan:read')) {
-    items.push({ key: 'token-plan', name: 'Token方案', path: '/settings/token-plan', icon: IconSettings, permKey: 'token_plan:read' })
-  }
-  if (hasPerm('api_docs:read')) {
-    items.push({ key: 'api-docs', name: 'API文档', path: '/developer/docs', icon: IconCode, permKey: 'api_docs:read' })
-  }
-  if (hasPerm('db:read')) {
-    items.push({ key: 'database', name: '数据库控制台', path: '/developer/database', icon: IconStorage, permKey: 'db:read' })
-  }
-  return items
-})
-
 const menuItems = computed<MenuItem[]>(() => {
+  const sidebarRoutes = router.getRoutes().filter((r) => r.meta.sidebarType && r.meta.title)
+
+  const byType = new Map<string, { route: (typeof sidebarRoutes)[number]; order: number }[]>()
+
+  for (let i = 0; i < sidebarRoutes.length; i++) {
+    const sideRoute = sidebarRoutes[i]
+    const type = sideRoute.meta.sidebarType!
+    if (!byType.has(type)) byType.set(type, [])
+    byType.get(type)!.push({ route: sideRoute, order: sideRoute.meta.sidebarOrder ?? i })
+  }
+
+  for (const entries of byType.values()) {
+    entries.sort((a, b) => a.order - b.order)
+  }
+
+  const groupOrder = Object.entries(SIDEBAR_GROUPS).sort((a, b) => a[1].order - b[1].order)
+
   const items: MenuItem[] = []
 
-  if (hasPerm('dashboard:read')) {
-    items.push({ key: 'dashboard', name: '仪表盘', path: '/', icon: IconHome, permKey: 'dashboard:read' })
-  }
+  for (const [type, config] of groupOrder) {
+    const entries = byType.get(type)
+    if (!entries || entries.length === 0) continue
 
-  if (contentChildren.value.length > 0) {
-    items.push({
-      key: 'content-group',
-      name: '内容管理',
-      icon: IconFile,
-      children: contentChildren.value,
-    })
-  }
+    const visibleEntries: MenuEntry[] = []
+    for (const entry of entries) {
+      const permKey = entry.route.meta.permKey as string | undefined
+      if (permKey && !hasPerm(permKey, entry.route.meta.ctx)) continue
 
-  if (reviewChildren.value.length > 0) {
-    items.push({
-      key: 'review-group',
-      name: '审核管理',
-      icon: IconCheckCircle,
-      children: reviewChildren.value,
-    })
-  }
+      const icon = iconRegistry[entry.route.meta.icon ?? ''] ?? IconFile
+      const resolved = router.resolve({ name: entry.route.name as string })
+      visibleEntries.push({
+        key: entry.route.name as string,
+        name: entry.route.meta.title as string,
+        path: resolved.path,
+        icon,
+        permKey: permKey,
+      })
+    }
 
-  if (hasPerm('platforms:read')) {
-    items.push({ key: 'platforms', name: '平台管理', path: '/platforms', icon: IconApps, permKey: 'platforms:read' })
-  }
+    if (visibleEntries.length === 0) continue
 
-  if (rbacChildren.value.length > 0) {
-    items.push({
-      key: 'rbac-group',
-      name: '权限管理',
-      icon: IconSafe,
-      children: rbacChildren.value,
-    })
-  }
-
-  if (sysChildren.value.length > 0) {
-    items.push({
-      key: 'settings-group',
-      name: '系统管理',
-      icon: IconTool,
-      children: sysChildren.value,
-    })
+    if (config.wrapGroup) {
+      items.push({
+        key: `${type}-group`,
+        name: config.name,
+        icon: iconRegistry[config.icon] ?? IconFile,
+        children: visibleEntries,
+      })
+    } else {
+      items.push(...visibleEntries)
+    }
   }
 
   return items
@@ -207,8 +180,6 @@ function updateOpenKeys() {
       if (matched) open.push(item.key)
     }
   })
-  // Defer openKeys update to the next tick to avoid Arco Menu DOM mutations
-  // colliding with the current route transition.
   nextTick(() => {
     openKeys.value = open
   })
@@ -291,9 +262,17 @@ function onMenuItemClick(key: string) {
           :size="36"
           class="shrink-0"
           :image-url="userStore.userInfo?.avatar_url || undefined"
-          :style="!userStore.userInfo?.avatar_url ? { background: 'linear-gradient(135deg, #30d158 0%, #007aff 100%)' } : {}"
+          :style="
+            !userStore.userInfo?.avatar_url
+              ? { background: 'linear-gradient(135deg, #30d158 0%, #007aff 100%)' }
+              : {}
+          "
         >
-          {{ (!userStore.userInfo?.avatar_url && userStore.userInfo?.nickname?.charAt(0).toUpperCase()) || 'U' }}
+          {{
+            (!userStore.userInfo?.avatar_url &&
+              userStore.userInfo?.nickname?.charAt(0).toUpperCase()) ||
+            'U'
+          }}
         </a-avatar>
         <div class="flex-1 min-w-0">
           <p class="text-[14px] font-semibold text-[#1D1D1F] truncate leading-tight">
