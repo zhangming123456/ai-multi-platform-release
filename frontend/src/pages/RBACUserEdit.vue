@@ -40,8 +40,8 @@ const loading = ref(true)
 const saving = ref(false)
 const user = ref<UserDetail | null>(null)
 const roles = ref<Role[]>([])
-const canManageUsers = computed(() => permStore.hasPermission('users:update:write'))
-const canWrite = computed(() => permStore.hasPermission('users:update:write') || userStore.userInfo?.id === userId)
+const canManageUsers = computed(() => permStore.hasPermission('users:update:write&isAdmin()'))
+const canWrite = computed(() => permStore.hasPermission('users:update:write||isSelf(user_id)', { user_id: userId }))
 
 const form = ref({
   nickname: '',

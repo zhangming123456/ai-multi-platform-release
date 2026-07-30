@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { Message, Modal } from '@arco-design/web-vue'
 import {
   IconPlus,
@@ -9,8 +9,12 @@ import {
   IconSettings,
   IconLink,
   IconExclamationCircle,
+  IconDown,
+  IconRight,
+  IconEye,
 } from '@arco-design/web-vue/es/icon'
 import PageHeader from '@/components/layout/PageHeader.vue'
+import RoleInheritanceTree from '@/components/rbac/RoleInheritanceTree.vue'
 import api from '@/utils/api'
 
 interface RoleRef {
@@ -31,6 +35,8 @@ interface Role {
   updated_at: string
   parent_roles: RoleRef[]
   child_roles: RoleRef[]
+  all_ancestors: RoleRef[]
+  all_descendants: RoleRef[]
 }
 
 interface Constraint {
@@ -216,15 +222,141 @@ function deleteRole(role: Role) {
   })
 }
 
+const expandedRoles = ref<Set<string>>(new Set())
+
+function toggleExpand(roleId: string) {
+  const newSet = new Set(expandedRoles.value)
+  if (newSet.has(roleId)) {
+    newSet.delete(roleId)
+  } else {
+    newSet.add(roleId)
+  }
+  expandedRoles.value = newSet
+}
+
+function isExpanded(roleId: string): boolean {
+  return expandedRoles.value.has(roleId)
+}
+
+function hasIndirectRelations(role: Role): boolean {
+  return role.all_ancestors.length > role.parent_roles.length ||
+    role.all_descendants.length > role.child_roles.length
+}
+
+function indirectAncestors(role: Role): RoleRef[] {
+  const directIds = new Set(role.parent_roles.map((p) => p.id))
+  return role.all_ancestors.filter((a) => !directIds.has(a.id))
+}
+
+function indirectDescendants(role: Role): RoleRef[] {
+  const directIds = new Set(role.child_roles.map((c) => c.id))
+  return role.all_descendants.filter((d) => !directIds.has(d.id))
+}
+
+function isAncestorOf(ancestorId: string, descendantId: string): boolean {
+  const descendant = roles.value.find((r) => r.id === descendantId)
+  if (!descendant) return false
+  return descendant.all_ancestors.some((a) => a.id === ancestorId)
+}
+
 const parentsVisible = ref(false)
 const parentsRole = ref<Role | null>(null)
 const parentsSaving = ref(false)
 const selectedParents = ref<string[]>([])
+const parentPreviewMap = ref<Record<string, Record<string, string>>>({})
+const parentPreviewLoading = ref<Record<string, boolean>>({})
 
 function openParents(role: Role) {
   parentsRole.value = role
   selectedParents.value = role.parent_roles.map((p) => p.id)
+  parentPreviewMap.value = {}
+  parentPreviewLoading.value = {}
   parentsVisible.value = true
+}
+
+async function fetchParentPreview(parentId: string) {
+  if (!parentsRole.value) return
+  if (parentPreviewMap.value[parentId] !== undefined) return
+
+  parentPreviewLoading.value = { ...parentPreviewLoading.value, [parentId]: true }
+  try {
+    const res = await api.get<Record<string, string>>(
+      `/v2/roles/${parentsRole.value.id}/permissions/preview/${parentId}`,
+    )
+    parentPreviewMap.value = {
+      ...parentPreviewMap.value,
+      [parentId]: res.data || {},
+    }
+  } catch (e: any) {
+    if (e.response?.status === 400) {
+      parentPreviewMap.value = {
+        ...parentPreviewMap.value,
+        [parentId]: { _error: 'cycle' } as any,
+      }
+    } else {
+      parentPreviewMap.value = {
+        ...parentPreviewMap.value,
+        [parentId]: {},
+      }
+    }
+  } finally {
+    parentPreviewLoading.value = { ...parentPreviewLoading.value, [parentId]: false }
+  }
+}
+
+function previewedParentId(): string | null {
+  if (!selectedParents.value.length) return null
+  const currentIds = parentsRole.value
+    ? new Set(parentsRole.value.parent_roles.map((p) => p.id))
+    : new Set<string>()
+  for (const id of selectedParents.value) {
+    if (!currentIds.has(id)) return id
+  }
+  const allCurrentIds = new Set(parentsRole.value?.parent_roles.map((p) => p.id) || [])
+  return selectedParents.value.find((id) => !allCurrentIds.has(id)) || null
+}
+
+watch(
+  () => selectedParents.value,
+  (newVal) => {
+    if (!parentsVisible.value || !parentsRole.value) return
+    const currentIds = new Set(parentsRole.value.parent_roles.map((p) => p.id))
+    const newlyAdded = newVal.filter((id) => !currentIds.has(id))
+    for (const id of newlyAdded) {
+      fetchParentPreview(id)
+    }
+  },
+  { immediate: false },
+)
+
+function groupedPreviewPermissions(): { resource: string; keys: { key: string; name: string }[] }[] {
+  const preview = parentPreviewMap.value
+  const pid = previewedParentId()
+  if (!pid) return []
+  const perms = preview[pid]
+  if (!perms || (perms as any)._error) return []
+
+  const groups: Record<string, { key: string; name: string }[]> = {}
+  for (const [key, name] of Object.entries(perms)) {
+    const parts = key.split(':')
+    const resource = parts[0]
+    if (!groups[resource]) groups[resource] = []
+    groups[resource].push({ key, name })
+  }
+  return Object.entries(groups).map(([resource, keys]) => ({ resource, keys }))
+}
+
+function availableParentOptions(role: Role) {
+  return roles.value.filter((r) => {
+    if (r.id === role.id) return false
+    if (r.is_super_admin) return false
+    return true
+  })
+}
+
+function isCycleCandidate(parentId: string): boolean {
+  if (!parentsRole.value) return false
+  return isAncestorOf(parentsRole.value.id, parentId)
 }
 
 async function saveParents() {
@@ -238,7 +370,18 @@ async function saveParents() {
     const toRemove = parentsRole.value.parent_roles.filter((p) => !nextIds.has(p.id))
 
     for (const parentId of toAdd) {
-      await api.post(`/v2/roles/${parentsRole.value.id}/parents`, { id: parentId })
+      try {
+        await api.post(`/v2/roles/${parentsRole.value.id}/parents`, { id: parentId })
+      } catch (e: any) {
+        const msg = e.response?.data?.detail || '添加父角色失败'
+        if (msg.includes('循环继承')) {
+          Message.error(`无法添加「${getRoleName(parentId)}」为父角色：会形成循环继承`)
+        } else {
+          Message.error(msg)
+        }
+        parentsSaving.value = false
+        return
+      }
     }
     for (const parent of toRemove) {
       await api.delete(`/v2/roles/${parentsRole.value.id}/parents/${parent.id}`)
@@ -254,10 +397,9 @@ async function saveParents() {
   }
 }
 
-function availableParentOptions(role: Role) {
-  return roles.value.filter(
-    (r) => r.id !== role.id && !r.is_super_admin,
-  )
+function getRoleName(roleId: string): string {
+  const role = roles.value.find((r) => r.id === roleId)
+  return role ? role.display_name : roleId
 }
 
 function constraintTypeLabel(type: string): string {
@@ -290,149 +432,287 @@ function formatConstraintRoles(constraint: Constraint, roleId: string): string {
     .map((r) => r.role_display_name || r.role_name)
   return others.length > 0 ? others.join('、') : '—'
 }
+
+const inheritanceRole = ref<Role | null>(null)
+const inheritanceDrawerVisible = ref(false)
+
+function openInheritance(role: Role) {
+  inheritanceRole.value = role
+  inheritanceDrawerVisible.value = false
+}
+
+function closeInheritancePanel() {
+  inheritanceRole.value = null
+  inheritanceDrawerVisible.value = false
+}
+
+function openInheritanceDrawer(role: Role) {
+  inheritanceRole.value = role
+  inheritanceDrawerVisible.value = true
+}
+
+const windowWidth = ref(window.innerWidth)
+function onResize() {
+  windowWidth.value = window.innerWidth
+}
+onMounted(() => {
+  window.addEventListener('resize', onResize)
+})
+const isMobile = computed(() => windowWidth.value < 1024)
 </script>
 
 <template>
-  <div class="page-main">
-    <PageHeader title="角色管理" subtitle="管理系统角色、自定义角色与角色继承关系">
-      <template #actions>
-        <a-button type="primary" @click="openAdd">
-          <template #icon><IconPlus /></template>
-          创建角色
-        </a-button>
-      </template>
-    </PageHeader>
+  <div class="page-main relative">
+    <div class="inherit-panel-wrapper" :class="{ 'panel-open': inheritanceRole && !isMobile }">
+      <div class="inherit-main-content">
+        <PageHeader title="角色管理" subtitle="管理系统角色、自定义角色与角色继承关系">
+          <template #actions>
+            <a-button type="primary" @click="openAdd">
+              <template #icon><IconPlus /></template>
+              创建角色
+            </a-button>
+          </template>
+        </PageHeader>
 
-    <a-spin :loading="loading" tip="加载中..." class="w-full">
-      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        <div
-          v-for="role in sortedRoles"
-          :key="role.id"
-          class="role-card"
-        >
-          <div class="p-5">
-            <div class="flex items-start justify-between mb-3">
-              <div class="flex items-center gap-2.5 min-w-0">
-                <a-tag :color="roleColor(role)" size="small" class="!m-0">
-                  {{ role.display_name }}
-                </a-tag>
-                <IconSafe v-if="role.is_super_admin" :size="14" class="text-[#ff9500] shrink-0" />
-              </div>
-              <div class="flex items-center gap-1 shrink-0">
-                <a-button type="text" size="mini" :disabled="role.is_super_admin" @click="openEdit(role)">
-                  <template #icon><IconEdit :size="14" /></template>
-                </a-button>
-                <a-button
-                  type="text"
-                  size="mini"
-                  status="danger"
-                  :disabled="role.is_builtin"
-                  @click="deleteRole(role)"
-                >
-                  <template #icon><IconDelete :size="14" /></template>
-                </a-button>
-              </div>
-            </div>
-
-            <p class="text-[13px] text-[#86868B] leading-relaxed mb-4">
-              {{ role.description || '暂无描述' }}
-            </p>
-
-            <div class="flex flex-wrap items-center gap-2 mb-4">
-              <code class="role-code">{{ role.name }}</code>
-              <a-tag v-if="role.is_super_admin" size="small" color="orangered" class="!m-0">超级</a-tag>
-              <a-tag v-else-if="role.is_builtin" size="small" color="gray" class="!m-0">内置</a-tag>
-              <a-tag v-else size="small" color="arcoblue" class="!m-0">自定义</a-tag>
-              <a-tag
-                v-if="role.role_type === 'admin'"
-                size="small"
-                color="orangered"
-                class="!m-0"
-              >管理类型</a-tag>
-              <a-tag v-else size="small" color="gray" class="!m-0">普通类型</a-tag>
-            </div>
-
-            <div class="space-y-2">
-              <div v-if="role.parent_roles.length > 0" class="flex items-start gap-2">
-                <span class="text-[11px] text-[#86868B] shrink-0 mt-0.5">继承自</span>
-                <div class="flex flex-wrap gap-1.5">
-                  <a-tag
-                    v-for="parent in role.parent_roles"
-                    :key="parent.id"
-                    size="small"
-                    :color="roleColorById(parent.id)"
-                    class="!m-0"
-                  >
-                    {{ parent.display_name }}
-                  </a-tag>
-                </div>
-              </div>
-
-              <div v-if="role.child_roles.length > 0" class="flex items-start gap-2">
-                <span class="text-[11px] text-[#86868B] shrink-0 mt-0.5">被继承</span>
-                <div class="flex flex-wrap gap-1.5">
-                  <a-tag
-                    v-for="child in role.child_roles"
-                    :key="child.id"
-                    size="small"
-                    :color="roleColorById(child.id)"
-                    class="!m-0"
-                  >
-                    {{ child.display_name }}
-                  </a-tag>
-                </div>
-              </div>
-
-              <div v-if="constraintsForRole(role.id).length > 0" class="pt-2 mt-2 border-t border-black/[0.04]">
-                <div class="flex items-center gap-1.5 mb-1.5">
-                  <IconExclamationCircle :size="12" class="text-[#ff9500]" />
-                  <span class="text-[11px] text-[#86868B]">相关约束</span>
-                </div>
-                <div class="flex flex-col gap-1">
-                  <div
-                    v-for="c in constraintsForRole(role.id)"
-                    :key="c.id"
-                    class="flex items-center gap-2"
-                  >
-                    <a-tag size="small" :color="constraintTypeColor(c.constraint_type)" class="!m-0">
-                      {{ constraintTypeLabel(c.constraint_type) }}
+        <a-spin :loading="loading" tip="加载中..." class="w-full">
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div
+              v-for="role in sortedRoles"
+              :key="role.id"
+              class="role-card"
+            >
+              <div class="p-5">
+                <div class="flex items-start justify-between mb-3">
+                  <div class="flex items-center gap-2.5 min-w-0">
+                    <a-tag :color="roleColor(role)" size="small" class="!m-0">
+                      {{ role.display_name }}
                     </a-tag>
-                    <span class="text-[11px] text-[#86868B] truncate">
-                      {{ formatConstraintRoles(c, role.id) }}
-                    </span>
+                    <IconSafe v-if="role.is_super_admin" :size="14" class="text-[#ff9500] shrink-0" />
+                  </div>
+                  <div class="flex items-center gap-1 shrink-0">
+                    <a-button type="text" size="mini" :disabled="role.is_super_admin" @click="openEdit(role)">
+                      <template #icon><IconEdit :size="14" /></template>
+                    </a-button>
+                    <a-button
+                      type="text"
+                      size="mini"
+                      status="danger"
+                      :disabled="role.is_builtin"
+                      @click="deleteRole(role)"
+                    >
+                      <template #icon><IconDelete :size="14" /></template>
+                    </a-button>
+                  </div>
+                </div>
+
+                <p class="text-[13px] text-[#86868B] leading-relaxed mb-4">
+                  {{ role.description || '暂无描述' }}
+                </p>
+
+                <div class="flex flex-wrap items-center gap-2 mb-4">
+                  <code class="role-code">{{ role.name }}</code>
+                  <a-tag v-if="role.is_super_admin" size="small" color="orangered" class="!m-0">超级</a-tag>
+                  <a-tag v-else-if="role.is_builtin" size="small" color="gray" class="!m-0">内置</a-tag>
+                  <a-tag v-else size="small" color="arcoblue" class="!m-0">自定义</a-tag>
+                  <a-tag
+                    v-if="role.role_type === 'admin'"
+                    size="small"
+                    color="orangered"
+                    class="!m-0"
+                  >管理类型</a-tag>
+                  <a-tag v-else size="small" color="gray" class="!m-0">普通类型</a-tag>
+                </div>
+
+                <div class="space-y-2">
+                  <div v-if="role.parent_roles.length > 0" class="flex items-start gap-2">
+                    <span class="text-[11px] text-[#86868B] shrink-0 mt-0.5">继承自</span>
+                    <div class="flex flex-wrap gap-1.5">
+                      <a-tag
+                        v-for="parent in role.parent_roles"
+                        :key="parent.id"
+                        size="small"
+                        :color="roleColorById(parent.id)"
+                        class="!m-0"
+                      >
+                        {{ parent.display_name }}
+                      </a-tag>
+                    </div>
+                  </div>
+
+                  <div v-if="role.child_roles.length > 0" class="flex items-start gap-2">
+                    <span class="text-[11px] text-[#86868B] shrink-0 mt-0.5">被继承</span>
+                    <div class="flex flex-wrap gap-1.5">
+                      <a-tag
+                        v-for="child in role.child_roles"
+                        :key="child.id"
+                        size="small"
+                        :color="roleColorById(child.id)"
+                        class="!m-0"
+                      >
+                        {{ child.display_name }}
+                      </a-tag>
+                    </div>
+                  </div>
+
+                  <div v-if="hasIndirectRelations(role)" class="pt-1">
+                    <a-button
+                      type="text"
+                      size="mini"
+                      class="!text-[#007AFF] !text-[11px] !px-1 !h-auto"
+                      @click="toggleExpand(role.id)"
+                    >
+                      <template #icon>
+                        <IconDown v-if="isExpanded(role.id)" :size="10" />
+                        <IconRight v-else :size="10" />
+                      </template>
+                      {{ isExpanded(role.id) ? '收起继承链' : '展开继承链' }}
+                    </a-button>
+                  </div>
+
+                  <div
+                    v-if="isExpanded(role.id) && hasIndirectRelations(role)"
+                    class="chain-view"
+                  >
+                    <div v-if="indirectAncestors(role).length > 0" class="chain-chunk">
+                      <div class="chain-label">间接祖先</div>
+                      <div class="chain-flow">
+                        <div
+                          v-for="(ancestor, idx) in indirectAncestors(role)"
+                          :key="ancestor.id"
+                          class="chain-node"
+                        >
+                          <span class="chain-arrow" v-if="idx > 0 || role.parent_roles.length > 0">←</span>
+                          <a-tag
+                            size="small"
+                            :color="roleColorById(ancestor.id)"
+                            class="!m-0"
+                          >
+                            {{ ancestor.display_name }}
+                          </a-tag>
+                        </div>
+                        <span class="chain-arrow" v-if="role.parent_roles.length > 0">
+                          ←
+                        </span>
+                        <span class="chain-current" v-if="role.parent_roles.length > 0">
+                          {{ role.display_name }}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div v-if="indirectDescendants(role).length > 0" class="chain-chunk">
+                      <div class="chain-label">间接后代</div>
+                      <div class="chain-flow">
+                        <span class="chain-current" v-if="role.child_roles.length > 0">
+                          {{ role.display_name }}
+                        </span>
+                        <span class="chain-arrow" v-if="role.child_roles.length > 0">→</span>
+                        <div
+                          v-for="(descendant, idx) in indirectDescendants(role)"
+                          :key="descendant.id"
+                          class="chain-node"
+                        >
+                          <span class="chain-arrow" v-if="idx > 0 || role.child_roles.length > 0">→</span>
+                          <a-tag
+                            size="small"
+                            :color="roleColorById(descendant.id)"
+                            class="!m-0"
+                          >
+                            {{ descendant.display_name }}
+                          </a-tag>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div v-if="constraintsForRole(role.id).length > 0" class="pt-2 mt-2 border-t border-black/[0.04]">
+                    <div class="flex items-center gap-1.5 mb-1.5">
+                      <IconExclamationCircle :size="12" class="text-[#ff9500]" />
+                      <span class="text-[11px] text-[#86868B]">相关约束</span>
+                    </div>
+                    <div class="flex flex-col gap-1">
+                      <div
+                        v-for="c in constraintsForRole(role.id)"
+                        :key="c.id"
+                        class="flex items-center gap-2"
+                      >
+                        <a-tag size="small" :color="constraintTypeColor(c.constraint_type)" class="!m-0">
+                          {{ constraintTypeLabel(c.constraint_type) }}
+                        </a-tag>
+                        <span class="text-[11px] text-[#86868B] truncate">
+                          {{ formatConstraintRoles(c, role.id) }}
+                        </span>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
+
+              <div class="role-footer">
+                <div class="flex items-center justify-between">
+                  <span class="text-[12px] text-[#86868B]">
+                    {{ role.is_super_admin ? '超级管理员拥有所有权限' : '配置继承关系与权限' }}
+                  </span>
+                  <a-space :size="6">
+                    <a-button
+                      type="outline"
+                      size="small"
+                      @click="isMobile ? openInheritanceDrawer(role) : openInheritance(role)"
+                    >
+                      <template #icon><IconEye :size="14" /></template>
+                      查看
+                    </a-button>
+                    <a-button
+                      type="text"
+                      size="small"
+                      :disabled="role.is_super_admin"
+                      @click="openParents(role)"
+                    >
+                      <template #icon><IconLink :size="14" /></template>
+                      继承
+                    </a-button>
+                    <a-button type="text" size="small" @click="$router.push(`/rbac/permissions?role=${role.id}`)">
+                      <template #icon><IconSettings :size="14" /></template>
+                      权限
+                    </a-button>
+                  </a-space>
+                </div>
+              </div>
             </div>
           </div>
 
-          <div class="role-footer">
-            <div class="flex items-center justify-between">
-              <span class="text-[12px] text-[#86868B]">
-                {{ role.is_super_admin ? '超级管理员拥有所有权限' : '配置继承关系与权限' }}
-              </span>
-              <a-space :size="6">
-                <a-button
-                  type="text"
-                  size="small"
-                  :disabled="role.is_super_admin"
-                  @click="openParents(role)"
-                >
-                  <template #icon><IconLink :size="14" /></template>
-                  继承
-                </a-button>
-                <a-button type="text" size="small" @click="$router.push(`/rbac/permissions?role=${role.id}`)">
-                  <template #icon><IconSettings :size="14" /></template>
-                  权限
-                </a-button>
-              </a-space>
-            </div>
-          </div>
-        </div>
+          <a-empty v-if="!loading && roles.length === 0" description="暂无角色数据" class="mt-20" />
+        </a-spin>
       </div>
 
-      <a-empty v-if="!loading && roles.length === 0" description="暂无角色数据" class="mt-20" />
-    </a-spin>
+      <div
+        v-if="inheritanceRole && !isMobile"
+        class="inherit-panel"
+      >
+        <RoleInheritanceTree
+          :role-id="inheritanceRole.id"
+          :role-name="inheritanceRole.name"
+          :role-display-name="inheritanceRole.display_name"
+          @close="closeInheritancePanel"
+        />
+      </div>
+    </div>
+
+    <a-drawer
+      v-model:visible="inheritanceDrawerVisible"
+      title="继承关系预览"
+      :width="360"
+      :footer="false"
+      placement="right"
+      @cancel="closeInheritancePanel"
+    >
+      <RoleInheritanceTree
+        v-if="inheritanceRole"
+        :role-id="inheritanceRole.id"
+        :role-name="inheritanceRole.name"
+        :role-display-name="inheritanceRole.display_name"
+        @close="closeInheritancePanel"
+      />
+    </a-drawer>
 
     <a-modal
       v-model:visible="addVisible"
@@ -506,7 +786,7 @@ function formatConstraintRoles(constraint: Constraint, roleId: string): string {
     <a-modal
       v-model:visible="parentsVisible"
       title="配置父角色"
-      :width="480"
+      :width="560"
       :ok-loading="parentsSaving"
       @ok="saveParents"
       ok-text="保存"
@@ -517,12 +797,79 @@ function formatConstraintRoles(constraint: Constraint, roleId: string): string {
             v-model="selectedParents"
             placeholder="选择父角色以继承其权限"
             multiple
-            :options="availableParentOptions(parentsRole).map((r) => ({ value: r.id, label: r.display_name }))"
-          />
+          >
+            <a-option
+              v-for="opt in availableParentOptions(parentsRole)"
+              :key="opt.id"
+              :value="opt.id"
+              :disabled="isCycleCandidate(opt.id)"
+            >
+              <div class="flex items-center gap-1.5">
+                <a-tag :color="roleColorById(opt.id)" size="small" class="!m-0">
+                  {{ opt.display_name }}
+                </a-tag>
+                <span v-if="isCycleCandidate(opt.id)" class="text-[11px] text-[#ff3b30]">
+                  (会形成循环继承)
+                </span>
+              </div>
+            </a-option>
+          </a-select>
           <template #extra>
-            <span class="text-[11px] text-[#86868b]">子角色将自动继承所选父角色的权限</span>
+            <span class="text-[11px] text-[#86868b]">
+              子角色将自动继承所选父角色及其祖先的全部权限。标记为红色的选项将导致循环继承，不可选择。
+            </span>
           </template>
         </a-form-item>
+
+        <a-divider :margin="4" />
+
+        <div class="preview-section">
+          <div class="flex items-center gap-1.5 mb-3">
+            <IconEye :size="14" class="text-[#007AFF]" />
+            <span class="text-[13px] font-medium text-[#1d1d1f]">权限继承预览</span>
+          </div>
+
+          <div v-if="!previewedParentId()" class="text-[12px] text-[#86868b] py-2">
+            选择一个尚未继承的父角色，查看将获得的权限
+          </div>
+
+          <a-spin
+            v-else
+            :loading="parentPreviewLoading[previewedParentId()!]"
+            tip="加载权限..."
+            class="w-full"
+          >
+            <div v-if="parentPreviewMap[previewedParentId()!]?._error === 'cycle'" class="text-[12px] text-[#ff3b30] py-2">
+              无法预览：添加此父角色会形成循环继承
+            </div>
+
+            <div v-else-if="groupedPreviewPermissions().length > 0" class="preview-perms">
+              <div
+                v-for="group in groupedPreviewPermissions()"
+                :key="group.resource"
+                class="preview-group"
+              >
+                <span class="preview-resource">{{ group.keys[0]?.name || group.resource }}</span>
+                <div class="preview-keys">
+                  <code
+                    v-for="item in group.keys"
+                    :key="item.key"
+                    class="preview-key"
+                  >
+                    {{ item.key }}
+                  </code>
+                </div>
+              </div>
+            </div>
+
+            <div
+              v-else-if="!parentPreviewLoading[previewedParentId()!]"
+              class="text-[12px] text-[#86868b] py-2"
+            >
+              该父角色无任何权限
+            </div>
+          </a-spin>
+        </div>
       </a-form>
     </a-modal>
   </div>
@@ -557,5 +904,133 @@ function formatConstraintRoles(constraint: Constraint, roleId: string): string {
   padding: 12px 20px;
   background: rgba(0, 0, 0, 0.01);
   border-top: 1px solid rgba(0, 0, 0, 0.04);
+}
+
+.inherit-panel-wrapper {
+  display: flex;
+  gap: 0;
+  min-height: 0;
+}
+
+.inherit-panel-wrapper.panel-open .inherit-main-content {
+  flex: 0 0 55%;
+  max-width: 55%;
+  padding-right: 20px;
+}
+
+.inherit-main-content {
+  flex: 1;
+  min-width: 0;
+  transition: flex 0.3s cubic-bezier(0.25, 0.1, 0.25, 1);
+}
+
+.inherit-panel {
+  position: sticky;
+  top: 0;
+  align-self: flex-start;
+  flex: 1;
+  min-width: 360px;
+  max-height: calc(100vh - 100px);
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: 20px;
+  overflow: hidden;
+  animation: panelSlideIn 0.3s cubic-bezier(0.25, 0.1, 0.25, 1);
+}
+
+@keyframes panelSlideIn {
+  from {
+    opacity: 0;
+    transform: translateX(24px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.chain-view {
+  background: rgba(0, 0, 0, 0.02);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: 10px;
+  padding: 12px;
+}
+
+.chain-chunk {
+  margin-bottom: 8px;
+}
+.chain-chunk:last-child {
+  margin-bottom: 0;
+}
+
+.chain-label {
+  font-size: 10px;
+  color: #aeaeaf;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 6px;
+}
+
+.chain-flow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+.chain-node {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.chain-arrow {
+  font-size: 10px;
+  color: #aeaeaf;
+}
+
+.chain-current {
+  font-size: 11px;
+  font-weight: 500;
+  color: #007AFF;
+}
+
+.preview-section {
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.preview-perms {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.preview-group {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.preview-resource {
+  font-size: 12px;
+  font-weight: 500;
+  color: #1d1d1f;
+}
+
+.preview-keys {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.preview-key {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(0, 122, 255, 0.08);
+  color: #007AFF;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 </style>

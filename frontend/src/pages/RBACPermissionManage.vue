@@ -3,6 +3,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { Message } from '@arco-design/web-vue'
 import { IconSafe, IconLock, IconEdit } from '@arco-design/web-vue/es/icon'
+import { orderBy } from 'lodash-es'
 import PageHeader from '@/components/layout/PageHeader.vue'
 import api from '@/utils/api'
 import { isAdminTypePermission } from '@/utils/rbac'
@@ -137,7 +138,11 @@ const permissionMap = computed(() => {
 })
 
 const activePermissions = computed(() => {
-  return permissions.value.filter((p) => p.is_active)
+  return orderBy(
+    permissions.value.filter((p) => p.is_active),
+    ['key'],
+    ['asc'],
+  )
 })
 
 const pageItemDefs = computed<ModuleItemDef[]>(() => {
@@ -456,7 +461,7 @@ onMounted(loadAll)
           @click="router.push({ name: 'RBACPermissionEnumManage' })"
         >
           <template #icon><IconEdit :size="14" /></template>
-          权限定义管理
+          权限字典管理
         </a-button>
         <a-button
           v-if="selectedRole && !selectedRole.is_super_admin"

@@ -8,13 +8,13 @@ from pydantic import BaseModel, Field
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.deps import get_current_user, require_permission
+from app.core.deps import get_current_user, PermAPIRoute, RequiresPermissions
 from app.database import get_db
 from app.models.rbac_constraint import RBACConstraint, RBACConstraintRoleAssociation
 from app.models.rbac_role import RBACRole
 from app.models.user import User
 
-router = APIRouter(prefix="/api/v2", tags=["RBAC 约束管理"])
+router = APIRouter(prefix="/api/v2", tags=["RBAC 约束管理"], route_class=PermAPIRoute)
 
 
 class RoleAssociationInfo(BaseModel):
@@ -184,8 +184,8 @@ async def _apply_role_associations(
 @router.get(
     "/constraints",
     response_model=list[ConstraintListItem],
-    dependencies=[Depends(require_permission("constraints:read", "read"))],
 )
+@RequiresPermissions("constraints:read")
 async def list_constraints(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -201,8 +201,8 @@ async def list_constraints(
     "/constraints",
     response_model=ConstraintDetailResponse,
     status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(require_permission("constraints:manage:write", "write"))],
 )
+@RequiresPermissions("constraints:manage:write")
 async def create_constraint(
     body: CreateConstraintRequest,
     db: AsyncSession = Depends(get_db),
@@ -241,8 +241,8 @@ async def create_constraint(
 @router.get(
     "/constraints/{constraint_id}",
     response_model=ConstraintDetailResponse,
-    dependencies=[Depends(require_permission("constraints:read", "read"))],
 )
+@RequiresPermissions("constraints:read")
 async def get_constraint(
     constraint_id: str,
     db: AsyncSession = Depends(get_db),
@@ -263,8 +263,8 @@ async def get_constraint(
 @router.put(
     "/constraints/{constraint_id}",
     response_model=ConstraintDetailResponse,
-    dependencies=[Depends(require_permission("constraints:manage:write", "write"))],
 )
+@RequiresPermissions("constraints:manage:write")
 async def update_constraint(
     constraint_id: str,
     body: UpdateConstraintRequest,
@@ -319,8 +319,8 @@ async def update_constraint(
 @router.delete(
     "/constraints/{constraint_id}",
     status_code=status.HTTP_204_NO_CONTENT,
-    dependencies=[Depends(require_permission("constraints:manage:write", "write"))],
 )
+@RequiresPermissions("constraints:manage:write")
 async def delete_constraint(
     constraint_id: str,
     db: AsyncSession = Depends(get_db),

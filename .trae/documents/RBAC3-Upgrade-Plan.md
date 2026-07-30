@@ -429,7 +429,7 @@ async def sync_user_role_assignments(db: AsyncSession):
 
 初始不预设父子关系，管理员后续可在「角色设置」中配置。
 
-### 5.3 资源权限定义
+### 5.3 资源权限字典
 
 `RBAC_RESOURCES` 在 `backend/app/services/rbac_init_service.py` 中定义，每个资源包含 `key`、`name` 和 `description`，权限类型由 key 格式自动推断：
 
@@ -450,7 +450,7 @@ async def sync_user_role_assignments(db: AsyncSession):
 | `permissions:read` | 权限管理 | 管理角色权限分配 | 页面 |
 | `roles:read` | 角色管理 | 管理角色定义和角色继承关系 | 页面 |
 | `constraints:read` | 约束管理 | 管理职责分离约束规则 | 页面 |
-| `permissions:manage:write` | 维护权限定义 | 创建、编辑、删除权限资源定义 | 操作 |
+| `permissions:manage:write` | 维护权限字典 | 创建、编辑、删除权限资源定义 | 操作 |
 | `roles:manage:write` | 维护角色 | 创建、编辑、删除角色定义和层级关系 | 操作 |
 | `constraints:manage:write` | 维护约束 | 创建、编辑、删除职责分离约束规则 | 操作 |
 | `content:create:write` | 创建内容 | 创建新的内容条目 | 操作 |
@@ -621,20 +621,15 @@ backend/app/
 │   ├── rbac_role_hierarchy.py
 │   ├── rbac_role_permission.py
 │   ├── rbac_user_role_assignment.py
+│   ├── rbac_user_permission_override.py
 │   ├── rbac_constraint.py
 │   ├── rbac_constraint_role_association.py
-│   ├── user.py                    # 保留，role 字段仅作标签/迁移用
-│   ├── custom_role.py             # 删除
-│   ├── role_permission.py         # 删除
-│   └── user_permission.py         # 删除
+│   └── user.py                    # 保留，role 字段仅作标签/迁移用
 ├── routers/
 │   ├── rbac_users.py
 │   ├── rbac_roles.py
 │   ├── rbac_permissions.py        # 新增 description、权限 key 校验、页面权限筛选
-│   ├── rbac_constraints.py
-│   ├── users.py                   # 删除
-│   ├── roles.py                   # 删除
-│   └── permissions.py             # 删除
+│   └── rbac_constraints.py
 ├── services/
 │   ├── rbac_service.py
 │   ├── rbac_constraint_service.py
@@ -659,10 +654,7 @@ frontend/src/
     ├── RBACPermissionManage.vue
     ├── RBACPermissionEnumManage.vue  # 权限枚举管理（含 description 编辑）
     ├── RBACUserPermissionCustomize.vue
-    ├── RBACConstraintManage.vue
-    ├── Accounts.vue               # 删除
-    ├── RoleManage.vue             # 删除
-    └── PermissionManage.vue       # 删除
+    └── RBACConstraintManage.vue
 ```
 
 ---
@@ -673,41 +665,41 @@ frontend/src/
 
 ### Phase 1：数据库与核心服务
 
-- [ ] **Task 1.1**：创建 RBAC3 模型文件并注册到 `models/__init__.py`。
-- [ ] **Task 1.2**：实现 `rbac_service.py`（继承、有效权限、has_permission）。
-- [ ] **Task 1.3**：实现 `rbac_constraint_service.py`（DAG、SoD、先决、基数）。
-- [ ] **Task 1.4**：实现 `rbac_init_service.py`（资源/权限/角色种子 + 旧角色同步）。
-- [ ] **Task 1.5**：更新 `deps.py` 的 `require_permission`。
+- [x] **Task 1.1**：创建 RBAC3 模型文件并注册到 `models/__init__.py`。
+- [x] **Task 1.2**：实现 `rbac_service.py`（继承、有效权限、has_permission）。
+- [x] **Task 1.3**：实现 `rbac_constraint_service.py`（DAG、SoD、先决、基数）。
+- [x] **Task 1.4**：实现 `rbac_init_service.py`（资源/权限/角色种子 + 旧角色同步）。
+- [x] **Task 1.5**：更新 `deps.py` 的 `require_permission`。
 
 ### Phase 2：后端接口
 
-- [ ] **Task 2.1**：创建 `rbac_permissions.py`（资源/权限树）。
-- [ ] **Task 2.2**：创建 `rbac_roles.py`（CRUD + 继承 + 权限配置 + detail 接口）。
-- [ ] **Task 2.3**：创建 `rbac_users.py`（CRUD + 角色分配 + 用户创建审核）。
-- [ ] **Task 2.4**：创建 `rbac_constraints.py`。
-- [ ] **Task 2.5**：更新 `auth.py` 的 `me` 接口返回 RBAC3 权限。
-- [ ] **Task 2.6**：在 `main.py` 注册新路由、移除旧路由。
-- [ ] **Task 2.7**：将其他业务路由（accounts、contents 等）的旧权限校验替换为 `require_permission("resource:operation")`。
+- [x] **Task 2.1**：创建 `rbac_permissions.py`（资源/权限树）。
+- [x] **Task 2.2**：创建 `rbac_roles.py`（CRUD + 继承 + 权限配置 + detail 接口）。
+- [x] **Task 2.3**：创建 `rbac_users.py`（CRUD + 角色分配 + 用户创建审核）。
+- [x] **Task 2.4**：创建 `rbac_constraints.py`。
+- [x] **Task 2.5**：更新 `auth.py` 的 `me` 接口返回 RBAC3 权限。
+- [x] **Task 2.6**：在 `main.py` 注册新路由、移除旧路由。
+- [x] **Task 2.7**：将其他业务路由（accounts、contents 等）的旧权限校验替换为 `require_permission("resource:operation")`。
 
 ### Phase 3：前端基础设施
 
-- [ ] **Task 3.1**：创建 `stores/permission.ts`。
-- [ ] **Task 3.2**：创建 `directives/permission.ts`。
-- [ ] **Task 3.3**：更新 `router/index.ts` 守卫。
-- [ ] **Task 3.4**：更新 `AppSidebar.vue` 动态菜单。
+- [x] **Task 3.1**：创建 `stores/permission.ts`。
+- [x] **Task 3.2**：创建 `directives/permission.ts`。
+- [x] **Task 3.3**：更新 `router/index.ts` 守卫。
+- [x] **Task 3.4**：更新 `AppSidebar.vue` 动态菜单。
 
 ### Phase 4：前端管理页
 
-- [ ] **Task 4.1**：`RBACPermissionManage.vue`（资源树 + 角色权限配置，继承/直接区分）。
-- [ ] **Task 4.2**：`RBACRoleManage.vue`（角色 CRUD + 父子关系 + 约束提示）。
-- [ ] **Task 4.3**：`RBACUserManage.vue`（用户 CRUD + 角色分配）。
-- [ ] **Task 4.4**：`RBACConstraintManage.vue`。
+- [x] **Task 4.1**：`RBACPermissionManage.vue`（资源树 + 角色权限配置，继承/直接区分）。
+- [x] **Task 4.2**：`RBACRoleManage.vue`（角色 CRUD + 父子关系 + 约束提示）。
+- [x] **Task 4.3**：`RBACUserManage.vue`（用户 CRUD + 角色分配）。
+- [x] **Task 4.4**：`RBACConstraintManage.vue`。
 
 ### Phase 5：清理与迁移
 
-- [ ] **Task 5.1**：删除旧模型文件（确认无引用后）。
-- [ ] **Task 5.2**：删除旧前端页面。
-- [ ] **Task 5.3**：删除旧路由文件。
+- [x] **Task 5.1**：删除旧模型文件（确认无引用后）。`custom_roles`、`role_permissions`、`user_permissions` 已移除。
+- [x] **Task 5.2**：删除旧前端页面。`Accounts.vue`、`RoleManage.vue`、`PermissionManage.vue` 已移除。
+- [x] **Task 5.3**：删除旧路由文件。`users.py`、`roles.py`、`permissions.py` 已移除。
 - [ ] **Task 5.4**：重置数据库验证完整流程（管理员/运营者/审核员登录、菜单、权限配置）。
 
 ---
@@ -763,7 +755,7 @@ frontend/src/
 
 | 权限 key | 名称 | 描述 |
 |----------|------|------|
-| `permissions:manage:write` | 维护权限定义 | 创建、编辑、删除权限资源定义 |
+| `permissions:manage:write` | 维护权限字典 | 创建、编辑、删除权限资源定义 |
 | `roles:manage:write` | 维护角色 | 创建、编辑、删除角色定义和层级关系 |
 | `constraints:manage:write` | 维护约束 | 创建、编辑、删除职责分离约束规则 |
 | `content:create:write` | 创建内容 | 创建新的内容条目 |
@@ -854,7 +846,8 @@ frontend/src/
 
 ---
 
-*文档版本：v1.2*
-*最后更新：2026-07-29*
-*变更说明：v1.2 - 重构权限接口数据格式：/api/auth/me 的 permissions 改为 { key: name } 返回全部权限枚举，用户有效权限改由 /api/v2/roles/{id}/permissions 获取（也返回 { key: name }）；前端权限 store 改为汇总多角色权限；更新 API 接口文档。*
+*文档版本：v1.3*
+*最后更新：2026-07-30*
+*变更说明：v1.3 - 根据项目实际代码更新实施任务清单，标记 Phase 1~4 及 Phase 5 清理任务为已完成；同步更新文件结构，移除已删除的旧文件；更新版本信息。*
+*v1.2 - 重构权限接口数据格式：/api/auth/me 的 permissions 改为 { key: name } 返回全部权限枚举，用户有效权限改由 /api/v2/roles/{id}/permissions 获取（也返回 { key: name }）；前端权限 store 改为汇总多角色权限；更新 API 接口文档。*
 *v1.1 - 移除 RBACResource.type 字段，改为基于 key 格式推断类型；添加 description 字段到权限枚举；更新前后端权限筛选逻辑；更新 API 接口文档。*

@@ -153,7 +153,7 @@ function goBack() {
               <a-option v-if="canManageUsers" value="reviewer">审核员</a-option>
             </a-select>
           </a-form-item>
-          <a-form-item v-if="canManageUsers" label="RBAC3 角色分配">
+          <a-form-item v-perm="'users:create:write'" label="RBAC3 角色分配">
             <a-select
               :model-value="form.role_ids"
               placeholder="选择要分配的 RBAC3 角色"

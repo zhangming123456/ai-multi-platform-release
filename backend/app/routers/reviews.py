@@ -2,7 +2,7 @@ from fastapi import APIRouter, Body, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.deps import get_current_user, require_permission
+from app.core.deps import get_current_user, PermAPIRoute, RequiresPermissions
 from app.database import get_db
 from app.models.content import Content, ContentStatus
 from app.models.notification import Notification, NotificationType
@@ -13,7 +13,7 @@ from app.models.rbac_user_role_assignment import RBACUserRoleAssignment
 from app.models.user import User
 from app.schemas.review import ReviewResponse
 
-router = APIRouter(prefix="/api/reviews", tags=["审核管理"])
+router = APIRouter(prefix="/api/reviews", tags=["审核管理"], route_class=PermAPIRoute)
 
 
 async def _user_ids_with_permission(
@@ -70,9 +70,9 @@ async def _user_ids_with_permission(
 
 
 @router.get("/", response_model=list[ReviewResponse])
+@RequiresPermissions("review:read")
 async def list_pending_reviews(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_permission("review:read")),
 ):
     """获取待审核列表"""
     result = await db.execute(
@@ -98,10 +98,11 @@ async def list_pending_reviews(
 
 
 @router.post("/{content_id}/submit", response_model=ReviewResponse)
+@RequiresPermissions("review:submit:write")
 async def submit_for_review(
     content_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_permission("review:submit:write")),
+    current_user: User = Depends(get_current_user),
 ):
     """提交内容审核"""
     result = await db.execute(select(Content).where(Content.id == content_id))
@@ -158,10 +159,10 @@ async def submit_for_review(
 
 
 @router.post("/{content_id}/approve", response_model=ReviewResponse)
+@RequiresPermissions("review:approve:write")
 async def approve_content(
     content_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_permission("review:approve:write", "write")),
 ):
     """审核通过"""
 
@@ -207,11 +208,11 @@ async def approve_content(
 
 
 @router.post("/{content_id}/reject", response_model=ReviewResponse)
+@RequiresPermissions("review:reject:write")
 async def reject_content(
     content_id: str,
     reason: str = Body(..., embed=True),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_permission("review:reject:write")),
 ):
     """审核驳回"""
 

@@ -81,9 +81,11 @@ const effectivePermissions = ref<Record<string, string>>({})
 const permissionOverrides = ref<PermissionOverrideEntry[]>([])
 const selectedKeys = ref<Set<string>>(new Set())
 
-const isBuiltInAdmin = computed(() => targetUser.value?.id === '1' || targetUser.value?.role === 'admin')
+const isBuiltInAdmin = computed(
+  () => targetUser.value?.id === '1' || targetUser.value?.role === 'admin',
+)
 
-const canWrite = computed(() => permStore.hasPermission('users:custom_permissions:write') && !isBuiltInAdmin.value)
+const canWrite = computed(() => permStore.hasPermission('users:custom_permissions:write'))
 
 const readOnly = computed(() => isBuiltInAdmin.value || !canWrite.value)
 
@@ -155,7 +157,9 @@ const pageItemDefs = computed<ModuleItemDef[]>(() => {
     }))
 })
 
-function buildActionGroupMap(filterKeys?: string[]): Map<string, { readPerm?: Permission; writePerm?: Permission }> {
+function buildActionGroupMap(
+  filterKeys?: string[],
+): Map<string, { readPerm?: Permission; writePerm?: Permission }> {
   const groups = new Map<string, { readPerm?: Permission; writePerm?: Permission }>()
   for (const perm of activePermissions.value) {
     if (_isPageKey(perm.key)) continue
@@ -176,7 +180,9 @@ function buildActionGroupMap(filterKeys?: string[]): Map<string, { readPerm?: Pe
   return groups
 }
 
-function groupMapToItems(groups: Map<string, { readPerm?: Permission; writePerm?: Permission }>): ModuleItemDef[] {
+function groupMapToItems(
+  groups: Map<string, { readPerm?: Permission; writePerm?: Permission }>,
+): ModuleItemDef[] {
   const items: ModuleItemDef[] = []
   for (const [, group] of groups) {
     const writePerm = group.writePerm
@@ -200,20 +206,18 @@ function actionItemsForKeys(resourceKeys: string[]): ModuleItemDef[] {
 
 const modules = computed<ModuleDef[]>(() => {
   const systemItems = actionItemsForKeys([
-    'users', 'permissions', 'roles', 'constraints', 'model_config',
+    'users',
+    'permissions',
+    'roles',
+    'constraints',
+    'model_config',
   ])
 
-  const contentItems = actionItemsForKeys([
-    'content', 'templates', 'publish',
-  ])
+  const contentItems = actionItemsForKeys(['content', 'templates', 'publish'])
 
-  const reviewItems = actionItemsForKeys([
-    'review', 'db_change',
-  ])
+  const reviewItems = actionItemsForKeys(['review', 'db_change'])
 
-  const basicItems = actionItemsForKeys([
-    'account', 'db', 'db_history',
-  ])
+  const basicItems = actionItemsForKeys(['account', 'db', 'db_history'])
 
   const coveredKeys = new Set<string>()
   for (const items of [pageItemDefs.value, systemItems, contentItems, reviewItems, basicItems]) {
@@ -236,14 +240,17 @@ const modules = computed<ModuleDef[]>(() => {
   const filteredBasic = filterModuleItems(basicItems)
   const filteredOther = filterModuleItems(otherItems)
 
-  const result: ModuleDef[] = [
-    { key: 'page', label: '页面权限', items: filteredPage },
-  ]
-  if (filteredSystem.length > 0) result.push({ key: 'system', label: '系统设置', items: filteredSystem })
-  if (filteredContent.length > 0) result.push({ key: 'content', label: '内容管理', items: filteredContent })
-  if (filteredReview.length > 0) result.push({ key: 'review', label: '审核管理', items: filteredReview })
-  if (filteredBasic.length > 0) result.push({ key: 'basic', label: '基础操作', items: filteredBasic })
-  if (filteredOther.length > 0) result.push({ key: 'other', label: '其他权限', items: filteredOther })
+  const result: ModuleDef[] = [{ key: 'page', label: '页面权限', items: filteredPage }]
+  if (filteredSystem.length > 0)
+    result.push({ key: 'system', label: '系统设置', items: filteredSystem })
+  if (filteredContent.length > 0)
+    result.push({ key: 'content', label: '内容管理', items: filteredContent })
+  if (filteredReview.length > 0)
+    result.push({ key: 'review', label: '审核管理', items: filteredReview })
+  if (filteredBasic.length > 0)
+    result.push({ key: 'basic', label: '基础操作', items: filteredBasic })
+  if (filteredOther.length > 0)
+    result.push({ key: 'other', label: '其他权限', items: filteredOther })
   return result
 })
 
@@ -340,31 +347,31 @@ async function fetchUser() {
   targetUser.value = res.data
 }
 
-async function fetchPermissions() {
-  const res = await api.get<Permission[]>('/v2/permissions')
-  permissions.value = Array.isArray(res.data) ? res.data : []
+interface UserPermissionsData {
+  effective_permissions: Record<string, string>
+  available_permissions: Permission[]
 }
 
-async function fetchEffectivePermissions() {
-  const res = await api.get<Record<string, UserPermissionItem>>(`/v2/users/${userId.value}/permissions`)
-  effectivePermissions.value = res.data || {}
+async function fetchAllPermissions() {
+  const res = await api.get<UserPermissionsData>(`/v2/users/${userId.value}/permissions`)
+  effectivePermissions.value = res.data.effective_permissions || {}
+  permissions.value = Array.isArray(res.data.available_permissions)
+    ? res.data.available_permissions
+    : []
   initSelectedKeys()
 }
 
 async function fetchOverrides() {
-  const res = await api.get<PermissionOverrideEntry[]>(`/v2/users/${userId.value}/permission-overrides`)
+  const res = await api.get<PermissionOverrideEntry[]>(
+    `/v2/users/${userId.value}/permission-overrides`,
+  )
   permissionOverrides.value = Array.isArray(res.data) ? res.data : []
 }
 
 async function loadAll() {
   loading.value = true
   try {
-    await Promise.all([
-      fetchUser(),
-      fetchPermissions(),
-      fetchEffectivePermissions(),
-      fetchOverrides(),
-    ])
+    await Promise.all([fetchUser(), fetchAllPermissions(), fetchOverrides()])
   } catch (e: any) {
     Message.error(e.response?.data?.detail || '加载数据失败')
   } finally {
@@ -379,7 +386,7 @@ async function saveOverrides() {
     const overrides = currentOverrides.value
     await api.put(`/v2/users/${userId.value}/permission-overrides`, { overrides })
     Message.success('自定义权限保存成功')
-    await Promise.all([fetchEffectivePermissions(), fetchOverrides()])
+    await Promise.all([fetchAllPermissions(), fetchOverrides()])
   } catch (e: any) {
     Message.error(e.response?.data?.detail || '保存失败')
   } finally {
@@ -396,7 +403,14 @@ onMounted(loadAll)
 
 <template>
   <div class="page-main">
-    <PageHeader :title="`${targetUser?.nickname || '用户'} 的自定义权限`" :subtitle="canWrite ? '为该用户单独配置权限覆盖，将影响其最终有效权限' : '查看用户的有效权限（只读模式）'">
+    <PageHeader
+      :title="`${targetUser?.nickname || '用户'} 的自定义权限`"
+      :subtitle="
+        canWrite
+          ? '为该用户单独配置权限覆盖，将影响其最终有效权限'
+          : '查看用户的有效权限（只读模式）'
+      "
+    >
       <template #actions>
         <a-space>
           <a-button @click="goBack">
@@ -404,7 +418,10 @@ onMounted(loadAll)
             返回用户列表
           </a-button>
           <a-button
-            v-if="canWrite"
+            v-perm="{
+              key: 'users:custom_permissions:write & !isBuiltInAdmin(user_id)',
+              ctx: { user_id: targetUser?.id },
+            }"
             type="primary"
             :loading="saving"
             @click="saveOverrides"

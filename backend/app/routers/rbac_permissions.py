@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.deps import get_current_user, require_permission
+from app.core.deps import get_current_user, PermAPIRoute, RequiresPermissions
 from app.database import get_db
 from app.models.rbac_permission import RBACPermission
 from app.models.rbac_resource import RBACResource, _infer_resource_type
@@ -16,7 +16,7 @@ from app.models.rbac_user_permission_override import RBACUserPermissionOverride
 from app.models.user import User
 from app.services.rbac_service import get_user_effective_permissions, flatten_effective_permissions
 
-router = APIRouter(prefix="/api/v2", tags=["RBAC 权限管理"])
+router = APIRouter(prefix="/api/v2", tags=["RBAC 权限管理"], route_class=PermAPIRoute)
 
 
 def _is_valid_permission_key(key: str) -> bool:
@@ -151,8 +151,8 @@ async def get_my_permissions(
 @router.get(
     "/permission-enums",
     response_model=list[PermissionEnumDetail],
-    dependencies=[Depends(require_permission("permissions:read", "read"))],
 )
+@RequiresPermissions("permissions:read")
 async def list_permission_enum(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -180,8 +180,8 @@ async def list_permission_enum(
 @router.get(
     "/permission-pages",
     response_model=list[PermissionEnumDetail],
-    dependencies=[Depends(require_permission("permissions:read", "read"))],
 )
+@RequiresPermissions("permissions:read")
 async def list_page_permissions(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -215,8 +215,8 @@ def _resource_type(key: str) -> str:
 @router.get(
     "/resources",
     response_model=list[ResourceNode],
-    dependencies=[Depends(require_permission("permissions:read", "read"))],
 )
+@RequiresPermissions("permissions:read")
 async def list_resources(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -252,8 +252,8 @@ async def list_resources(
     "/resources",
     response_model=ResourceNode,
     status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(require_permission("permissions:manage:write", "write"))],
 )
+@RequiresPermissions("permissions:manage:write")
 async def create_resource(
     body: CreateResourceRequest,
     db: AsyncSession = Depends(get_db),
@@ -306,8 +306,8 @@ async def create_resource(
 @router.put(
     "/resources/{resource_id}",
     response_model=ResourceRef,
-    dependencies=[Depends(require_permission("permissions:manage:write", "write"))],
 )
+@RequiresPermissions("permissions:manage:write")
 async def update_resource(
     resource_id: str,
     body: UpdateResourceRequest,
@@ -356,8 +356,8 @@ async def update_resource(
 @router.delete(
     "/resources/{resource_id}",
     status_code=status.HTTP_204_NO_CONTENT,
-    dependencies=[Depends(require_permission("permissions:manage:write", "write"))],
 )
+@RequiresPermissions("permissions:manage:write")
 async def delete_resource(
     resource_id: str,
     db: AsyncSession = Depends(get_db),
@@ -384,8 +384,8 @@ async def delete_resource(
 @router.get(
     "/permissions",
     response_model=list[PermissionItem],
-    dependencies=[Depends(require_permission("permissions:read", "read"))],
 )
+@RequiresPermissions("permissions:read")
 async def list_permissions(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -417,8 +417,8 @@ async def list_permissions(
     "/permissions",
     response_model=PermissionItem,
     status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(require_permission("permissions:manage:write", "write"))],
 )
+@RequiresPermissions("permissions:manage:write")
 async def create_permission(
     body: CreatePermissionRequest,
     db: AsyncSession = Depends(get_db),
@@ -477,8 +477,8 @@ async def create_permission(
 @router.put(
     "/permissions/{permission_id}",
     response_model=PermissionItem,
-    dependencies=[Depends(require_permission("permissions:manage:write", "write"))],
 )
+@RequiresPermissions("permissions:manage:write")
 async def update_permission(
     permission_id: str,
     body: UpdatePermissionRequest,
@@ -540,8 +540,8 @@ async def update_permission(
 @router.delete(
     "/permissions/{permission_id}",
     status_code=status.HTTP_204_NO_CONTENT,
-    dependencies=[Depends(require_permission("permissions:manage:write", "write"))],
 )
+@RequiresPermissions("permissions:manage:write")
 async def delete_permission(
     permission_id: str,
     db: AsyncSession = Depends(get_db),

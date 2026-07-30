@@ -8,9 +8,11 @@ from pydantic import BaseModel, Field
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.deps import get_current_user, require_permission
+from app.core.deps import get_current_user, PermAPIRoute, RequiresPermissions
 from app.core.security import hash_password, validate_password_format, verify_password
 from app.database import get_db
+from app.models.rbac_permission import RBACPermission
+from app.models.rbac_resource import RBACResource
 from app.models.rbac_role import RBACRole
 from app.models.rbac_user_permission_override import RBACUserPermissionOverride
 from app.models.rbac_user_role_assignment import RBACUserRoleAssignment
@@ -20,7 +22,7 @@ from app.schemas.auth import UserInfo
 from app.services.rbac_constraint_service import validate_user_role_assignments
 from app.services.rbac_service import get_user_effective_permissions, has_permission_direct, flatten_effective_permissions
 
-router = APIRouter(prefix="/api/v2", tags=["RBAC 用户管理"])
+router = APIRouter(prefix="/api/v2", tags=["RBAC 用户管理"], route_class=PermAPIRoute)
 
 
 class RoleAssignmentInfo(BaseModel):
@@ -38,6 +40,31 @@ class UserListItem(UserInfo):
 
 class UserDetailResponse(UserListItem):
     pass
+
+
+class _PermResourceRef(BaseModel):
+    id: str
+    key: str
+    name: str
+    description: Optional[str] = None
+
+    model_config = {"from_attributes": True}
+
+
+class AvailablePermission(BaseModel):
+    id: str
+    key: str
+    operation: str
+    is_active: bool
+    created_at: datetime
+    resource: _PermResourceRef
+
+    model_config = {"from_attributes": True}
+
+
+class UserPermissionsResponse(BaseModel):
+    effective_permissions: dict[str, str]
+    available_permissions: list[AvailablePermission]
 
 
 class CreateUserRequest(BaseModel):
@@ -128,8 +155,8 @@ async def _can_access_user_target(
 @router.get(
     "/users",
     response_model=list[UserDetailResponse],
-    dependencies=[Depends(require_permission("users:read", "read"))],
 )
+@RequiresPermissions("users:read")
 async def list_users(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -156,8 +183,8 @@ async def list_users(
     "/users",
     response_model=UserDetailResponse,
     status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(require_permission("users:create:write", "write"))],
 )
+@RequiresPermissions("users:create:write")
 async def create_user(
     body: CreateUserRequest,
     db: AsyncSession = Depends(get_db),
@@ -266,8 +293,8 @@ async def create_user(
 @router.get(
     "/users/{user_id}",
     response_model=UserDetailResponse,
-    dependencies=[Depends(require_permission("users:read", "read"))],
 )
+@RequiresPermissions("users:read")
 async def get_user(
     user_id: str,
     db: AsyncSession = Depends(get_db),
@@ -291,8 +318,8 @@ async def get_user(
 @router.put(
     "/users/{user_id}",
     response_model=UserDetailResponse,
-    dependencies=[Depends(require_permission("users:update:write", "write"))],
 )
+@RequiresPermissions("users:update:write")
 async def update_user(
     user_id: str,
     body: UpdateUserRequest,
@@ -376,8 +403,8 @@ async def update_user(
 @router.put(
     "/users/{user_id}/roles",
     response_model=UserDetailResponse,
-    dependencies=[Depends(require_permission("users:update:write", "write"))],
 )
+@RequiresPermissions("users:update:write")
 async def update_user_roles(
     user_id: str,
     body: UpdateUserRolesRequest,
@@ -398,10 +425,10 @@ async def update_user_roles(
             detail="超级管理员角色不可修改",
         )
 
-    if not await _can_access_user_target(current_user, user, db, allow_self=True):
+    if not _is_manager_or_admin(current_user):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="无法访问该用户：非管理角色只能操作同角色用户",
+            detail="仅管理员可修改用户角色分配",
         )
 
     violations = await validate_user_role_assignments(
@@ -433,8 +460,8 @@ async def update_user_roles(
 
 @router.put(
     "/users/{user_id}/password",
-    dependencies=[Depends(require_permission("users:change_password:write", "write"))],
 )
+@RequiresPermissions("users:change_password:write")
 async def change_user_password(
     user_id: str,
     body: UpdateUserPasswordRequest,
@@ -449,10 +476,10 @@ async def change_user_password(
             detail="用户不存在",
         )
 
-    if not await _can_access_user_target(current_user, user, db, allow_self=True):
+    if not _is_manager_or_admin(current_user) and current_user.id != user_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="无法访问该用户：非管理角色只能操作同角色用户",
+            detail="仅管理员或用户本人可修改密码",
         )
 
     valid, msg = validate_password_format(body.new_password)
@@ -488,7 +515,7 @@ async def change_user_password(
 
 @router.get(
     "/users/{user_id}/permissions",
-    response_model=dict[str, str],
+    response_model=UserPermissionsResponse,
 )
 async def get_user_permissions(
     user_id: str,
@@ -510,7 +537,7 @@ async def get_user_permissions(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="无法访问该用户：非管理角色只能操作同角色用户",
             )
-        if not await has_permission_direct(current_user.id, "users:custom_permissions:write", "read", db):
+        if not await has_permission_direct(current_user.id, "users:custom_permissions:read", "read", db):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="无权查看其他用户的自定义权限",
@@ -524,7 +551,33 @@ async def get_user_permissions(
         )
     )
     denied_keys = {row[0] for row in deny_result.all()}
-    return await flatten_effective_permissions(effective, db, denied_keys)
+    effective_permissions = await flatten_effective_permissions(effective, db, denied_keys)
+
+    perm_result = await db.execute(
+        select(RBACPermission, RBACResource)
+        .join(RBACResource, RBACPermission.resource_id == RBACResource.id)
+        .order_by(RBACPermission.created_at.asc())
+    )
+    available_permissions: list[AvailablePermission] = []
+    for permission, resource in perm_result.all():
+        available_permissions.append(AvailablePermission(
+            id=permission.id,
+            key=permission.key,
+            operation=permission.operation,
+            is_active=permission.is_active,
+            created_at=permission.created_at,
+            resource=_PermResourceRef(
+                id=resource.id,
+                key=resource.key,
+                name=resource.name,
+                description=resource.description,
+            ),
+        ))
+
+    return UserPermissionsResponse(
+        effective_permissions=effective_permissions,
+        available_permissions=available_permissions,
+    )
 
 
 class PermissionOverrideEntry(BaseModel):
@@ -560,7 +613,7 @@ async def get_user_permission_overrides(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="无法访问该用户：非管理角色只能操作同角色用户",
             )
-        if not await has_permission_direct(current_user.id, "users:custom_permissions:write", "read", db):
+        if not await has_permission_direct(current_user.id, "users:custom_permissions:read", "read", db):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="无权查看其他用户的自定义权限覆盖",
@@ -583,8 +636,8 @@ async def get_user_permission_overrides(
 @router.put(
     "/users/{user_id}/permission-overrides",
     response_model=list[PermissionOverrideEntry],
-    dependencies=[Depends(require_permission("users:update:write", "write"))],
 )
+@RequiresPermissions("users:custom_permissions:write")
 async def update_user_permission_overrides(
     user_id: str,
     body: UpdateUserPermissionOverridesRequest,
@@ -648,8 +701,8 @@ async def update_user_permission_overrides(
 @router.delete(
     "/users/{user_id}",
     status_code=status.HTTP_204_NO_CONTENT,
-    dependencies=[Depends(require_permission("users:delete:write", "write"))],
 )
+@RequiresPermissions("users:delete:write")
 async def delete_user(
     user_id: str,
     db: AsyncSession = Depends(get_db),
@@ -690,8 +743,8 @@ async def delete_user(
 
 @router.get(
     "/users/{user_id}/password-status",
-    dependencies=[Depends(require_permission("users:read", "read"))],
 )
+@RequiresPermissions("users:read")
 async def get_password_status(
     user_id: str,
     db: AsyncSession = Depends(get_db),

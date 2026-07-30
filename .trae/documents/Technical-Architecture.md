@@ -1,4 +1,6 @@
-## 1. 架构设计
+# 技术架构文档
+
+## 1. 系统架构
 
 ```mermaid
 flowchart TB
@@ -16,6 +18,7 @@ flowchart TB
         AIEngine["AI 内容生成引擎"]
         Publisher["多平台发布调度器"]
         TaskQueue["任务队列 (Celery)"]
+        RBAC3["RBAC3 权限中台"]
     end
 
     subgraph Data["数据层"]
@@ -38,6 +41,7 @@ flowchart TB
     APIClient -->|HTTP REST| API
     API --> Auth
     Auth --> Services
+    Auth --> RBAC3
     Services --> AIEngine
     Services --> Publisher
     AIEngine -->|API 调用| LLM
@@ -47,78 +51,96 @@ flowchart TB
     TaskQueue --> DouyinAuto
     TaskQueue --> VCAuto
     Services --> DB
+    RBAC3 --> DB
     Services --> Redis
     Services --> FileStorage
 ```
 
-## 2. 技术说明
+## 2. 技术栈总览
 
-- **前端**：Vue 3 + TypeScript + TailwindCSS + Vite 6
-- **前端初始化**：`npm create vite@latest . --template vue-ts`
-- **UI 组件库**：Arco Design Vue + 自定义组件（StatCard、StatusBadge、PlatformIcon、Modal、SegmentedControl）
-- **状态管理**：Pinia（Vue 3 官方推荐）
-- **状态存储**：user store（登录/用户信息）、tokenPlan store（模型配置管理与 API 同步）
-- **HTTP 客户端**：Axios（带请求拦截器自动注入 JWT Token、401 响应拦截器自动跳转登录页）
-- **后端**：Python 3.11+ / FastAPI
-- **数据库**：SQLite（开发阶段）→ PostgreSQL（生产阶段）
-- **数据库 ID 规范**：所有表的主键 ID 必须使用 UUID 字符串（`VARCHAR(36)`），唯一例外是超级管理员用户 ID 固定为字符串 `"1"`
-- **ORM**：SQLAlchemy 2.0（异步模式）+ Alembic（数据库迁移）
-- **任务队列**：Celery + Redis
-- **缓存**：Redis
-- **自动化**：Playwright（浏览器自动化）
-- **AI 接入**：OpenAI 兼容 API（支持 OpenAI / DeepSeek / Moonshot / 智谱 AI / 自定义端点切换）
-- **容器化**：Docker + Docker Compose（4 服务：frontend、backend、redis、celery-worker）
+| 层级 | 技术选型 |
+|------|----------|
+| **前端框架** | Vue 3 + TypeScript + Vite 8 |
+| **UI 组件库** | Arco Design Vue + 自定义组件 |
+| **状态管理** | Pinia |
+| **HTTP 客户端** | Axios（JWT 拦截器 + 401 自动跳转） |
+| **后端框架** | Python 3.11+ / FastAPI |
+| **ORM** | SQLAlchemy 2.0（异步模式）+ Alembic |
+| **数据库** | SQLite（开发）→ PostgreSQL（生产） |
+| **数据库 ID 规范** | 所有表主键使用 UUID `VARCHAR(36)`，超级管理员用户 ID 固定为 `"1"` |
+| **任务队列** | Celery + Redis |
+| **缓存** | Redis |
+| **浏览器自动化** | Playwright |
+| **AI 接入** | OpenAI 兼容 API（DeepSeek / OpenAI / Moonshot / 智谱 AI / 自定义） |
+| **权限模型** | RBAC3（角色继承 + 约束 + 会话级授权） |
+| **容器化** | Docker + Docker Compose |
 
 ## 3. 前端路由定义
 
-| 路由                        | 名称           | 组件                      | 鉴权 | 说明                       |
-| --------------------------- | -------------- | ------------------------- | ---- | -------------------------- |
-| /login                      | Login          | Login.vue                 | 公开 | 管理员登录页               |
-| /                           | Dashboard      | Dashboard.vue             | 需鉴权 | 仪表盘（数据概览）         |
-| /accounts                   | Accounts       | Accounts.vue              | 需鉴权 | 账号矩阵管理               |
-| /content                    | ContentList    | ContentList.vue           | 需鉴权 | 内容列表                   |
-| /content/create             | ContentCreate  | ContentCreate.vue         | 需鉴权 | AI 内容生成                |
-| /publish                    | Publish        | Publish.vue               | 需鉴权 | 发布管理中心               |
-| /templates                  | Templates      | Templates.vue             | 需鉴权 | 模板中心                   |
-| /settings/token-plan        | TokenPlan      | TokenPlan.vue             | 需鉴权 | AI 模型配置                |
-| /settings/roles             | RoleManage     | RoleManage.vue            | 需鉴权 | 角色管理（管理员）         |
-| /settings/permissions       | PermissionManage | PermissionManage.vue    | 需鉴权 | 权限管理（管理员）         |
-| /developer/docs             | ApiDocs        | ApiDocs.vue               | 需鉴权 | Swagger API 文档           |
+| 路由 | 名称 | 组件 | 鉴权 | 说明 |
+|------|------|------|------|------|
+| /login | Login | Login.vue | 公开 | 管理员登录页 |
+| / | Dashboard | Dashboard.vue | 需鉴权 | 仪表盘（数据概览） |
+| /accounts | Accounts | Accounts.vue | 需鉴权 | 平台账号管理 |
+| /content | ContentList | ContentList.vue | 需鉴权 | 内容列表 |
+| /content/create | ContentCreate | ContentCreate.vue | 需鉴权 | AI 内容生成 |
+| /publish | Publish | Publish.vue | 需鉴权 | 发布管理中心 |
+| /templates | Templates | Templates.vue | 需鉴权 | 模板中心 |
+| /settings/token-plan | TokenPlan | TokenPlan.vue | 需鉴权 | AI 模型配置 |
+| /developer/docs | ApiDocs | ApiDocs.vue | 需鉴权 | Swagger API 文档 |
+| /developer/database | DatabaseConsole | DatabaseConsole.vue | 需鉴权 | 数据库控制台 |
+| /review | Review | Review.vue | 需鉴权 | 内容审核 |
+| /sql-review | SqlReview | SqlReview.vue | 需鉴权 | SQL 变更审核 |
+| /settings/user-creation-review | UserCreationReview | UserCreationReview.vue | 需鉴权 | 用户注册审核 |
+| /rbac/users | RBACUserManage | RBACUserManage.vue | 需鉴权 | RBAC3 用户管理 |
+| /rbac/users/create | RBACUserCreate | RBACUserCreate.vue | 需鉴权 | 创建用户 |
+| /rbac/users/:id/edit | RBACUserEdit | RBACUserEdit.vue | 需鉴权 | 编辑用户 |
+| /rbac/users/:id/password | RBACUserPassword | RBACUserPassword.vue | 需鉴权 | 修改密码 |
+| /rbac/users/:id/permissions | RBACUserPermissionCustomize | RBACUserPermissionCustomize.vue | 需鉴权 | 自定义权限 |
+| /rbac/roles | RBACRoleManage | RBACRoleManage.vue | 需鉴权 | 角色管理 |
+| /rbac/permissions | RBACPermissionManage | RBACPermissionManage.vue | 需鉴权 | 权限管理 |
+| /rbac/permissions/enum | RBACPermissionEnumManage | RBACPermissionEnumManage.vue | 需鉴权 | 权限字典编辑 |
+| /rbac/constraints | RBACConstraintManage | RBACConstraintManage.vue | 需鉴权 | 约束管理 |
 
 ### 3.1 路由守卫
 
 - `router.beforeEach`：未登录用户访问需鉴权页面 → 重定向到 `/login`
 - `router.beforeEach`：已登录用户访问 `/login` → 重定向到 `/`
-- 鉴权依据：localStorage 中的 JWT token
+- `hasPerm`：根据 `route.meta.permKey` 检查当前用户是否拥有对应权限
+- 鉴权依据：`permissionStore.hasPermission(key)`（基于 `/api/v2/me/permissions` 返回的有效权限）
 
 ## 4. 后端 API 路由定义
 
 ### 4.1 路由模块总览
 
-| 路由前缀                    | 模块文件                   | 说明                        |
-| --------------------------- | -------------------------- | --------------------------- |
-| /api/auth                   | routers/auth.py            | 认证（登录、注册、用户信息） |
-| /api/accounts               | routers/accounts.py        | 账号管理 CRUD + 状态检查     |
-| /api/contents               | routers/contents.py        | 内容管理 CRUD + AI 生成      |
-| /api/dashboard              | routers/dashboard.py       | 仪表盘聚合统计               |
-| /api/model-configs          | routers/model_configs.py   | AI 模型配置管理              |
-| /api/models                 | routers/models.py          | 可用模型列表查询             |
-| /api/publish                | routers/publish.py         | 发布任务管理                 |
-| /api/templates              | routers/templates.py       | 模板管理                     |
-| /api/roles                  | routers/roles.py           | 角色管理（内置+自定义）      |
-| /api/permissions            | routers/permissions.py     | 角色权限与用户权限管理       |
-| /api/users                  | routers/users.py           | 用户管理（管理员功能）       |
-| /api/notifications          | routers/notifications.py   | 通知消息管理                 |
-| /api/reviews                | routers/reviews.py         | 内容审核管理                 |
-| /api/db-changes             | routers/db_changes.py      | 数据库变更请求管理           |
+| 路由前缀 | 模块文件 | 说明 |
+|----------|----------|------|
+| /api/auth | routers/auth.py | 认证（登录、注册、用户信息） |
+| /api/accounts | routers/accounts.py | 账号管理 CRUD + 状态检查 |
+| /api/contents | routers/contents.py | 内容管理 CRUD + AI 生成 |
+| /api/dashboard | routers/dashboard.py | 仪表盘聚合统计 |
+| /api/model-configs | routers/model_configs.py | AI 模型配置管理 |
+| /api/models | routers/models.py | 可用模型列表查询 |
+| /api/publish | routers/publish.py | 发布任务管理 |
+| /api/templates | routers/templates.py | 模板管理 |
+| /api/notifications | routers/notifications.py | 通知消息管理 |
+| /api/reviews | routers/reviews.py | 内容审核管理 |
+| /api/db-changes | routers/db_changes.py | 数据库变更请求管理 |
+| /api/user-creation-reviews | routers/user_creation_reviews.py | 用户创建审核 |
+| /api/db | routers/db.py | SQL 执行与历史 |
+| **/api/v2** | **RBAC3 中台** | **权限中台 v2 API** |
+| /api/v2 | routers/rbac_users.py | RBAC3 用户管理 |
+| /api/v2 | routers/rbac_roles.py | RBAC3 角色管理 |
+| /api/v2 | routers/rbac_permissions.py | RBAC3 资源与权限管理 |
+| /api/v2 | routers/rbac_constraints.py | RBAC3 约束管理 |
 
 ### 4.2 认证相关
 
-| 方法   | 路径             | 说明         | 鉴权   |
-| ------ | ---------------- | ------------ | ------ |
-| POST   | /api/auth/login  | 用户登录     | 否     |
-| POST   | /api/auth/register | 用户注册   | 否     |
-| GET    | /api/auth/me     | 获取当前用户 | 是     |
+| 方法 | 路径 | 说明 | 鉴权 |
+|------|------|------|------|
+| POST | /api/auth/login | 用户登录 | 否 |
+| POST | /api/auth/register | 用户注册 | 否 |
+| GET | /api/auth/me | 获取当前用户（含 roles、permissions 枚举） | 是 |
 
 ```typescript
 interface LoginRequest {
@@ -143,270 +165,73 @@ interface UserInfo {
 }
 ```
 
-### 4.3 仪表盘
+### 4.3 RBAC3 用户管理（/api/v2）
 
-| 方法 | 路径                     | 说明                 | 鉴权 |
-| ---- | ------------------------ | -------------------- | ---- |
-| GET  | /api/dashboard/stats     | 获取仪表盘聚合统计   | 是   |
+| 方法 | 路径 | 说明 | 鉴权 |
+|------|------|------|------|
+| GET | /api/v2/users | 用户列表（含角色分配） | 是 |
+| POST | /api/v2/users | 创建用户 | 是 |
+| GET | /api/v2/users/{id} | 用户详情 | 是 |
+| PUT | /api/v2/users/{id} | 更新用户 | 是 |
+| PUT | /api/v2/users/{id}/password | 修改密码 | 是 |
+| PUT | /api/v2/users/{id}/roles | 分配/替换角色 | 是 |
+| GET | /api/v2/users/{id}/permissions | 用户有效权限 | 是 |
+| GET | /api/v2/me/permissions | 当前用户有效权限（{key: name}） | 是 |
 
-```typescript
-interface DashboardStats {
-  total_accounts: number
-  today_published: number
-  pending_tasks: number
-  ai_generated_count: number
-  platform_stats: PlatformStat[]
-  recent_publishes: RecentPublish[]
-}
+### 4.4 RBAC3 角色管理（/api/v2）
 
-interface PlatformStat {
-  platform: Platform
-  name: string        // 平台中文名
-  accounts: number    // 总账号数
-  active: number      // 在线账号数
-  articles: number    // 内容数量
-}
+| 方法 | 路径 | 说明 | 鉴权 |
+|------|------|------|------|
+| GET | /api/v2/roles | 角色列表 | 是 |
+| POST | /api/v2/roles | 创建角色 | 是 |
+| PUT | /api/v2/roles/{id} | 更新角色 | 是 |
+| DELETE | /api/v2/roles/{id} | 删除角色 | 是 |
+| POST | /api/v2/roles/{id}/parents | 添加父角色 | 是 |
+| DELETE | /api/v2/roles/{id}/parents/{parent_id} | 移除父角色 | 是 |
+| GET | /api/v2/roles/{id}/permissions | 角色有效权限 | 是 |
+| GET | /api/v2/roles/{id}/permissions/direct | 角色直接权限 | 是 |
+| GET | /api/v2/roles/{id}/permissions/detail | 继承 + 直接权限（含 grant_type） | 是 |
+| PUT | /api/v2/roles/{id}/permissions | 更新直接权限 | 是 |
 
-interface RecentPublish {
-  id: string
-  title: string
-  platform: Platform
-  account: string
-  status: PublishStatus
-  time: string
-}
-```
+### 4.5 RBAC3 资源与权限管理（/api/v2）
 
-### 4.4 账号管理
+| 方法 | 路径 | 说明 | 鉴权 |
+|------|------|------|------|
+| GET | /api/v2/resources | 资源树 | 是 |
+| POST | /api/v2/resources | 新增资源 | 是 |
+| PUT | /api/v2/resources/{id} | 更新资源 | 是 |
+| DELETE | /api/v2/resources/{id} | 删除资源 | 是 |
+| GET | /api/v2/permissions | 权限列表 | 是 |
+| GET | /api/v2/permission-enums | 权限枚举（key + name + description） | 是 |
+| GET | /api/v2/permission-pages | 页面权限枚举 | 是 |
+| POST | /api/v2/permissions | 新增权限 | 是 |
+| PUT | /api/v2/permissions/{id} | 更新权限 | 是 |
+| DELETE | /api/v2/permissions/{id} | 删除权限 | 是 |
 
-| 方法   | 路径                     | 说明           | 鉴权 |
-| ------ | ------------------------ | -------------- | ---- |
-| GET    | /api/accounts/           | 获取账号列表   | 是   |
-| POST   | /api/accounts/           | 添加新账号     | 是   |
-| DELETE | /api/accounts/{id}       | 删除账号       | 是   |
-| POST   | /api/accounts/{id}/check | 检查账号状态   | 是   |
+### 4.6 RBAC3 约束管理（/api/v2）
 
-```typescript
-type Platform = 'wechat_mp' | 'xiaohongshu' | 'douyin' | 'wechat_video'
-type AccountStatus = 'active' | 'inactive' | 'error'
+| 方法 | 路径 | 说明 | 鉴权 |
+|------|------|------|------|
+| GET | /api/v2/constraints | 约束列表 | 是 |
+| POST | /api/v2/constraints | 创建约束 | 是 |
+| PUT | /api/v2/constraints/{id} | 更新约束 | 是 |
+| DELETE | /api/v2/constraints/{id} | 删除约束 | 是 |
 
-interface Account {
-  id: string
-  user_id: string
-  platform: Platform
-  nickname: string
-  avatar_url: string | null
-  status: AccountStatus
-  cookie_data: string | null
-  access_token: string | null
-  token_expires_at: string | null
-  last_check_at: string | null
-  error_message: string | null
-  created_at: string
-  updated_at: string
-}
+### 4.7 其他业务接口
 
-interface CreateAccountRequest {
-  platform: string
-  nickname: string
-  cookie_data?: string
-  access_token?: string
-}
-```
-
-### 4.5 内容管理
-
-| 方法   | 路径                          | 说明             | 鉴权 |
-| ------ | ----------------------------- | ---------------- | ---- |
-| GET    | /api/contents/                | 获取内容列表     | 是   |
-| POST   | /api/contents/ai-generate     | AI 生成内容      | 是   |
-| DELETE | /api/contents/{id}            | 删除内容         | 是   |
-
-```typescript
-interface Content {
-  id: string
-  user_id: string
-  title: string
-  body: string
-  platform: string
-  status: 'draft' | 'ready' | 'published'
-  media_urls: string[]
-  ai_generated: boolean
-  original_content_id?: string
-  created_at: string
-  updated_at: string
-}
-
-interface AIGenerateRequest {
-  topic: string
-  platform: string
-  count: number
-  plan_id: string
-  keywords?: string[]
-}
-
-interface AIGenerateResponse {
-  variants: Array<{
-    title: string
-    body: string
-    hashtags: string[]
-    suggested_image_ratio: string
-  }>
-}
-```
-
-### 4.6 发布管理
-
-| 方法   | 路径                         | 说明             | 鉴权 |
-| ------ | ---------------------------- | ---------------- | ---- |
-| GET    | /api/publish/tasks           | 获取发布任务列表 | 是   |
-| POST   | /api/publish/tasks           | 创建发布任务     | 是   |
-| POST   | /api/publish/tasks/{id}/retry | 重试失败任务    | 是   |
-
-```typescript
-type PublishTaskStatus = 'pending' | 'publishing' | 'published' | 'failed'
-
-interface PublishTask {
-  id: string
-  content_id: string
-  account_id: string
-  status: PublishTaskStatus
-  scheduled_at?: string | null
-  published_at?: string | null
-  error_message?: string | null
-  retry_count: number
-  created_at: string
-  updated_at: string
-}
-
-interface CreatePublishTaskRequest {
-  content_id: string
-  account_id: string
-  scheduled_at?: string
-}
-```
-
-### 4.7 模板管理
-
-| 方法   | 路径                   | 说明           | 鉴权 |
-| ------ | ---------------------- | -------------- | ---- |
-| GET    | /api/templates/        | 获取模板列表   | 是   |
-
-```typescript
-interface Template {
-  id: string
-  name: string
-  platform: string
-  thumbnail_url?: string | null
-  config?: string | null
-  created_at: string
-  updated_at: string
-}
-```
-
-### 4.8 模型配置
-
-| 方法   | 路径                       | 说明             | 鉴权 |
-| ------ | -------------------------- | ---------------- | ---- |
-| GET    | /api/model-configs         | 获取配置列表     | 是   |
-| POST   | /api/model-configs         | 创建模型配置     | 是   |
-| PUT    | /api/model-configs/{id}    | 更新模型配置     | 是   |
-| DELETE | /api/model-configs/{id}    | 删除模型配置     | 是   |
-
-### 4.9 可用模型
-
-| 方法 | 路径           | 说明             | 鉴权 |
-| ---- | -------------- | ---------------- | ---- |
-| GET  | /api/models    | 获取可用模型列表 | 是   |
-
-### 4.10 角色管理
-
-| 方法   | 路径                   | 说明                | 鉴权           |
-| ------ | ---------------------- | ------------------- | -------------- |
-| GET    | /api/roles/            | 获取角色列表        | 是（管理员）   |
-| POST   | /api/roles/custom      | 创建自定义角色      | 是（管理员）   |
-| PUT    | /api/roles/custom/{name} | 更新自定义角色    | 是（管理员）   |
-| DELETE | /api/roles/custom/{name} | 删除自定义角色    | 是（管理员）   |
-
-```typescript
-interface RoleDef {
-  name: string
-  display_name: string
-  description?: string
-  is_builtin: boolean
-  is_super_admin: boolean
-  role_type: 'admin' | 'other'
-}
-
-interface CustomRole extends RoleDef {
-  id: string
-  created_at: string
-}
-```
-
-内置角色定义（按排序）：
-1. **超级管理员 (admin)** — 系统最高权限，ID=1，不可编辑，`role_type: "admin"`
-2. **管理员 (manager)** — 管理系统配置，`role_type: "admin"`
-3. **运营者 (operator)** — 日常内容运营，`role_type: "other"`
-4. **审核员 (reviewer)** — 内容审核，`role_type: "other"`
-
-### 4.11 权限管理
-
-| 方法 | 路径                                | 说明                   | 鉴权             |
-| ---- | ----------------------------------- | ---------------------- | ---------------- |
-| GET  | /api/permissions/role/{role}        | 获取角色权限配置       | 是（管理员）     |
-| PUT  | /api/permissions/role/{role}        | 更新角色权限           | 是（管理员）     |
-| GET  | /api/permissions/user/{user_id}     | 获取用户自定义权限     | 是（管理员/本人） |
-| PUT  | /api/permissions/user/{user_id}     | 更新用户自定义权限     | 是（管理员）     |
-| GET  | /api/permissions/user/{user_id}/effective | 获取用户有效权限   | 是（管理员）     |
-
-权限键格式：`{资源}:{操作}`，如 `content:create`、`database`、`db:execute`
-
-角色类型与数据库权限约束：
-- `role_type: "admin"` — 可配置数据库相关权限（`database`、`db:execute`、`db:history:read`）
-- `role_type: "other"` — 不支持数据库相关权限配置
-
-### 4.12 用户管理
-
-| 方法 | 路径                       | 说明         | 鉴权           |
-| ---- | -------------------------- | ------------ | -------------- |
-| GET  | /api/users/                | 用户列表     | 是（管理员）   |
-| GET  | /api/users/{user_id}       | 用户详情     | 是（管理员）   |
-| PUT  | /api/users/{user_id}       | 更新用户信息 | 是（管理员）   |
-
-### 4.13 通知管理
-
-| 方法 | 路径                              | 说明           | 鉴权 |
-| ---- | --------------------------------- | -------------- | ---- |
-| GET  | /api/notifications/               | 获取通知列表   | 是   |
-| PUT  | /api/notifications/{id}/read      | 标记已读       | 是   |
-
-```typescript
-interface NotificationResponse {
-  id: string
-  type: string
-  title: string
-  content?: string
-  related_id?: string
-  is_read: boolean
-  created_at: string
-}
-```
-
-### 4.14 内容审核
-
-| 方法 | 路径                              | 说明           | 鉴权           |
-| ---- | --------------------------------- | -------------- | -------------- |
-| GET  | /api/reviews/                     | 获取待审核内容 | 是（审核员）   |
-| PUT  | /api/reviews/{content_id}         | 审核内容       | 是（审核员）   |
-
-### 4.15 数据库变更请求
-
-| 方法 | 路径                              | 说明             | 鉴权             |
-| ---- | --------------------------------- | ---------------- | ---------------- |
-| GET  | /api/db-changes/                  | 获取变更请求列表 | 是（管理员）     |
-| POST | /api/db-changes/                  | 创建变更请求     | 是（管理员）     |
-| PUT  | /api/db-changes/{change_id}       | 审批/拒绝变更    | 是（管理员）     |
+| 模块 | 方法 | 路径 | 说明 |
+|------|------|------|------|
+| 仪表盘 | GET | /api/dashboard/stats | 获取仪表盘聚合统计 |
+| 账号管理 | GET/POST | /api/accounts/ | 账号列表/创建 |
+| 账号管理 | DELETE | /api/accounts/{id} | 删除账号 |
+| 内容管理 | GET | /api/contents/ | 内容列表 |
+| 内容管理 | POST | /api/contents/ai-generate | AI 生成内容 |
+| 发布管理 | GET/POST | /api/publish/tasks | 发布任务列表/创建 |
+| 发布管理 | POST | /api/publish/tasks/{id}/retry | 重试失败任务 |
+| 模板管理 | GET | /api/templates/ | 模板列表 |
+| 模型配置 | GET/POST | /api/model-configs | 配置列表/创建 |
+| 模型配置 | PUT/DELETE | /api/model-configs/{id} | 更新/删除配置 |
+| 可用模型 | GET | /api/models | 可用模型列表 |
 
 ## 5. 后端服务架构
 
@@ -421,6 +246,7 @@ flowchart LR
         TemplateRouter["/api/templates"]
         ModelConfigRouter["/api/model-configs"]
         ModelsRouter["/api/models"]
+        RBACRouter["/api/v2/*"]
     end
 
     subgraph Service_Layer["业务服务层"]
@@ -430,6 +256,7 @@ flowchart LR
         AIService["AI 生成服务"]
         PublishService["发布调度服务"]
         TemplateService["模板管理服务"]
+        RBACService["RBAC3 权限服务"]
     end
 
     subgraph Adapter_Layer["平台适配层"]
@@ -456,6 +283,7 @@ flowchart LR
     PublishRouter --> PublishService
     TemplateRouter --> TemplateService
     ModelConfigRouter --> AuthService
+    RBACRouter --> RBACService
 
     PublishService --> WeChatAdapter
     PublishService --> XHSAdapter
@@ -465,6 +293,7 @@ flowchart LR
     AuthService --> DB_Layer
     AccountService --> DB_Layer
     ContentService --> DB_Layer
+    RBACService --> DB_Layer
     PublishService --> Redis_Layer
     PublishService --> Celery_Layer
     XHSAdapter --> Playwright_Layer
@@ -488,6 +317,88 @@ erDiagram
         string avatar_url
         datetime created_at
         datetime updated_at
+    }
+
+    rbac_roles {
+        string id PK "UUID"
+        string name UK
+        string display_name
+        string description
+        string role_type
+        boolean is_super_admin
+        boolean is_builtin
+        datetime created_at
+        datetime updated_at
+    }
+
+    rbac_resources {
+        string id PK "UUID"
+        string key UK
+        string name
+        string description
+        string parent_id FK
+        boolean is_active
+        datetime created_at
+    }
+
+    rbac_permissions {
+        string id PK "UUID"
+        string resource_id FK
+        string operation
+        string key UK
+        boolean is_active
+        datetime created_at
+    }
+
+    rbac_role_hierarchy {
+        string id PK "UUID"
+        string parent_role_id FK
+        string child_role_id FK
+        datetime created_at
+    }
+
+    rbac_role_permissions {
+        string id PK "UUID"
+        string role_id FK
+        string permission_id FK
+        string grant_type
+        datetime created_at
+    }
+
+    rbac_user_role_assignments {
+        string id PK "UUID"
+        string user_id FK
+        string role_id FK
+        string grant_type
+        datetime valid_from
+        datetime valid_until
+        datetime created_at
+    }
+
+    rbac_user_permission_overrides {
+        string id PK "UUID"
+        string user_id FK
+        string permission_key
+        boolean granted
+        datetime created_at
+        datetime updated_at
+    }
+
+    rbac_constraints {
+        string id PK "UUID"
+        string name
+        string description
+        string constraint_type
+        json config
+        boolean is_active
+        datetime created_at
+    }
+
+    rbac_constraint_role_associations {
+        string id PK "UUID"
+        string constraint_id FK
+        string role_id FK
+        string association_type
     }
 
     model_configs {
@@ -567,31 +478,6 @@ erDiagram
         datetime updated_at
     }
 
-    custom_roles {
-        string id PK "UUID"
-        string name
-        string display_name
-        string description
-        string role_type
-        boolean is_builtin
-        datetime created_at
-    }
-
-    role_permissions {
-        string id PK "UUID"
-        string role FK
-        string perm_key
-        datetime created_at
-    }
-
-    user_permissions {
-        string id PK "UUID"
-        string user_id FK
-        string perm_key
-        string granted_by FK
-        datetime created_at
-    }
-
     notifications {
         string id PK "UUID"
         string user_id FK
@@ -636,6 +522,14 @@ erDiagram
         datetime updated_at
     }
 
+    users ||--o{ rbac_user_role_assignments : "分配"
+    users ||--o{ rbac_user_permission_overrides : "覆盖"
+    rbac_roles ||--o{ rbac_role_hierarchy : "父/子"
+    rbac_roles ||--o{ rbac_role_permissions : "拥有"
+    rbac_resources ||--o{ rbac_permissions : "关联"
+    rbac_permissions ||--o{ rbac_role_permissions : "授权"
+    rbac_constraints ||--o{ rbac_constraint_role_associations : "关联"
+    rbac_roles ||--o{ rbac_constraint_role_associations : "受约束"
     users ||--o{ model_configs : "配置"
     users ||--o{ accounts : "管理"
     users ||--o{ contents : "创建"
@@ -643,14 +537,12 @@ erDiagram
     users ||--o{ notifications : "接收"
     users ||--o{ sql_histories : "执行"
     users ||--o{ sql_change_requests : "提交"
-    users ||--o{ user_permissions : "拥有"
     accounts ||--o{ publish_tasks : "执行"
     contents ||--o{ publish_tasks : "关联"
     contents ||--o| contents : "AI变体"
-    custom_roles ||--o{ role_permissions : "拥有"
 ```
 
-### 6.2 数据定义语言 (DDL)
+### 6.2 核心表 DDL
 
 ```sql
 -- 数据库 ID 规范：所有主键使用 UUID VARCHAR(36)，唯一例外是超级管理员用户 ID 固定为 '1'
@@ -658,39 +550,108 @@ erDiagram
 CREATE TABLE users (
     id VARCHAR(36) PRIMARY KEY,
     username VARCHAR(100) UNIQUE NOT NULL,
-    email VARCHAR(255) UNIQUE NOT NULL,
+    email VARCHAR(255) UNIQUE,
     hashed_password VARCHAR(255) NOT NULL,
     nickname VARCHAR(100) NOT NULL,
-    role VARCHAR(20) DEFAULT 'operator',
+    role VARCHAR(50) DEFAULT 'operator' NOT NULL,
     avatar_url VARCHAR(500),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE model_configs (
+-- RBAC3 角色表
+CREATE TABLE rbac_roles (
     id VARCHAR(36) PRIMARY KEY,
-    user_id VARCHAR(36) NOT NULL REFERENCES users(id),
-    name VARCHAR(200) NOT NULL,
-    display_name VARCHAR(200),
-    provider VARCHAR(50) NOT NULL DEFAULT 'openai',
-    mode VARCHAR(20) DEFAULT 'provider',
-    api_format VARCHAR(50) DEFAULT 'openai_chat',
-    api_key VARCHAR(500) NOT NULL DEFAULT '',
-    base_url VARCHAR(500) NOT NULL DEFAULT '',
-    full_url BOOLEAN DEFAULT FALSE,
-    model VARCHAR(200) NOT NULL DEFAULT '',
-    multimodal BOOLEAN DEFAULT FALSE,
-    model_series VARCHAR(100) DEFAULT 'default',
-    context_input INTEGER DEFAULT 128000,
-    context_output INTEGER DEFAULT 4096,
-    tool_call_rounds INTEGER DEFAULT 200,
-    enabled BOOLEAN DEFAULT FALSE,
-    monthly_quota INTEGER DEFAULT 1000000,
-    used_tokens INTEGER DEFAULT 0,
+    name VARCHAR(50) UNIQUE NOT NULL,
+    display_name VARCHAR(100) NOT NULL,
+    description TEXT,
+    role_type VARCHAR(20) DEFAULT 'other',
+    is_super_admin BOOLEAN DEFAULT FALSE,
+    is_builtin BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- RBAC3 资源表
+CREATE TABLE rbac_resources (
+    id VARCHAR(36) PRIMARY KEY,
+    key VARCHAR(100) UNIQUE NOT NULL,
+    name VARCHAR(100) NOT NULL,
+    description TEXT,
+    parent_id VARCHAR(36) REFERENCES rbac_resources(id),
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- RBAC3 权限表
+CREATE TABLE rbac_permissions (
+    id VARCHAR(36) PRIMARY KEY,
+    resource_id VARCHAR(36) NOT NULL REFERENCES rbac_resources(id),
+    operation VARCHAR(50) NOT NULL,
+    key VARCHAR(150) UNIQUE NOT NULL,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- RBAC3 角色继承表
+CREATE TABLE rbac_role_hierarchy (
+    id VARCHAR(36) PRIMARY KEY,
+    parent_role_id VARCHAR(36) NOT NULL REFERENCES rbac_roles(id),
+    child_role_id VARCHAR(36) NOT NULL REFERENCES rbac_roles(id),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- RBAC3 角色权限表
+CREATE TABLE rbac_role_permissions (
+    id VARCHAR(36) PRIMARY KEY,
+    role_id VARCHAR(36) NOT NULL REFERENCES rbac_roles(id),
+    permission_id VARCHAR(36) NOT NULL REFERENCES rbac_permissions(id),
+    grant_type VARCHAR(20) DEFAULT 'direct',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- RBAC3 用户角色分配表
+CREATE TABLE rbac_user_role_assignments (
+    id VARCHAR(36) PRIMARY KEY,
+    user_id VARCHAR(36) NOT NULL REFERENCES users(id),
+    role_id VARCHAR(36) NOT NULL REFERENCES rbac_roles(id),
+    grant_type VARCHAR(20) DEFAULT 'direct',
+    valid_from TIMESTAMP,
+    valid_until TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- RBAC3 用户权限覆盖表
+CREATE TABLE rbac_user_permission_overrides (
+    id VARCHAR(36) PRIMARY KEY,
+    user_id VARCHAR(36) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    permission_key VARCHAR(150) NOT NULL,
+    granted BOOLEAN NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(user_id, permission_key)
+);
+
+-- RBAC3 约束表
+CREATE TABLE rbac_constraints (
+    id VARCHAR(36) PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    description TEXT,
+    constraint_type VARCHAR(50) NOT NULL,
+    config JSON DEFAULT '{}',
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- RBAC3 约束角色关联表
+CREATE TABLE rbac_constraint_role_associations (
+    id VARCHAR(36) PRIMARY KEY,
+    constraint_id VARCHAR(36) NOT NULL REFERENCES rbac_constraints(id),
+    role_id VARCHAR(36) NOT NULL REFERENCES rbac_roles(id),
+    association_type VARCHAR(50) NOT NULL
+);
+
+-- 业务表（节选）
 CREATE TABLE accounts (
     id VARCHAR(36) PRIMARY KEY,
     user_id VARCHAR(36) NOT NULL REFERENCES users(id),
@@ -734,87 +695,7 @@ CREATE TABLE publish_tasks (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE templates (
-    id VARCHAR(36) PRIMARY KEY,
-    name VARCHAR(200) NOT NULL,
-    platform VARCHAR(50) NOT NULL,
-    thumbnail_url VARCHAR(500),
-    config TEXT NOT NULL DEFAULT '{}',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE TABLE custom_roles (
-    id VARCHAR(36) PRIMARY KEY,
-    name VARCHAR(50) UNIQUE NOT NULL,
-    display_name VARCHAR(100) NOT NULL,
-    description TEXT,
-    role_type VARCHAR(20) DEFAULT 'other',
-    is_builtin BOOLEAN DEFAULT FALSE,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE TABLE role_permissions (
-    id VARCHAR(36) PRIMARY KEY,
-    role VARCHAR(50) NOT NULL REFERENCES custom_roles(name),
-    perm_key VARCHAR(100) NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(role, perm_key)
-);
-
-CREATE TABLE user_permissions (
-    id VARCHAR(36) PRIMARY KEY,
-    user_id VARCHAR(36) NOT NULL REFERENCES users(id),
-    perm_key VARCHAR(100) NOT NULL,
-    granted_by VARCHAR(36) REFERENCES users(id),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(user_id, perm_key)
-);
-
-CREATE TABLE notifications (
-    id VARCHAR(36) PRIMARY KEY,
-    user_id VARCHAR(36) NOT NULL REFERENCES users(id),
-    type VARCHAR(50) NOT NULL,
-    title VARCHAR(200) NOT NULL,
-    content TEXT,
-    related_id VARCHAR(36),
-    is_read BOOLEAN DEFAULT FALSE,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE TABLE ai_generations (
-    id VARCHAR(36) PRIMARY KEY,
-    user_id VARCHAR(36) NOT NULL REFERENCES users(id),
-    topic VARCHAR(500) NOT NULL,
-    platform VARCHAR(50) NOT NULL,
-    plan_id VARCHAR(36),
-    model VARCHAR(200),
-    title VARCHAR(500) NOT NULL,
-    body TEXT NOT NULL,
-    hashtags TEXT DEFAULT '[]',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE TABLE sql_histories (
-    id VARCHAR(36) PRIMARY KEY,
-    user_id VARCHAR(36) NOT NULL REFERENCES users(id),
-    sql_text TEXT NOT NULL,
-    status VARCHAR(20) DEFAULT 'success',
-    result TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE TABLE sql_change_requests (
-    id VARCHAR(36) PRIMARY KEY,
-    user_id VARCHAR(36) NOT NULL REFERENCES users(id),
-    status VARCHAR(20) DEFAULT 'pending',
-    description TEXT,
-    sql_text TEXT,
-    reviewed_by VARCHAR(36) REFERENCES users(id),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
+-- 索引
 CREATE INDEX idx_accounts_user_id ON accounts(user_id);
 CREATE INDEX idx_accounts_platform ON accounts(platform);
 CREATE INDEX idx_contents_user_id ON contents(user_id);
@@ -822,11 +703,7 @@ CREATE INDEX idx_contents_platform ON contents(platform);
 CREATE INDEX idx_contents_status ON contents(status);
 CREATE INDEX idx_publish_tasks_status ON publish_tasks(status);
 CREATE INDEX idx_publish_tasks_scheduled_at ON publish_tasks(scheduled_at);
-CREATE INDEX idx_model_configs_user_id ON model_configs(user_id);
-CREATE INDEX idx_model_configs_enabled ON model_configs(enabled);
-CREATE INDEX idx_notifications_user_id ON notifications(user_id);
-CREATE INDEX idx_notifications_is_read ON notifications(is_read);
-CREATE INDEX idx_user_permissions_user_id ON user_permissions(user_id);
+CREATE INDEX idx_user_permissions_user_id ON rbac_user_permission_overrides(user_id);
 CREATE INDEX idx_sql_change_requests_status ON sql_change_requests(status);
 ```
 
@@ -843,35 +720,51 @@ frontend/src/
 │   └── index.ts                # 路由定义 + beforeEach 守卫
 ├── stores/
 │   ├── user.ts                 # 登录/用户信息状态管理
-│   └── tokenPlan.ts            # AI 模型配置状态管理
+│   ├── tokenPlan.ts            # AI 模型配置状态管理
+│   └── permission.ts           # RBAC3 权限状态管理
 ├── types/
 │   └── index.ts                # 全局 TypeScript 类型定义
 ├── utils/
 │   └── api.ts                  # Axios 实例（baseURL + 拦截器）
+├── directives/
+│   └── permission.ts           # v-perm 指令（权限控制显示/隐藏）
 ├── components/
 │   ├── layout/
 │   │   ├── AppLayout.vue       # 主布局（侧边栏 + 顶栏 + 内容区）
 │   │   ├── AppHeader.vue       # 顶部导航（面包屑 + 搜索 + 通知）
 │   │   ├── AppSidebar.vue      # 侧边导航（菜单 + 折叠/展开）
-│   │   └── PageHeader.vue      # 页面标题组件（标题 + 副标题 + actions 插槽）
-│   └── shared/
-│       ├── Modal.vue           # 通用弹窗组件
-│       ├── PlatformIcon.vue    # 平台图标组件（公众号/小红书/抖音/视频号）
-│       ├── SegmentedControl.vue # 分段控制器组件
-│       ├── StatCard.vue        # 统计卡片组件（动画 + 图标 + 趋势）
-│       └── StatusBadge.vue     # 状态标签组件
+│   │   └── PageHeader.vue      # 页面标题组件
+│   ├── shared/
+│   │   ├── Modal.vue           # 通用弹窗组件
+│   │   ├── PlatformIcon.vue    # 平台图标组件
+│   │   ├── SegmentedControl.vue # 分段控制器组件
+│   │   ├── StatCard.vue        # 统计卡片组件
+│   │   └── StatusBadge.vue     # 状态标签组件
+│   └── rbac/
+│       └── ResourcePermissionCard.vue  # 权限卡片（继承/直接区分）
 └── pages/
-    ├── Login.vue               # 登录页（毛玻璃卡片）
+    ├── Login.vue               # 登录页
     ├── Dashboard.vue           # 仪表盘
-    ├── Accounts.vue            # 账号管理
+    ├── Accounts.vue            # 平台账号管理
     ├── ContentCreate.vue       # AI 内容生成
     ├── ContentList.vue         # 内容列表
     ├── Publish.vue             # 发布管理
     ├── Templates.vue           # 模板中心
     ├── TokenPlan.vue           # 模型配置
-    ├── RoleManage.vue          # 角色管理（管理员）
-    ├── PermissionManage.vue    # 权限管理（管理员）
-    └── ApiDocs.vue             # API 文档（iframe Swagger）
+    ├── Review.vue              # 内容审核
+    ├── SqlReview.vue           # SQL 审核
+    ├── UserCreationReview.vue  # 用户注册审核
+    ├── DatabaseConsole.vue     # 数据库控制台
+    ├── ApiDocs.vue             # API 文档
+    ├── RBACUserManage.vue      # RBAC3 用户管理
+    ├── RBACUserCreate.vue      # 创建用户
+    ├── RBACUserEdit.vue        # 编辑用户
+    ├── RBACUserPassword.vue    # 修改密码
+    ├── RBACUserPermissionCustomize.vue  # 用户自定义权限
+    ├── RBACRoleManage.vue      # 角色管理
+    ├── RBACPermissionManage.vue        # 权限管理
+    ├── RBACPermissionEnumManage.vue    # 权限字典编辑
+    └── RBACConstraintManage.vue        # 约束管理
 ```
 
 ### 7.2 数据流
@@ -883,7 +776,8 @@ frontend/src/
     │       └── 响应拦截器：401 → 跳转登录页
     ├── 调用 Pinia Store (stores/*.ts)
     │       ├── user store：登录/用户信息/退出
-    │       └── tokenPlan store：模型配置 CRUD
+    │       ├── tokenPlan store：模型配置 CRUD
+    │       └── permission store：RBAC3 权限加载/校验
     └── 本地状态管理 (ref/reactive/computed)
             ├── 列表数据 (ref<T[]>)
             ├── 加载状态 (ref<boolean>)
@@ -891,11 +785,37 @@ frontend/src/
             └── 表单数据 (reactive)
 ```
 
-### 7.3 组件通讯模式
+### 7.3 权限状态管理（stores/permission.ts）
+
+```typescript
+export const usePermissionStore = defineStore('permission', () => {
+  const permissions = ref<Record<string, string>>({})  // { key: name }
+  const lastPermissionsUserId = ref<string | null>(null)
+
+  function hasPermission(key: string): boolean {
+    return key in permissions.value
+  }
+
+  async function loadPermissions(userId?: string) {
+    const { data } = await api.get<Record<string, string>>('/api/v2/me/permissions')
+    permissions.value = data || {}
+    lastPermissionsUserId.value = userId ?? null
+  }
+
+  function clearPermissions() {
+    permissions.value = {}
+    lastPermissionsUserId.value = null
+  }
+
+  return { permissions, hasPermission, loadPermissions, clearPermissions, lastPermissionsUserId }
+})
+```
+
+### 7.4 组件通讯模式
 
 - **父 → 子**：Props（如 PageHeader 的 title/subtitle、StatCard 的 title/value/trend/icon/color）
 - **子 → 父**：Emits（如 AppSidebar 的 toggle、Modal 的 update:visible）
-- **跨层级**：Pinia Store（如 user token、tokenPlan 的 activePlan）
+- **跨层级**：Pinia Store（如 user token、tokenPlan 的 activePlan、permission store 的 permissions）
 - **路由参数**：Vue Router（如 /content/create 依赖 tokenPlan.activePlan）
 
 ## 8. 部署架构

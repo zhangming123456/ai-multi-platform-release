@@ -1,6 +1,6 @@
 # 数据模型与数据库设计
 
-## ER 图
+## 1. ER 图
 
 ```mermaid
 erDiagram
@@ -14,6 +14,88 @@ erDiagram
         string avatar_url
         datetime created_at
         datetime updated_at
+    }
+
+    rbac_roles {
+        string id PK "UUID"
+        string name UK
+        string display_name
+        string description
+        string role_type
+        boolean is_super_admin
+        boolean is_builtin
+        datetime created_at
+        datetime updated_at
+    }
+
+    rbac_resources {
+        string id PK "UUID"
+        string key UK
+        string name
+        string description
+        string parent_id FK
+        boolean is_active
+        datetime created_at
+    }
+
+    rbac_permissions {
+        string id PK "UUID"
+        string resource_id FK
+        string operation
+        string key UK
+        boolean is_active
+        datetime created_at
+    }
+
+    rbac_role_hierarchy {
+        string id PK "UUID"
+        string parent_role_id FK
+        string child_role_id FK
+        datetime created_at
+    }
+
+    rbac_role_permissions {
+        string id PK "UUID"
+        string role_id FK
+        string permission_id FK
+        string grant_type
+        datetime created_at
+    }
+
+    rbac_user_role_assignments {
+        string id PK "UUID"
+        string user_id FK
+        string role_id FK
+        string grant_type
+        datetime valid_from
+        datetime valid_until
+        datetime created_at
+    }
+
+    rbac_user_permission_overrides {
+        string id PK "UUID"
+        string user_id FK
+        string permission_key
+        boolean granted
+        datetime created_at
+        datetime updated_at
+    }
+
+    rbac_constraints {
+        string id PK "UUID"
+        string name
+        string description
+        string constraint_type
+        json config
+        boolean is_active
+        datetime created_at
+    }
+
+    rbac_constraint_role_associations {
+        string id PK "UUID"
+        string constraint_id FK
+        string role_id FK
+        string association_type
     }
 
     model_configs {
@@ -93,31 +175,6 @@ erDiagram
         datetime updated_at
     }
 
-    custom_roles {
-        string id PK "UUID"
-        string name
-        string display_name
-        string description
-        string role_type
-        boolean is_builtin
-        datetime created_at
-    }
-
-    role_permissions {
-        string id PK "UUID"
-        string role FK
-        string perm_key
-        datetime created_at
-    }
-
-    user_permissions {
-        string id PK "UUID"
-        string user_id FK
-        string perm_key
-        string granted_by FK
-        datetime created_at
-    }
-
     notifications {
         string id PK "UUID"
         string user_id FK
@@ -162,6 +219,30 @@ erDiagram
         datetime updated_at
     }
 
+    user_creation_requests {
+        string id PK "UUID"
+        string requester_id FK
+        string username
+        string email
+        string hashed_password
+        string nickname
+        string role
+        string avatar_url
+        string status
+        string reviewer_id FK
+        string reject_reason
+        datetime created_at
+        datetime updated_at
+    }
+
+    users ||--o{ rbac_user_role_assignments : "分配"
+    users ||--o{ rbac_user_permission_overrides : "覆盖"
+    rbac_roles ||--o{ rbac_role_hierarchy : "父/子"
+    rbac_roles ||--o{ rbac_role_permissions : "拥有"
+    rbac_resources ||--o{ rbac_permissions : "关联"
+    rbac_permissions ||--o{ rbac_role_permissions : "授权"
+    rbac_constraints ||--o{ rbac_constraint_role_associations : "关联"
+    rbac_roles ||--o{ rbac_constraint_role_associations : "受约束"
     users ||--o{ model_configs : "配置"
     users ||--o{ accounts : "管理"
     users ||--o{ contents : "创建"
@@ -169,25 +250,341 @@ erDiagram
     users ||--o{ notifications : "接收"
     users ||--o{ sql_histories : "执行"
     users ||--o{ sql_change_requests : "提交"
-    users ||--o{ user_permissions : "拥有"
+    users ||--o{ user_creation_requests : "申请"
     accounts ||--o{ publish_tasks : "执行"
     contents ||--o{ publish_tasks : "关联"
     contents ||--o| contents : "AI变体"
-    custom_roles ||--o{ role_permissions : "拥有"
 ```
 
-## DDL
+## 2. 表定义说明
+
+### 2.1 RBAC3 权限中台表
+
+#### rbac_roles（角色表）
+
+| 字段 | 类型 | 约束 | 说明 |
+|------|------|------|------|
+| id | VARCHAR(36) | PK | UUID 主键 |
+| name | VARCHAR(50) | UK, NOT NULL | 角色标识名（如 admin、manager、operator） |
+| display_name | VARCHAR(100) | NOT NULL | 中文展示名 |
+| description | TEXT | | 角色描述 |
+| role_type | VARCHAR(20) | DEFAULT 'other' | 角色类型：admin / other |
+| is_super_admin | BOOLEAN | DEFAULT FALSE | 是否为超级管理员 |
+| is_builtin | BOOLEAN | DEFAULT FALSE | 是否为内置角色（不可删除） |
+| created_at | TIMESTAMP | DEFAULT CURRENT_TIMESTAMP | 创建时间 |
+| updated_at | TIMESTAMP | DEFAULT CURRENT_TIMESTAMP | 更新时间 |
+
+#### rbac_resources（资源表）
+
+| 字段 | 类型 | 约束 | 说明 |
+|------|------|------|------|
+| id | VARCHAR(36) | PK | UUID 主键 |
+| key | VARCHAR(100) | UK, NOT NULL | 权限 key（如 dashboard:read、content:create:write） |
+| name | VARCHAR(100) | NOT NULL | 中文显示名称 |
+| description | TEXT | | 权限描述说明 |
+| parent_id | VARCHAR(36) | FK → rbac_resources.id | 父资源 ID，支持资源树 |
+| is_active | BOOLEAN | DEFAULT TRUE | 是否启用 |
+| created_at | TIMESTAMP | DEFAULT CURRENT_TIMESTAMP | 创建时间 |
+
+**资源类型推断**：根据 key 格式自动推断，无需存储 type 字段。
+- `{name}:read` 或 `{name}:write`（2 段式）→ `page`（页面权限）
+- `{name}:{operation}:{read|write}`（3 段式）→ `action`（操作权限）
+
+#### rbac_permissions（权限表）
+
+| 字段 | 类型 | 约束 | 说明 |
+|------|------|------|------|
+| id | VARCHAR(36) | PK | UUID 主键 |
+| resource_id | VARCHAR(36) | FK → rbac_resources.id, NOT NULL | 关联资源 |
+| operation | VARCHAR(50) | NOT NULL | 操作类型：read / write / create / update / delete / approve / reject / execute |
+| key | VARCHAR(150) | UK, NOT NULL | 权限 key（如 content:create:write） |
+| is_active | BOOLEAN | DEFAULT TRUE | 是否启用 |
+| created_at | TIMESTAMP | DEFAULT CURRENT_TIMESTAMP | 创建时间 |
+
+#### rbac_role_hierarchy（角色继承表）
+
+| 字段 | 类型 | 约束 | 说明 |
+|------|------|------|------|
+| id | VARCHAR(36) | PK | UUID 主键 |
+| parent_role_id | VARCHAR(36) | FK → rbac_roles.id, NOT NULL | 父角色 |
+| child_role_id | VARCHAR(36) | FK → rbac_roles.id, NOT NULL | 子角色 |
+| created_at | TIMESTAMP | DEFAULT CURRENT_TIMESTAMP | 创建时间 |
+
+**约束**：禁止成环（parent 不能是 child 的后代，也不能等于 child）。
+
+#### rbac_role_permissions（角色权限表）
+
+| 字段 | 类型 | 约束 | 说明 |
+|------|------|------|------|
+| id | VARCHAR(36) | PK | UUID 主键 |
+| role_id | VARCHAR(36) | FK → rbac_roles.id, NOT NULL | 角色 ID |
+| permission_id | VARCHAR(36) | FK → rbac_permissions.id, NOT NULL | 权限 ID |
+| grant_type | VARCHAR(20) | DEFAULT 'direct' | 授权来源：direct（直接）/ inherited（继承） |
+| created_at | TIMESTAMP | DEFAULT CURRENT_TIMESTAMP | 创建时间 |
+
+#### rbac_user_role_assignments（用户角色分配表）
+
+| 字段 | 类型 | 约束 | 说明 |
+|------|------|------|------|
+| id | VARCHAR(36) | PK | UUID 主键 |
+| user_id | VARCHAR(36) | FK → users.id, NOT NULL | 用户 ID |
+| role_id | VARCHAR(36) | FK → rbac_roles.id, NOT NULL | 角色 ID |
+| grant_type | VARCHAR(20) | DEFAULT 'direct' | 分配类型：direct / inherited |
+| valid_from | TIMESTAMP | | 生效时间 |
+| valid_until | TIMESTAMP | | 失效时间 |
+| created_at | TIMESTAMP | DEFAULT CURRENT_TIMESTAMP | 创建时间 |
+
+#### rbac_user_permission_overrides（用户权限覆盖表）
+
+| 字段 | 类型 | 约束 | 说明 |
+|------|------|------|------|
+| id | VARCHAR(36) | PK | UUID 主键 |
+| user_id | VARCHAR(36) | FK → users.id ON DELETE CASCADE, NOT NULL | 用户 ID |
+| permission_key | VARCHAR(150) | NOT NULL | 权限 key |
+| granted | BOOLEAN | NOT NULL | 是否授予（true=授予，false=拒绝） |
+| created_at | TIMESTAMP | DEFAULT CURRENT_TIMESTAMP | 创建时间 |
+| updated_at | TIMESTAMP | DEFAULT CURRENT_TIMESTAMP | 更新时间 |
+
+**唯一约束**：`(user_id, permission_key)`
+
+#### rbac_constraints（约束表）
+
+| 字段 | 类型 | 约束 | 说明 |
+|------|------|------|------|
+| id | VARCHAR(36) | PK | UUID 主键 |
+| name | VARCHAR(100) | NOT NULL | 约束名称 |
+| description | TEXT | | 约束描述 |
+| constraint_type | VARCHAR(50) | NOT NULL | 约束类型：mutual_exclusive / prerequisite / cardinality |
+| config | JSON | DEFAULT '{}' | 类型相关配置 |
+| is_active | BOOLEAN | DEFAULT TRUE | 是否启用 |
+| created_at | TIMESTAMP | DEFAULT CURRENT_TIMESTAMP | 创建时间 |
+
+**config 示例**：
+- `mutual_exclusive`：`{"scope": "static"}`（同一用户不能同时拥有两个互斥角色）
+- `prerequisite`：`{"require_all": true}`（拥有目标角色前必须先拥有先决角色）
+- `cardinality`：`{"max_users": 3}`（某角色最多分配用户数）
+
+#### rbac_constraint_role_associations（约束角色关联表）
+
+| 字段 | 类型 | 约束 | 说明 |
+|------|------|------|------|
+| id | VARCHAR(36) | PK | UUID 主键 |
+| constraint_id | VARCHAR(36) | FK → rbac_constraints.id, NOT NULL | 约束 ID |
+| role_id | VARCHAR(36) | FK → rbac_roles.id, NOT NULL | 角色 ID |
+| association_type | VARCHAR(50) | NOT NULL | 关联类型：subject / target / prerequisite |
+
+### 2.2 业务表
+
+#### users（用户表）
+
+| 字段 | 类型 | 约束 | 说明 |
+|------|------|------|------|
+| id | VARCHAR(36) | PK | UUID 主键，超级管理员固定为 `"1"` |
+| username | VARCHAR(100) | UK, NOT NULL | 登录用户名 |
+| email | VARCHAR(255) | UK | 邮箱 |
+| hashed_password | VARCHAR(255) | NOT NULL | bcrypt 哈希密码 |
+| nickname | VARCHAR(100) | NOT NULL | 显示昵称 |
+| role | VARCHAR(50) | DEFAULT 'operator', NOT NULL | 角色名称（保留作标签/迁移用） |
+| avatar_url | VARCHAR(500) | | 头像链接 |
+| created_at | TIMESTAMP | DEFAULT CURRENT_TIMESTAMP | 创建时间 |
+| updated_at | TIMESTAMP | DEFAULT CURRENT_TIMESTAMP | 更新时间 |
+
+#### accounts（平台账号表）
+
+| 字段 | 类型 | 约束 | 说明 |
+|------|------|------|------|
+| id | VARCHAR(36) | PK | UUID 主键 |
+| user_id | VARCHAR(36) | FK → users.id, NOT NULL | 所属用户 |
+| platform | VARCHAR(50) | NOT NULL | 平台类型 |
+| nickname | VARCHAR(200) | NOT NULL | 平台昵称 |
+| avatar_url | VARCHAR(500) | | 头像 |
+| status | VARCHAR(20) | DEFAULT 'active' | 状态 |
+| cookie_data | TEXT | | Cookie 数据 |
+| access_token | TEXT | | Access Token |
+| token_expires_at | TIMESTAMP | | Token 过期时间 |
+| last_check_at | TIMESTAMP | | 最后检查时间 |
+| error_message | TEXT | | 错误信息 |
+| created_at | TIMESTAMP | DEFAULT CURRENT_TIMESTAMP | 创建时间 |
+| updated_at | TIMESTAMP | DEFAULT CURRENT_TIMESTAMP | 更新时间 |
+
+#### contents（内容表）
+
+| 字段 | 类型 | 约束 | 说明 |
+|------|------|------|------|
+| id | VARCHAR(36) | PK | UUID 主键 |
+| user_id | VARCHAR(36) | FK → users.id, NOT NULL | 创建者 |
+| title | VARCHAR(500) | NOT NULL | 标题 |
+| body | TEXT | NOT NULL | 正文 |
+| platform | VARCHAR(50) | NOT NULL | 目标平台 |
+| status | VARCHAR(20) | DEFAULT 'draft' | 状态 |
+| media_urls | TEXT | DEFAULT '[]' | 媒体 URL 列表（JSON） |
+| ai_generated | BOOLEAN | DEFAULT FALSE | 是否 AI 生成 |
+| original_content_id | VARCHAR(36) | FK → contents.id | 原始内容 ID（AI 变体） |
+| created_at | TIMESTAMP | DEFAULT CURRENT_TIMESTAMP | 创建时间 |
+| updated_at | TIMESTAMP | DEFAULT CURRENT_TIMESTAMP | 更新时间 |
+
+#### publish_tasks（发布任务表）
+
+| 字段 | 类型 | 约束 | 说明 |
+|------|------|------|------|
+| id | VARCHAR(36) | PK | UUID 主键 |
+| content_id | VARCHAR(36) | FK → contents.id, NOT NULL | 内容 ID |
+| account_id | VARCHAR(36) | FK → accounts.id, NOT NULL | 账号 ID |
+| status | VARCHAR(20) | DEFAULT 'pending' | 任务状态 |
+| scheduled_at | TIMESTAMP | | 计划发布时间 |
+| published_at | TIMESTAMP | | 实际发布时间 |
+| error_message | TEXT | | 错误信息 |
+| retry_count | INTEGER | DEFAULT 0 | 重试次数 |
+| created_at | TIMESTAMP | DEFAULT CURRENT_TIMESTAMP | 创建时间 |
+| updated_at | TIMESTAMP | DEFAULT CURRENT_TIMESTAMP | 更新时间 |
+
+#### model_configs（模型配置表）
+
+| 字段 | 类型 | 约束 | 说明 |
+|------|------|------|------|
+| id | VARCHAR(36) | PK | UUID 主键 |
+| user_id | VARCHAR(36) | FK → users.id, NOT NULL | 所属用户 |
+| name | VARCHAR(200) | NOT NULL | 配置名称 |
+| display_name | VARCHAR(200) | | 展示名称 |
+| provider | VARCHAR(50) | DEFAULT 'openai', NOT NULL | 提供商 |
+| mode | VARCHAR(20) | DEFAULT 'provider' | 模式 |
+| api_format | VARCHAR(50) | DEFAULT 'openai_chat' | API 格式 |
+| api_key | VARCHAR(500) | DEFAULT '' | API 密钥 |
+| base_url | VARCHAR(500) | DEFAULT '' | 基础 URL |
+| full_url | BOOLEAN | DEFAULT FALSE | 是否使用完整 URL |
+| model | VARCHAR(200) | DEFAULT '' | 模型名称 |
+| multimodal | BOOLEAN | DEFAULT FALSE | 是否多模态 |
+| model_series | VARCHAR(100) | DEFAULT 'default' | 模型系列 |
+| context_input | INTEGER | DEFAULT 128000 | 输入上下文长度 |
+| context_output | INTEGER | DEFAULT 4096 | 输出上下文长度 |
+| tool_call_rounds | INTEGER | DEFAULT 200 | 工具调用轮数 |
+| enabled | BOOLEAN | DEFAULT FALSE | 是否启用 |
+| monthly_quota | INTEGER | DEFAULT 1000000 | 月度配额 |
+| used_tokens | INTEGER | DEFAULT 0 | 已用 Token 数 |
+| created_at | TIMESTAMP | DEFAULT CURRENT_TIMESTAMP | 创建时间 |
+| updated_at | TIMESTAMP | DEFAULT CURRENT_TIMESTAMP | 更新时间 |
+
+#### user_creation_requests（用户创建审核表）
+
+| 字段 | 类型 | 约束 | 说明 |
+|------|------|------|------|
+| id | VARCHAR(36) | PK | UUID 主键 |
+| requester_id | VARCHAR(36) | FK → users.id | 申请人 ID |
+| username | VARCHAR(100) | NOT NULL | 待创建用户名 |
+| email | VARCHAR(255) | | 待创建邮箱 |
+| hashed_password | VARCHAR(255) | NOT NULL | 密码哈希 |
+| nickname | VARCHAR(100) | NOT NULL | 昵称 |
+| role | VARCHAR(50) | | 角色 |
+| avatar_url | VARCHAR(500) | | 头像 |
+| status | VARCHAR(20) | DEFAULT 'pending' | 审核状态 |
+| reviewer_id | VARCHAR(36) | FK → users.id | 审批人 |
+| reject_reason | TEXT | | 驳回原因 |
+| created_at | TIMESTAMP | DEFAULT CURRENT_TIMESTAMP | 创建时间 |
+| updated_at | TIMESTAMP | DEFAULT CURRENT_TIMESTAMP | 更新时间 |
+
+## 3. DDL
 
 ```sql
 -- 数据库 ID 规范：所有主键使用 UUID VARCHAR(36)，唯一例外是超级管理员用户 ID 固定为 '1'
 
+-- ============================================
+-- RBAC3 权限中台表
+-- ============================================
+
+CREATE TABLE rbac_roles (
+    id VARCHAR(36) PRIMARY KEY,
+    name VARCHAR(50) UNIQUE NOT NULL,
+    display_name VARCHAR(100) NOT NULL,
+    description TEXT,
+    role_type VARCHAR(20) DEFAULT 'other',
+    is_super_admin BOOLEAN DEFAULT FALSE,
+    is_builtin BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE rbac_resources (
+    id VARCHAR(36) PRIMARY KEY,
+    key VARCHAR(100) UNIQUE NOT NULL,
+    name VARCHAR(100) NOT NULL,
+    description TEXT,
+    parent_id VARCHAR(36) REFERENCES rbac_resources(id),
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE rbac_permissions (
+    id VARCHAR(36) PRIMARY KEY,
+    resource_id VARCHAR(36) NOT NULL REFERENCES rbac_resources(id),
+    operation VARCHAR(50) NOT NULL,
+    key VARCHAR(150) UNIQUE NOT NULL,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE rbac_role_hierarchy (
+    id VARCHAR(36) PRIMARY KEY,
+    parent_role_id VARCHAR(36) NOT NULL REFERENCES rbac_roles(id),
+    child_role_id VARCHAR(36) NOT NULL REFERENCES rbac_roles(id),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE rbac_role_permissions (
+    id VARCHAR(36) PRIMARY KEY,
+    role_id VARCHAR(36) NOT NULL REFERENCES rbac_roles(id),
+    permission_id VARCHAR(36) NOT NULL REFERENCES rbac_permissions(id),
+    grant_type VARCHAR(20) DEFAULT 'direct',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE rbac_user_role_assignments (
+    id VARCHAR(36) PRIMARY KEY,
+    user_id VARCHAR(36) NOT NULL REFERENCES users(id),
+    role_id VARCHAR(36) NOT NULL REFERENCES rbac_roles(id),
+    grant_type VARCHAR(20) DEFAULT 'direct',
+    valid_from TIMESTAMP,
+    valid_until TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE rbac_user_permission_overrides (
+    id VARCHAR(36) PRIMARY KEY,
+    user_id VARCHAR(36) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    permission_key VARCHAR(150) NOT NULL,
+    granted BOOLEAN NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(user_id, permission_key)
+);
+
+CREATE TABLE rbac_constraints (
+    id VARCHAR(36) PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    description TEXT,
+    constraint_type VARCHAR(50) NOT NULL,
+    config JSON DEFAULT '{}',
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE rbac_constraint_role_associations (
+    id VARCHAR(36) PRIMARY KEY,
+    constraint_id VARCHAR(36) NOT NULL REFERENCES rbac_constraints(id),
+    role_id VARCHAR(36) NOT NULL REFERENCES rbac_roles(id),
+    association_type VARCHAR(50) NOT NULL
+);
+
+-- ============================================
+-- 业务表
+-- ============================================
+
 CREATE TABLE users (
     id VARCHAR(36) PRIMARY KEY,
     username VARCHAR(100) UNIQUE NOT NULL,
-    email VARCHAR(255) UNIQUE NOT NULL,
+    email VARCHAR(255) UNIQUE,
     hashed_password VARCHAR(255) NOT NULL,
     nickname VARCHAR(100) NOT NULL,
-    role VARCHAR(20) DEFAULT 'operator',
+    role VARCHAR(50) DEFAULT 'operator' NOT NULL,
     avatar_url VARCHAR(500),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -270,33 +667,6 @@ CREATE TABLE templates (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE custom_roles (
-    id VARCHAR(36) PRIMARY KEY,
-    name VARCHAR(50) UNIQUE NOT NULL,
-    display_name VARCHAR(100) NOT NULL,
-    description TEXT,
-    role_type VARCHAR(20) DEFAULT 'other',
-    is_builtin BOOLEAN DEFAULT FALSE,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE TABLE role_permissions (
-    id VARCHAR(36) PRIMARY KEY,
-    role VARCHAR(50) NOT NULL REFERENCES custom_roles(name),
-    perm_key VARCHAR(100) NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(role, perm_key)
-);
-
-CREATE TABLE user_permissions (
-    id VARCHAR(36) PRIMARY KEY,
-    user_id VARCHAR(36) NOT NULL REFERENCES users(id),
-    perm_key VARCHAR(100) NOT NULL,
-    granted_by VARCHAR(36) REFERENCES users(id),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(user_id, perm_key)
-);
-
 CREATE TABLE notifications (
     id VARCHAR(36) PRIMARY KEY,
     user_id VARCHAR(36) NOT NULL REFERENCES users(id),
@@ -341,6 +711,26 @@ CREATE TABLE sql_change_requests (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE user_creation_requests (
+    id VARCHAR(36) PRIMARY KEY,
+    requester_id VARCHAR(36) REFERENCES users(id),
+    username VARCHAR(100) NOT NULL,
+    email VARCHAR(255),
+    hashed_password VARCHAR(255) NOT NULL,
+    nickname VARCHAR(100) NOT NULL,
+    role VARCHAR(50),
+    avatar_url VARCHAR(500),
+    status VARCHAR(20) DEFAULT 'pending',
+    reviewer_id VARCHAR(36) REFERENCES users(id),
+    reject_reason TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ============================================
+-- 索引
+-- ============================================
+
 CREATE INDEX idx_accounts_user_id ON accounts(user_id);
 CREATE INDEX idx_accounts_platform ON accounts(platform);
 CREATE INDEX idx_contents_user_id ON contents(user_id);
@@ -352,6 +742,6 @@ CREATE INDEX idx_model_configs_user_id ON model_configs(user_id);
 CREATE INDEX idx_model_configs_enabled ON model_configs(enabled);
 CREATE INDEX idx_notifications_user_id ON notifications(user_id);
 CREATE INDEX idx_notifications_is_read ON notifications(is_read);
-CREATE INDEX idx_user_permissions_user_id ON user_permissions(user_id);
+CREATE INDEX idx_user_permissions_user_id ON rbac_user_permission_overrides(user_id);
 CREATE INDEX idx_sql_change_requests_status ON sql_change_requests(status);
 ```

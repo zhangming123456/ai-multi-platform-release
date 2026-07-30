@@ -10,7 +10,6 @@ import {
 } from '@arco-design/web-vue/es/icon'
 import { Message, Modal } from '@arco-design/web-vue'
 import PageHeader from '@/components/layout/PageHeader.vue'
-import { usePermissionStore } from '@/stores/permission'
 import { formatDateTime } from '@/utils/time'
 import api from '@/utils/api'
 
@@ -42,9 +41,6 @@ interface Constraint {
   created_at: string
   roles: Association[]
 }
-
-const permStore = usePermissionStore()
-const canWrite = computed(() => permStore.hasPermission('constraints:manage:write'))
 
 const loading = ref(false)
 const roles = ref<Role[]>([])
@@ -303,7 +299,7 @@ function onPrerequisiteRoleIdsChange(value: unknown) {
   <div class="page-main">
     <PageHeader title="约束管理" subtitle="管理角色互斥、先决条件与成员基数约束">
       <template #actions>
-        <a-button v-if="canWrite" type="primary" @click="openAdd">
+        <a-button v-perm="'constraints:manage:write'" type="primary" @click="openAdd">
           <template #icon><IconPlus /></template>
           创建约束
         </a-button>
@@ -334,7 +330,7 @@ function onPrerequisiteRoleIdsChange(value: unknown) {
               </div>
               <div class="flex items-center gap-1 shrink-0">
                 <a-button
-                  v-if="canWrite"
+                  v-perm="'constraints:manage:write'"
                   type="text"
                   size="mini"
                   @click="openEdit(constraint)"
@@ -342,7 +338,7 @@ function onPrerequisiteRoleIdsChange(value: unknown) {
                   <template #icon><IconEdit :size="14" /></template>
                 </a-button>
                 <a-button
-                  v-if="canWrite"
+                  v-perm="'constraints:manage:write'"
                   type="text"
                   size="mini"
                   status="danger"
@@ -401,7 +397,7 @@ function onPrerequisiteRoleIdsChange(value: unknown) {
                 创建于 {{ formatDateTime(constraint.created_at) }}
               </span>
               <a-switch
-                v-if="canWrite"
+                v-perm="'constraints:manage:write'"
                 :model-value="constraint.is_active"
                 size="small"
                 @change="(v: boolean | string | number) => toggleActive(constraint, Boolean(v))"

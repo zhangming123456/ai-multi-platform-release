@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.deps import require_permission
+from app.core.deps import get_current_user, PermAPIRoute, RequiresPermissions
 from app.database import async_session_factory, get_db
 from app.models.notification import Notification, NotificationType
 from app.models.rbac_permission import RBACPermission
@@ -22,7 +22,7 @@ from app.models.sql_change_request import (
 from app.models.sql_history import SqlHistory
 from app.models.user import User
 
-router = APIRouter(prefix="/api/db-changes", tags=["SQL 变更审核"])
+router = APIRouter(prefix="/api/db-changes", tags=["SQL 变更审核"], route_class=PermAPIRoute)
 
 
 async def _user_ids_with_permission(
@@ -137,10 +137,11 @@ async def _execute_change(db: AsyncSession, req: SqlChangeRequest) -> tuple[bool
 
 
 @router.post("/submit", response_model=SqlChangeItem)
+@RequiresPermissions("db_change:submit:write")
 async def submit_change(
     body: SubmitChangeRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_permission("db_change:submit:write")),
+    current_user: User = Depends(get_current_user),
 ):
     """提交 DELETE/UPDATE 变更审核请求"""
     sql = body.sql.strip()
@@ -186,10 +187,10 @@ async def submit_change(
 
 
 @router.get("/", response_model=SqlChangeListResponse)
+@RequiresPermissions("sql_review:read")
 async def list_changes(
     status_filter: Optional[str] = Query(default=None, alias="status"),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_permission("sql_review:read", "read")),
 ):
     """获取 SQL 变更审核列表"""
     stmt = select(SqlChangeRequest).order_by(SqlChangeRequest.created_at.desc())
@@ -213,10 +214,11 @@ async def list_changes(
 
 
 @router.post("/{change_id}/approve", response_model=SqlChangeItem)
+@RequiresPermissions("db_change:approve:write")
 async def approve_change(
     change_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_permission("db_change:approve:write", "write")),
+    current_user: User = Depends(get_current_user),
 ):
     """审核通过 SQL 变更（达到 2 人通过后自动执行）"""
 
@@ -290,11 +292,11 @@ async def approve_change(
 
 
 @router.post("/{change_id}/reject", response_model=SqlChangeItem)
+@RequiresPermissions("db_change:reject:write")
 async def reject_change(
     change_id: str,
     reason: str = Body(default="", embed=True),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_permission("db_change:reject:write", "write")),
 ):
     """驳回 SQL 变更请求"""
 

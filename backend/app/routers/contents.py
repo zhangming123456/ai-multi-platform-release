@@ -7,7 +7,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.deps import require_permission
+from app.core.deps import get_current_user, RequiresPermissions, PermAPIRoute
 from app.database import get_db
 from app.models.ai_generation import AIGenerationRecord
 from app.models.content import Content
@@ -25,7 +25,7 @@ from app.schemas.content import (
 from app.services.ai_service import AIGenerationError, generate_content_stream, generate_content_variants
 from typing import Optional
 
-router = APIRouter(prefix="/api/contents", tags=["内容管理"])
+router = APIRouter(prefix="/api/contents", tags=["内容管理"], route_class=PermAPIRoute)
 
 PLATFORM_LABELS = {
     "wechat_mp": "公众号",
@@ -40,13 +40,14 @@ def _sse(event: str, data: dict) -> str:
 
 
 @router.get("/", response_model=list[ContentResponse])
+@RequiresPermissions("content:read")
 async def list_contents(
     platform: Optional[str] = None,
     status_filter: Optional[str] = Query(None, alias="status"),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_permission("content:read", "read")),
+    current_user: User = Depends(get_current_user),
 ):
     query = select(Content).where(Content.user_id == current_user.id)
     if platform:
@@ -60,10 +61,11 @@ async def list_contents(
 
 
 @router.post("/", response_model=ContentResponse, status_code=status.HTTP_201_CREATED)
+@RequiresPermissions("content:create:write")
 async def create_content(
     request: ContentCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_permission("content:create:write", "write")),
+    current_user: User = Depends(get_current_user),
 ):
     content = Content(
         user_id=current_user.id,
@@ -80,12 +82,13 @@ async def create_content(
 
 
 @router.get("/ai-generations", response_model=list[AIGenerationRecordResponse])
+@RequiresPermissions("content:read")
 async def list_ai_generations(
     platform: Optional[str] = None,
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_permission("content:read", "read")),
+    current_user: User = Depends(get_current_user),
 ):
     query = select(AIGenerationRecord).where(AIGenerationRecord.user_id == current_user.id)
     if platform:
@@ -97,10 +100,11 @@ async def list_ai_generations(
 
 
 @router.get("/{content_id}", response_model=ContentResponse)
+@RequiresPermissions("content:read")
 async def get_content(
     content_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_permission("content:read", "read")),
+    current_user: User = Depends(get_current_user),
 ):
     result = await db.execute(
         select(Content).where(Content.id == content_id, Content.user_id == current_user.id)
@@ -112,11 +116,12 @@ async def get_content(
 
 
 @router.put("/{content_id}", response_model=ContentResponse)
+@RequiresPermissions("content:update:write")
 async def update_content(
     content_id: str,
     request: ContentUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_permission("content:update:write", "write")),
+    current_user: User = Depends(get_current_user),
 ):
     result = await db.execute(
         select(Content).where(Content.id == content_id, Content.user_id == current_user.id)
@@ -135,10 +140,11 @@ async def update_content(
 
 
 @router.delete("/{content_id}", status_code=status.HTTP_204_NO_CONTENT)
+@RequiresPermissions("content:delete:write")
 async def delete_content(
     content_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_permission("content:delete:write", "write")),
+    current_user: User = Depends(get_current_user),
 ):
     result = await db.execute(
         select(Content).where(Content.id == content_id, Content.user_id == current_user.id)
@@ -151,10 +157,11 @@ async def delete_content(
 
 
 @router.post("/ai-generate", response_model=AIGenerateResponse)
+@RequiresPermissions("content:ai_generate:write")
 async def ai_generate(
     request: AIGenerateRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_permission("content:ai_generate:write", "write")),
+    current_user: User = Depends(get_current_user),
 ):
     try:
         variants = await generate_content_variants(
@@ -202,10 +209,11 @@ async def ai_generate(
 
 
 @router.post("/ai-generate-stream")
+@RequiresPermissions("content:ai_generate:write")
 async def ai_generate_stream(
     request: AIGenerateStreamRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_permission("content:ai_generate:write", "write")),
+    current_user: User = Depends(get_current_user),
 ):
     """SSE 流式生成端点：逐平台流式输出 LLM 内容，同时推送实时日志。"""
 

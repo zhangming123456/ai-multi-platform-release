@@ -1,20 +1,67 @@
 import type { DirectiveBinding, ObjectDirective } from 'vue'
 import { usePermissionStore } from '@/stores/permission'
+import type { PermContext } from '@/stores/permission'
 
 interface PermBinding {
   key: string
+  ctx?: PermContext
 }
 
-const vPerm: ObjectDirective<HTMLElement, PermBinding> = {
-  mounted(el: HTMLElement, binding: DirectiveBinding<PermBinding>) {
-    const permStore = usePermissionStore()
-    if (!permStore.hasPermission(binding.value.key)) {
-      el.style.display = 'none'
+const _permCache = new WeakMap<HTMLElement, { placeholder: Comment; originalParent: Node; originalNext: Node | null }>()
+
+function resolve(binding: DirectiveBinding<string | PermBinding>): {
+  key: string
+  ctx?: PermContext
+} {
+  const value = binding.value
+  if (typeof value === 'string') {
+    return { key: value }
+  }
+  return { key: value.key, ctx: value.ctx }
+}
+
+function removeEl(el: HTMLElement) {
+  const parent = el.parentNode
+  if (!parent) return
+  const placeholder = document.createComment('v-perm')
+  const next = el.nextSibling
+  parent.insertBefore(placeholder, el)
+  parent.removeChild(el)
+  _permCache.set(el, { placeholder, originalParent: parent, originalNext: next })
+}
+
+function restoreEl(el: HTMLElement) {
+  const cache = _permCache.get(el)
+  if (!cache) return
+  const { placeholder, originalParent, originalNext } = cache
+  if (!placeholder.parentNode) {
+    originalParent.insertBefore(el, originalNext)
+  } else {
+    placeholder.parentNode.insertBefore(el, placeholder)
+    placeholder.parentNode.removeChild(placeholder)
+  }
+  _permCache.delete(el)
+}
+
+function checkAndApply(el: HTMLElement, binding: DirectiveBinding<string | PermBinding>) {
+  const permStore = usePermissionStore()
+  const { key, ctx } = resolve(binding)
+  const has = permStore.hasPermission(key, ctx)
+
+  if (!has && !_permCache.has(el)) {
+    removeEl(el)
+  } else if (has && _permCache.has(el)) {
+    restoreEl(el)
+  }
+}
+
+const vPerm: ObjectDirective<HTMLElement, string | PermBinding> = {
+  mounted: checkAndApply,
+  updated: checkAndApply,
+  beforeUnmount(el: HTMLElement) {
+    if (_permCache.has(el)) {
+      _permCache.delete(el)
     }
-  },
-  updated(el: HTMLElement, binding: DirectiveBinding<PermBinding>) {
-    const permStore = usePermissionStore()
-    el.style.display = permStore.hasPermission(binding.value.key) ? '' : 'none'
   },
 }
 

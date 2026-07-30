@@ -116,19 +116,19 @@ const router = createRouter({
           path: 'rbac/users/:id/edit',
           name: 'RBACUserEdit',
           component: () => import('@/pages/RBACUserEdit.vue'),
-          meta: { title: '编辑用户', permKey: 'users:update:write' },
+          meta: { title: '编辑用户', permKey: 'users:update:read || isSelf(id)' },
         },
         {
           path: 'rbac/users/:id/password',
           name: 'RBACUserPassword',
           component: () => import('@/pages/RBACUserPassword.vue'),
-          meta: { title: '修改密码', permKey: 'users:change_password:write' },
+          meta: { title: '修改密码', permKey: 'users:change_password:write || isSelf(id)' },
         },
         {
           path: 'rbac/users/:id/permissions',
           name: 'RBACUserPermissionCustomize',
           component: () => import('@/pages/RBACUserPermissionCustomize.vue'),
-          meta: { title: '自定义权限', skipPermCheck: true },
+          meta: { title: '自定义权限', permKey: 'users:custom_permissions:read || isSelf(id)' },
         },
         {
           path: 'rbac/roles',
@@ -146,7 +146,19 @@ const router = createRouter({
           path: 'rbac/permissions/enum',
           name: 'RBACPermissionEnumManage',
           component: () => import('@/pages/RBACPermissionEnumManage.vue'),
-          meta: { title: '权限定义编辑', permKey: 'permissions:read' },
+          meta: { title: '权限字典编辑', permKey: 'permissions:read' },
+        },
+        {
+          path: 'rbac/permissions/enum/create',
+          name: 'RBACPermissionEnumCreate',
+          component: () => import('@/pages/RBACPermissionEnumEdit.vue'),
+          meta: { title: '新增权限字典', permKey: 'permissions:read' },
+        },
+        {
+          path: 'rbac/permissions/enum/edit/:resourceId',
+          name: 'RBACPermissionEnumEdit',
+          component: () => import('@/pages/RBACPermissionEnumEdit.vue'),
+          meta: { title: '编辑权限字典', permKey: 'permissions:read' },
         },
         {
           path: 'rbac/constraints',
@@ -164,7 +176,10 @@ function hasPerm(to: RouteLocationNormalized): boolean {
   const permKey = to.meta.permKey as string | undefined
   if (!permKey) return true
   const permStore = usePermissionStore()
-  return permStore.hasPermission(permKey)
+  return permStore.hasPermission(permKey, {
+    ...(to.query ?? {}),
+    ...(to.params ?? {}),
+  })
 }
 
 router.beforeEach(async (to) => {

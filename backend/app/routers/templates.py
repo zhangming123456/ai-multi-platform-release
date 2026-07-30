@@ -5,20 +5,20 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional
 
-from app.core.deps import require_permission
+from app.core.deps import RequiresPermissions, PermAPIRoute
 from app.database import get_db
 from app.models.template import Template
 from app.models.user import User
 from app.schemas.template import TemplateCreate, TemplateResponse, TemplateUpdate
 
-router = APIRouter(prefix="/api/templates", tags=["模板管理"])
+router = APIRouter(prefix="/api/templates", tags=["模板管理"], route_class=PermAPIRoute)
 
 
 @router.get("/", response_model=list[TemplateResponse])
+@RequiresPermissions("templates:read")
 async def list_templates(
     platform: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_permission("templates:read", "read")),
 ):
     query = select(Template)
     if platform:
@@ -29,10 +29,10 @@ async def list_templates(
 
 
 @router.post("/", response_model=TemplateResponse, status_code=status.HTTP_201_CREATED)
+@RequiresPermissions("templates:create:write")
 async def create_template(
     request: TemplateCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_permission("templates:create:write", "write")),
 ):
     template = Template(
         name=request.name,
@@ -47,10 +47,10 @@ async def create_template(
 
 
 @router.get("/{template_id}", response_model=TemplateResponse)
+@RequiresPermissions("templates:read")
 async def get_template(
     template_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_permission("templates:read", "read")),
 ):
     result = await db.execute(select(Template).where(Template.id == template_id))
     template = result.scalar_one_or_none()
@@ -60,11 +60,11 @@ async def get_template(
 
 
 @router.put("/{template_id}", response_model=TemplateResponse)
+@RequiresPermissions("templates:update:write")
 async def update_template(
     template_id: str,
     request: TemplateUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_permission("templates:update:write", "write")),
 ):
     result = await db.execute(select(Template).where(Template.id == template_id))
     template = result.scalar_one_or_none()
@@ -81,10 +81,10 @@ async def update_template(
 
 
 @router.delete("/{template_id}", status_code=status.HTTP_204_NO_CONTENT)
+@RequiresPermissions("templates:delete:write")
 async def delete_template(
     template_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_permission("templates:delete:write", "write")),
 ):
     result = await db.execute(select(Template).where(Template.id == template_id))
     template = result.scalar_one_or_none()

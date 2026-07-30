@@ -64,7 +64,7 @@ RBAC_RESOURCES: list[dict] = [
     {"key": "roles:read", "name": "角色管理", "description": "管理角色定义和角色继承关系"},
     {"key": "constraints:read", "name": "约束管理", "description": "管理职责分离约束规则"},
     # ---------- 系统管理操作 ----------
-    {"key": "permissions:manage:write", "name": "维护权限定义", "description": "创建、编辑、删除权限资源定义"},
+    {"key": "permissions:manage:write", "name": "维护权限字典", "description": "创建、编辑、删除权限资源定义"},
     {"key": "roles:manage:write", "name": "维护角色", "description": "创建、编辑、删除角色定义和层级关系"},
     {"key": "constraints:manage:write", "name": "维护约束", "description": "创建、编辑、删除职责分离约束规则"},
     # ---------- 内容操作 ----------
@@ -93,7 +93,6 @@ RBAC_RESOURCES: list[dict] = [
     {"key": "users:change_password:write", "name": "修改用户密码", "description": "修改用户的登录密码"},
     {"key": "users:custom_permissions:write", "name": "自定义用户权限", "description": "为个别用户配置自定义权限覆盖"},
     # ---------- 平台账号操作 ----------
-    {"key": "account:view:read", "name": "查看平台账号", "description": "查看平台账号的详细信息"},
     {"key": "account:create:write", "name": "创建平台账号", "description": "创建新的平台登录账号"},
     {"key": "account:update:write", "name": "编辑平台账号", "description": "编辑平台账号信息"},
     {"key": "account:delete:write", "name": "删除平台账号", "description": "删除平台登录账号"},
@@ -117,7 +116,7 @@ DEFAULT_ROLE_PERMISSIONS: dict[str, list[str]] = {
     "admin": ALL_PERMISSION_KEYS,
     "manager": [
         "dashboard:read", "platforms:read", "content:read", "publish:read",
-        "templates:read", "review:read", "sql_review:read", "accounts:read", "account:view:read",
+        "templates:read", "review:read", "sql_review:read", "accounts:read",
         "token_plan:read", "api_docs:read",
         "permissions:read", "roles:read", "constraints:read",
         "permissions:manage:write", "roles:manage:write", "constraints:manage:write",
@@ -134,7 +133,7 @@ DEFAULT_ROLE_PERMISSIONS: dict[str, list[str]] = {
     ],
     "operator": [
         "dashboard:read", "platforms:read", "content:read", "publish:read",
-        "templates:read", "accounts:read", "account:view:read", "token_plan:read", "api_docs:read",
+        "templates:read", "accounts:read", "token_plan:read", "api_docs:read",
         "users:read", "users:create:write", "users:update:write", "users:change_password:write",
         "users:custom_permissions:write", "roles:read",
         "content:create:write", "content:update:write", "content:delete:write", "content:ai_generate:write",
@@ -145,7 +144,7 @@ DEFAULT_ROLE_PERMISSIONS: dict[str, list[str]] = {
     ],
     "reviewer": [
         "dashboard:read", "content:read", "review:read", "sql_review:read",
-        "platforms:read", "account:view:read",
+        "platforms:read", "accounts:read",
         "review:approve:write", "review:reject:write",
         "db_change:approve:write", "db_change:reject:write",
         "templates:create:write", "templates:update:write", "templates:delete:write",

@@ -1,6 +1,11 @@
 export interface PermContext {
   currentUser: { id: string; role: string }
   user_id?: string
+  account?: { user_id: string }
+  content?: { user_id: string }
+  target_user?: { id: string; role: string }
+  current_role_ids?: string[]
+  target_role_ids?: string[]
 }
 
 type TokenType = 'PERM' | 'FUNC' | 'IDENT' | 'OR' | 'AND' | 'NOT' | 'LPAREN' | 'RPAREN' | 'EOF'
@@ -11,7 +16,7 @@ interface Token {
   pos: number
 }
 
-const BUILTIN_FUNC_NAMES = new Set(['isSelf', 'isAdmin', 'isSuperAdmin', 'isBuiltInAdmin'])
+const BUILTIN_FUNC_NAMES = new Set(['isSelf', 'isAdmin', 'isSuperAdmin', 'isBuiltInAdmin', 'isOwnAccount', 'isOwnContent', 'hasSameRole'])
 
 function _isExpressionChar(ch: string): boolean {
   return ch === '|' || ch === '&' || ch === '(' || ch === ')' || ch === '!'
@@ -131,7 +136,8 @@ type BuiltinFunc = (args: string[], ctx: PermContext) => boolean
 
 const BUILTIN_FUNCTIONS: Record<string, BuiltinFunc> = {
   isSelf(args, ctx) {
-    const targetId = args[0] ?? ctx.user_id
+    const keyName = args[0] ?? 'user_id'
+    const targetId = (ctx as any)[keyName] ?? ctx.user_id
     if (!targetId) return false
     return ctx.currentUser.id === targetId
   },
@@ -147,9 +153,35 @@ const BUILTIN_FUNCTIONS: Record<string, BuiltinFunc> = {
   },
 
   isBuiltInAdmin(args, ctx) {
-    const targetId = args[0] ?? ctx.user_id
+    const keyName = args[0] ?? 'user_id'
+    const targetId = (ctx as any)[keyName] ?? ctx.user_id
     if (!targetId) return false
     return targetId === '1'
+  },
+
+  isOwnAccount(args, ctx) {
+    const account = ctx.account
+    if (!account) return false
+    return ctx.currentUser.id === account.user_id
+  },
+
+  isOwnContent(args, ctx) {
+    const content = ctx.content
+    if (!content) return false
+    return ctx.currentUser.id === content.user_id
+  },
+
+  hasSameRole(args, ctx) {
+    const targetUser = ctx.target_user
+    if (!targetUser) return false
+    if (targetUser.id === ctx.currentUser.id) return true
+    const currentRoles = new Set(ctx.current_role_ids || [])
+    const targetRoles = new Set(ctx.target_role_ids || [])
+    if (currentRoles.size === 0 || targetRoles.size === 0) return false
+    for (const r of currentRoles) {
+      if (targetRoles.has(r)) return true
+    }
+    return false
   },
 }
 

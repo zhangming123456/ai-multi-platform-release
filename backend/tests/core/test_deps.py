@@ -132,7 +132,7 @@ async def test_require_permission_allows_when_granted(db):
     await _assign_role(db, user.id, role.id)
     await _grant_permission(db, role.id, permission.id)
 
-    checker = require_permission("users:read", "read")
+    checker = require_permission("users:read")
     result = await checker(current_user=user, db=db)
 
     assert result is user
@@ -141,7 +141,7 @@ async def test_require_permission_allows_when_granted(db):
 async def test_require_permission_denies_when_not_granted(db):
     user = await _create_user(db)
 
-    checker = require_permission("users:read", "read")
+    checker = require_permission("users:read")
     with pytest.raises(HTTPException) as exc_info:
         await checker(current_user=user, db=db)
 
@@ -149,21 +149,16 @@ async def test_require_permission_denies_when_not_granted(db):
     assert exc_info.value.detail == "无查看权限"
 
 
-async def test_require_permission_unknown_mode_raises(db):
-    with pytest.raises(ValueError, match="Unsupported permission mode: delete"):
-        require_permission("users:read", "delete")
-
-
 async def test_require_permission_write_granted(db):
     user = await _create_user(db)
     role = await _create_role(db)
     resource = await _create_resource(db)
-    permission = await _create_permission(db, resource.id, "create", "users:create")
+    permission = await _create_permission(db, resource.id, "create", "users:create:write")
 
     await _assign_role(db, user.id, role.id)
     await _grant_permission(db, role.id, permission.id)
 
-    checker = require_permission("users:create", "write")
+    checker = require_permission("users:create:write")
     result = await checker(current_user=user, db=db)
 
     assert result is user
@@ -172,12 +167,27 @@ async def test_require_permission_write_granted(db):
 async def test_require_permission_write_denied(db):
     user = await _create_user(db)
 
-    checker = require_permission("users:create", "write")
+    checker = require_permission("users:create:write")
     with pytest.raises(HTTPException) as exc_info:
         await checker(current_user=user, db=db)
 
     assert exc_info.value.status_code == 403
     assert exc_info.value.detail == "无写入权限"
+
+
+async def test_require_permission_with_mode_arg_still_works(db):
+    user = await _create_user(db)
+    role = await _create_role(db)
+    resource = await _create_resource(db)
+    permission = await _create_permission(db, resource.id, "read", "users:read")
+
+    await _assign_role(db, user.id, role.id)
+    await _grant_permission(db, role.id, permission.id)
+
+    checker = require_permission("users:read", "read")
+    result = await checker(current_user=user, db=db)
+
+    assert result is user
 
 
 async def test_require_permission_super_admin_role_grants_all_active_permissions(db):
@@ -196,7 +206,7 @@ async def test_require_permission_super_admin_role_grants_all_active_permissions
 
     await _assign_role(db, user.id, admin_role.id)
 
-    checker = require_permission("users:read", "read")
+    checker = require_permission("users:read")
     result = await checker(current_user=user, db=db)
 
     assert result is user

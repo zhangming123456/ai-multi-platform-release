@@ -1,17 +1,9 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import {
-  IconPlus,
-  IconEdit,
-  IconDelete,
-  IconLock,
-  IconEye,
-} from '@arco-design/web-vue/es/icon'
+import { IconPlus, IconEdit, IconDelete, IconLock, IconEye } from '@arco-design/web-vue/es/icon'
 import { Message, Modal } from '@arco-design/web-vue'
 import PageHeader from '@/components/layout/PageHeader.vue'
-import { usePermissionStore } from '@/stores/permission'
-import { useUserStore } from '@/stores/user'
 import { formatDateTime } from '@/utils/time'
 import api from '@/utils/api'
 
@@ -37,22 +29,10 @@ interface UserListItem {
 }
 
 const router = useRouter()
-const userStore = useUserStore()
-const permStore = usePermissionStore()
 
 const loading = ref(false)
 const users = ref<UserListItem[]>([])
 const roles = ref<Role[]>([])
-
-const canCreate = computed(() => permStore.hasPermission('users:create:write'))
-const canUpdate = computed(() => permStore.hasPermission('users:update:write'))
-const canDelete = computed(() => permStore.hasPermission('users:delete:write'))
-const canChangePassword = computed(() => permStore.hasPermission('users:change_password:write'))
-const canCustomizePermissions = computed(() => permStore.hasPermission('users:custom_permissions:write'))
-
-function canViewPermissions(user: UserListItem): boolean {
-  return canCustomizePermissions.value || isSelf(user)
-}
 
 const roleColorMap = computed(() => {
   const builtins: Record<string, string> = {
@@ -101,14 +81,6 @@ async function fetchData() {
 
 onMounted(fetchData)
 
-function isSelf(user: UserListItem): boolean {
-  return userStore.userInfo?.id === user.id
-}
-
-function isBuiltInAdmin(user: UserListItem): boolean {
-  return user.id === '1' || user.role === 'admin'
-}
-
 function goCreate() {
   router.push({ name: 'RBACUserCreate' })
 }
@@ -149,7 +121,7 @@ function removeUser(user: UserListItem) {
   <div class="page-main">
     <PageHeader title="用户管理" subtitle="管理系统用户账号与 RBAC3 角色分配">
       <template #actions>
-        <a-button v-if="canCreate" type="primary" @click="goCreate">
+        <a-button v-perm="'users:create:write'" type="primary" @click="goCreate">
           <template #icon><IconPlus /></template>
           添加账号
         </a-button>
@@ -178,7 +150,9 @@ function removeUser(user: UserListItem) {
             >
               {{ role.display_name }}
             </a-tag>
-            <span v-if="record.roles.length === 0" class="text-[13px] text-[#86868b]">未分配角色</span>
+            <span v-if="record.roles.length === 0" class="text-[13px] text-[#86868b]"
+              >未分配角色</span
+            >
           </div>
         </template>
         <template #createdAt="{ record }">
@@ -186,17 +160,24 @@ function removeUser(user: UserListItem) {
         </template>
         <template #actions="{ record }">
           <a-space :size="2">
-            <a-tooltip v-if="canViewPermissions(record)" content="自定义权限">
+            <a-tooltip content="自定义权限">
               <a-button
+                v-perm="{
+                  key: 'users:custom_permissions:read || isSelf(user_id)',
+                  ctx: { user_id: record.id },
+                }"
                 type="text"
-                size="small"
                 @click="goPermissions(record)"
               >
                 <template #icon><IconEye /></template>
               </a-button>
             </a-tooltip>
-            <a-tooltip v-if="canChangePassword" content="修改密码">
+            <a-tooltip content="修改密码">
               <a-button
+                v-perm="{
+                  key: 'users:change_password:read || isSelf(user_id)',
+                  ctx: { user_id: record.id },
+                }"
                 type="text"
                 size="small"
                 @click="goPassword(record)"
@@ -204,8 +185,9 @@ function removeUser(user: UserListItem) {
                 <template #icon><IconLock /></template>
               </a-button>
             </a-tooltip>
-            <a-tooltip v-if="canUpdate" content="编辑用户">
+            <a-tooltip content="编辑用户">
               <a-button
+                v-perm="{ key: 'users:update:read||isSelf(user_id)', ctx: { user_id: record.id } }"
                 type="text"
                 size="small"
                 @click="goEdit(record)"
@@ -213,13 +195,17 @@ function removeUser(user: UserListItem) {
                 <template #icon><IconEdit /></template>
               </a-button>
             </a-tooltip>
-            <a-popconfirm
-              v-if="canDelete && !isBuiltInAdmin(record) && !isSelf(record)"
-              content="确定要删除该用户吗？"
-              @ok="removeUser(record)"
-            >
+            <a-popconfirm content="确定要删除该用户吗？" @ok="removeUser(record)">
               <a-tooltip content="删除">
-                <a-button type="text" status="danger" size="small">
+                <a-button
+                  v-perm="{
+                    key: 'users:delete:write & !isSelf(user_id) & !isBuiltInAdmin(user_id)',
+                    ctx: { user_id: record.id },
+                  }"
+                  type="text"
+                  status="danger"
+                  size="small"
+                >
                   <template #icon><IconDelete /></template>
                 </a-button>
               </a-tooltip>

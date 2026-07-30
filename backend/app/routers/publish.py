@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.deps import require_permission
+from app.core.deps import get_current_user, RequiresPermissions, PermAPIRoute
 from app.database import get_db
 from app.models.publish_task import PublishTask
 from app.models.user import User
@@ -12,16 +12,17 @@ from app.schemas.publish import PublishStatusResponse, PublishTaskCreate, Publis
 from app.services.publish_service import create_publish_task, get_publish_stats, retry_task
 from typing import Optional
 
-router = APIRouter(prefix="/api/publish", tags=["发布管理"])
+router = APIRouter(prefix="/api/publish", tags=["发布管理"], route_class=PermAPIRoute)
 
 
 @router.get("/tasks", response_model=list[PublishTaskResponse])
+@RequiresPermissions("publish:read")
 async def list_tasks(
     status_filter: Optional[str] = Query(None, alias="status"),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_permission("publish:read", "read")),
+    current_user: User = Depends(get_current_user),
 ):
     query = (
         select(PublishTask)
@@ -37,20 +38,20 @@ async def list_tasks(
 
 
 @router.post("/tasks", response_model=PublishTaskResponse, status_code=status.HTTP_201_CREATED)
+@RequiresPermissions("publish:create:write")
 async def create_task(
     request: PublishTaskCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_permission("publish:create:write", "write")),
 ):
     task = await create_publish_task(db, request)
     return task
 
 
 @router.get("/tasks/{task_id}", response_model=PublishTaskResponse)
+@RequiresPermissions("publish:read")
 async def get_task(
     task_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_permission("publish:read", "read")),
 ):
     result = await db.execute(select(PublishTask).where(PublishTask.id == task_id))
     task = result.scalar_one_or_none()
@@ -60,10 +61,10 @@ async def get_task(
 
 
 @router.post("/tasks/{task_id}/retry", response_model=PublishTaskResponse)
+@RequiresPermissions("publish:retry:write")
 async def retry_publish_task(
     task_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_permission("publish:retry:write", "write")),
 ):
     task = await retry_task(db, task_id)
     if not task:
@@ -72,8 +73,8 @@ async def retry_publish_task(
 
 
 @router.get("/stats", response_model=PublishStatusResponse)
+@RequiresPermissions("publish:read")
 async def publish_stats(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_permission("publish:read", "read")),
 ):
     return await get_publish_stats(db)

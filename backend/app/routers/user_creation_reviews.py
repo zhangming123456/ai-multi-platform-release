@@ -8,13 +8,13 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.deps import get_current_user, require_permission
+from app.core.deps import get_current_user, PermAPIRoute, RequiresPermissions
 from app.core.security import hash_password
 from app.database import get_db
 from app.models.user import User
 from app.models.user_creation_request import UserCreationRequest, UserCreationStatus
 
-router = APIRouter(prefix="/api/user-creation-reviews", tags=["用户创建审核"])
+router = APIRouter(prefix="/api/user-creation-reviews", tags=["用户创建审核"], route_class=PermAPIRoute)
 
 
 class UserCreationRequestResponse(BaseModel):
@@ -39,9 +39,9 @@ class RejectRequest(BaseModel):
 
 
 @router.get("/", response_model=list[UserCreationRequestResponse])
+@RequiresPermissions("review:read")
 async def list_user_creation_requests(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_permission("review:read")),
 ):
     result = await db.execute(
         select(
@@ -86,10 +86,11 @@ async def list_user_creation_requests(
 
 
 @router.post("/{request_id}/approve", response_model=UserCreationRequestResponse)
+@RequiresPermissions("review:approve:write")
 async def approve_user_creation(
     request_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_permission("review:approve:write", "write")),
+    current_user: User = Depends(get_current_user),
 ):
     result = await db.execute(
         select(UserCreationRequest).where(UserCreationRequest.id == request_id)
@@ -144,11 +145,12 @@ async def approve_user_creation(
 
 
 @router.post("/{request_id}/reject", response_model=UserCreationRequestResponse)
+@RequiresPermissions("review:reject:write")
 async def reject_user_creation(
     request_id: str,
     body: RejectRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_permission("review:reject:write", "write")),
+    current_user: User = Depends(get_current_user),
 ):
     result = await db.execute(
         select(UserCreationRequest).where(UserCreationRequest.id == request_id)

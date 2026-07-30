@@ -7,14 +7,14 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.deps import require_permission
+from app.core.deps import get_current_user, RequiresPermissions, PermAPIRoute
 from app.database import get_db
 from app.models.account import Account, AccountStatus
 from app.models.content import Content
 from app.models.publish_task import PublishTask, PublishTaskStatus
 from app.models.user import User
 
-router = APIRouter(prefix="/api/dashboard", tags=["仪表盘"])
+router = APIRouter(prefix="/api/dashboard", tags=["仪表盘"], route_class=PermAPIRoute)
 
 PLATFORM_NAMES = {
     "wechat_mp": "微信公众号",
@@ -51,9 +51,10 @@ class DashboardStats(BaseModel):
 
 
 @router.get("/stats", response_model=DashboardStats)
+@RequiresPermissions("dashboard:read")
 async def get_dashboard_stats(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_permission("dashboard:read", "read")),
+    current_user: User = Depends(get_current_user),
 ):
     # 总账号数
     total_accounts_result = await db.execute(

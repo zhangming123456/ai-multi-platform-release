@@ -12,12 +12,16 @@
 | /api/models | routers/models.py | 可用模型列表查询 |
 | /api/publish | routers/publish.py | 发布任务管理 |
 | /api/templates | routers/templates.py | 模板管理 |
-| /api/roles | routers/roles.py | 角色管理（内置+自定义） |
-| /api/permissions | routers/permissions.py | 角色权限与用户权限管理 |
-| /api/users | routers/users.py | 用户管理（管理员功能） |
 | /api/notifications | routers/notifications.py | 通知消息管理 |
 | /api/reviews | routers/reviews.py | 内容审核管理 |
 | /api/db-changes | routers/db_changes.py | 数据库变更请求管理 |
+| /api/user-creation-reviews | routers/user_creation_reviews.py | 用户创建审核 |
+| /api/db | routers/db.py | SQL 执行与历史 |
+| **/api/v2** | **RBAC3 中台** | **权限中台 v2 API** |
+| /api/v2 | routers/rbac_users.py | RBAC3 用户管理 |
+| /api/v2 | routers/rbac_roles.py | RBAC3 角色管理 |
+| /api/v2 | routers/rbac_permissions.py | RBAC3 资源与权限管理 |
+| /api/v2 | routers/rbac_constraints.py | RBAC3 约束管理 |
 
 ---
 
@@ -342,3 +346,204 @@ interface NotificationResponse {
 | GET | /api/db-changes/ | 获取变更请求列表 | 是（管理员） |
 | POST | /api/db-changes/ | 创建变更请求 | 是（管理员） |
 | PUT | /api/db-changes/{change_id} | 审批/拒绝变更 | 是（管理员） |
+
+---
+
+## RBAC3 权限中台（/api/v2）
+
+### 用户管理
+
+| 方法 | 路径 | 说明 | 鉴权 |
+|------|------|------|------|
+| GET | /api/v2/users | 用户列表（含角色分配） | 是 |
+| POST | /api/v2/users | 创建用户 | 是 |
+| GET | /api/v2/users/{id} | 用户详情 | 是 |
+| PUT | /api/v2/users/{id} | 更新用户 | 是 |
+| PUT | /api/v2/users/{id}/password | 修改密码 | 是 |
+| PUT | /api/v2/users/{id}/roles | 分配/替换角色 | 是 |
+| GET | /api/v2/users/{id}/permissions | 用户有效权限 | 是 |
+| GET | /api/v2/me/permissions | 当前用户有效权限（{key: name}） | 是 |
+
+```typescript
+interface UserListItem {
+  id: string
+  email: string
+  username: string
+  nickname: string
+  role: string
+  avatar_url?: string | null
+  created_at: string
+  roles: RoleAssignmentInfo[]
+}
+
+interface RoleAssignmentInfo {
+  id: string
+  name: string
+  display_name: string
+  role_type: string
+}
+
+interface CreateUserRequest {
+  username: string
+  password: string
+  nickname: string
+  email?: string
+  avatar_url?: string
+  role?: string
+  role_ids: string[]
+}
+
+interface UpdateUserRequest {
+  nickname?: string
+  email?: string
+  avatar_url?: string
+  role_ids?: string[]
+}
+
+interface UpdateUserPasswordRequest {
+  new_password: string
+  old_password?: string
+}
+
+interface UpdateUserRolesRequest {
+  role_ids: string[]
+}
+```
+
+### 角色管理
+
+| 方法 | 路径 | 说明 | 鉴权 |
+|------|------|------|------|
+| GET | /api/v2/roles | 角色列表 | 是 |
+| POST | /api/v2/roles | 创建角色 | 是 |
+| PUT | /api/v2/roles/{id} | 更新角色 | 是 |
+| DELETE | /api/v2/roles/{id} | 删除角色 | 是 |
+| POST | /api/v2/roles/{id}/parents | 添加父角色 | 是 |
+| DELETE | /api/v2/roles/{id}/parents/{parent_id} | 移除父角色 | 是 |
+| GET | /api/v2/roles/{id}/permissions | 角色有效权限 | 是 |
+| GET | /api/v2/roles/{id}/permissions/direct | 角色直接权限 | 是 |
+| GET | /api/v2/roles/{id}/permissions/detail | 继承 + 直接权限（含 grant_type） | 是 |
+| PUT | /api/v2/roles/{id}/permissions | 更新直接权限 | 是 |
+
+```typescript
+interface RoleDef {
+  id: string
+  name: string
+  display_name: string
+  description?: string
+  role_type: 'admin' | 'other'
+  is_super_admin: boolean
+  is_builtin: boolean
+  created_at: string
+  updated_at: string
+}
+
+interface RolePermissionItem {
+  id: string
+  key: string
+  name: string
+  grant_type: 'direct' | 'inherited'
+}
+```
+
+内置角色定义：
+1. **超级管理员 (admin)** — 系统最高权限，ID=1，不可编辑，`role_type: "admin"`
+2. **管理员 (manager)** — 管理系统配置，`role_type: "admin"`
+3. **运营者 (operator)** — 日常内容运营，`role_type: "other"`
+4. **审核员 (reviewer)** — 内容审核，`role_type: "other"`
+
+### 资源与权限管理
+
+| 方法 | 路径 | 说明 | 鉴权 |
+|------|------|------|------|
+| GET | /api/v2/resources | 资源树 | 是 |
+| POST | /api/v2/resources | 新增资源 | 是 |
+| PUT | /api/v2/resources/{id} | 更新资源 | 是 |
+| DELETE | /api/v2/resources/{id} | 删除资源 | 是 |
+| GET | /api/v2/permissions | 权限列表 | 是 |
+| GET | /api/v2/permission-enums | 权限枚举（key + name + description） | 是 |
+| GET | /api/v2/permission-pages | 页面权限枚举 | 是 |
+| POST | /api/v2/permissions | 新增权限 | 是 |
+| PUT | /api/v2/permissions/{id} | 更新权限 | 是 |
+| DELETE | /api/v2/permissions/{id} | 删除权限 | 是 |
+
+```typescript
+interface ResourceNode {
+  id: string
+  key: string
+  name: string
+  description?: string
+  parent_id?: string
+  is_active: boolean
+  created_at: string
+  children: ResourceNode[]
+}
+
+interface PermissionEnumItem {
+  id: string
+  key: string
+  name: string
+  description?: string
+}
+```
+
+**权限 key 格式规范**：
+
+| 类型 | 格式 | 示例 | 说明 |
+|------|------|------|------|
+| 页面权限 | `{name}:read` | `dashboard:read`、`content:read` | 2 段式，控制页面/菜单可见性 |
+| 操作权限 | `{name}:{operation}:{read\|write}` | `content:create:write`、`users:update:read` | 3 段式，控制具体操作 |
+
+### 约束管理
+
+| 方法 | 路径 | 说明 | 鉴权 |
+|------|------|------|------|
+| GET | /api/v2/constraints | 约束列表 | 是 |
+| POST | /api/v2/constraints | 创建约束 | 是 |
+| PUT | /api/v2/constraints/{id} | 更新约束 | 是 |
+| DELETE | /api/v2/constraints/{id} | 删除约束 | 是 |
+
+```typescript
+interface ConstraintItem {
+  id: string
+  name: string
+  description?: string
+  constraint_type: 'mutual_exclusive' | 'prerequisite' | 'cardinality'
+  config: Record<string, any>
+  is_active: boolean
+  created_at: string
+}
+```
+
+约束类型说明：
+- `mutual_exclusive`：互斥角色，同一用户不能同时拥有
+- `prerequisite`：先决角色，拥有目标角色前必须先拥有先决角色
+- `cardinality`：基数约束，限制某角色的最大分配用户数
+
+### 认证接口扩展
+
+`GET /api/auth/me` 返回当前用户信息、角色列表和项目全部权限枚举：
+
+```json
+{
+  "id": "1",
+  "username": "admin",
+  "nickname": "超级管理员",
+  "role": "admin",
+  "roles": [
+    { "id": "role-uuid-1", "name": "admin", "display_name": "超级管理员" }
+  ],
+  "permissions": {
+    "dashboard:read": "仪表盘",
+    "content:read": "内容列表",
+    "users:create:write": "创建用户"
+  }
+}
+```
+
+- `roles`：用户当前分配的角色列表
+- `permissions`：项目所有权限枚举 `{ key: name }`，用于前端展示权限名称
+
+用户有效权限由 `GET /api/v2/me/permissions` 获取（返回 `{ key: name }`），后端已内置交集计算：
+- 无自定义权限覆盖 → 返回角色权限的全部
+- 有自定义权限覆盖 → 返回角色权限 ∩ 自定义权限（仅两者共有的权限生效）

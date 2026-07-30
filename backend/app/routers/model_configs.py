@@ -6,12 +6,12 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.deps import require_permission
+from app.core.deps import PermAPIRoute, RequiresPermissions
 from app.database import get_db
 from app.models.model_config import ModelConfig
 from app.models.user import User
 
-router = APIRouter(prefix="/api/model-configs", tags=["模型配置"])
+router = APIRouter(prefix="/api/model-configs", tags=["模型配置"], route_class=PermAPIRoute)
 
 
 class ModelConfigCreate(BaseModel):
@@ -86,9 +86,9 @@ class ModelConfigListResponse(BaseModel):
 
 
 @router.get("", response_model=ModelConfigListResponse)
+@RequiresPermissions("token_plan:read")
 async def list_model_configs(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_permission("token_plan:read", "read")),
 ):
     result = await db.execute(select(ModelConfig).order_by(ModelConfig.created_at))
     configs = result.scalars().all()
@@ -96,10 +96,10 @@ async def list_model_configs(
 
 
 @router.post("", response_model=ModelConfigResponse, status_code=status.HTTP_201_CREATED)
+@RequiresPermissions("model_config:create:write")
 async def create_model_config(
     request: ModelConfigCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_permission("model_config:create:write", "write")),
 ):
     config_id = request.id or f"plan-{int(__import__('time').time() * 1000)}"
     existing = await db.execute(select(ModelConfig).where(ModelConfig.id == config_id))
@@ -115,11 +115,11 @@ async def create_model_config(
 
 
 @router.put("/{config_id}", response_model=ModelConfigResponse)
+@RequiresPermissions("model_config:update:write")
 async def update_model_config(
     config_id: str,
     request: ModelConfigUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_permission("model_config:update:write", "write")),
 ):
     result = await db.execute(select(ModelConfig).where(ModelConfig.id == config_id))
     config = result.scalar_one_or_none()
@@ -135,10 +135,10 @@ async def update_model_config(
 
 
 @router.delete("/{config_id}", status_code=status.HTTP_204_NO_CONTENT)
+@RequiresPermissions("model_config:delete:write")
 async def delete_model_config(
     config_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_permission("model_config:delete:write", "write")),
 ):
     result = await db.execute(select(ModelConfig).where(ModelConfig.id == config_id))
     config = result.scalar_one_or_none()

@@ -5,6 +5,7 @@ import { IconLeft, IconLock, IconSafe } from '@arco-design/web-vue/es/icon'
 import { Message } from '@arco-design/web-vue'
 import PageHeader from '@/components/layout/PageHeader.vue'
 import { usePermissionStore } from '@/stores/permission'
+import { useUserStore } from '@/stores/user'
 import api from '@/utils/api'
 
 interface UserDetail {
@@ -29,6 +30,7 @@ const user = ref<UserDetail | null>(null)
 const newPassword = ref('')
 const oldPassword = ref('')
 const isDefaultPwd = ref(false)
+const isSelf = computed(() => useUserStore().userInfo?.id === userId)
 const canManageUsers = computed(() => permStore.hasPermission('users:change_password:write'))
 
 async function fetchUser() {

@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.deps import get_current_user, require_permission
+from app.core.deps import get_current_user, PermAPIRoute, RequiresPermissions
 from app.database import get_db
 from app.models.rbac_permission import RBACPermission
 from app.models.rbac_resource import RBACResource
@@ -17,9 +17,9 @@ from app.models.rbac_role_hierarchy import RBACRoleHierarchy
 from app.models.rbac_role_permission import RBACRolePermission
 from app.models.user import User
 from app.services.rbac_constraint_service import validate_role_hierarchy
-from app.services.rbac_service import get_role_ancestors, get_user_effective_permissions
+from app.services.rbac_service import get_role_ancestors, get_role_descendants, get_user_effective_permissions
 
-router = APIRouter(prefix="/api/v2", tags=["RBAC 角色管理"])
+router = APIRouter(prefix="/api/v2", tags=["RBAC 角色管理"], route_class=PermAPIRoute)
 
 
 class RoleRef(BaseModel):
@@ -42,6 +42,8 @@ class RoleListItem(BaseModel):
     updated_at: datetime
     parent_roles: list[RoleRef] = Field(default_factory=list)
     child_roles: list[RoleRef] = Field(default_factory=list)
+    all_ancestors: list[RoleRef] = Field(default_factory=list)
+    all_descendants: list[RoleRef] = Field(default_factory=list)
 
     model_config = {"from_attributes": True}
 
@@ -95,6 +97,8 @@ async def _build_role_item(
 ) -> RoleListItem:
     parent_roles: list[RoleRef] = []
     child_roles: list[RoleRef] = []
+    all_ancestors: list[RoleRef] = []
+    all_descendants: list[RoleRef] = []
 
     if include_relations:
         parents_result = await db.execute(
@@ -117,6 +121,12 @@ async def _build_role_item(
         )
         child_roles = [await _role_ref(r) for r in children_result.scalars().all()]
 
+        ancestors = await get_role_ancestors(role.id, db)
+        all_ancestors = [await _role_ref(r) for r in ancestors]
+
+        descendants = await get_role_descendants(role.id, db)
+        all_descendants = [await _role_ref(r) for r in descendants]
+
     return RoleListItem(
         id=role.id,
         name=role.name,
@@ -129,14 +139,16 @@ async def _build_role_item(
         updated_at=role.updated_at,
         parent_roles=parent_roles,
         child_roles=child_roles,
+        all_ancestors=all_ancestors,
+        all_descendants=all_descendants,
     )
 
 
 @router.get(
     "/roles",
     response_model=list[RoleListItem],
-    dependencies=[Depends(require_permission("roles:read", "read"))],
 )
+@RequiresPermissions("roles:read")
 async def list_roles(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -150,8 +162,8 @@ async def list_roles(
     "/roles",
     response_model=RoleDetailResponse,
     status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(require_permission("roles:manage:write", "write"))],
 )
+@RequiresPermissions("roles:manage:write")
 async def create_role(
     body: CreateRoleRequest,
     db: AsyncSession = Depends(get_db),
@@ -201,8 +213,8 @@ async def create_role(
 @router.get(
     "/roles/{role_id}",
     response_model=RoleDetailResponse,
-    dependencies=[Depends(require_permission("roles:read", "read"))],
 )
+@RequiresPermissions("roles:read")
 async def get_role(
     role_id: str,
     db: AsyncSession = Depends(get_db),
@@ -221,8 +233,8 @@ async def get_role(
 @router.put(
     "/roles/{role_id}",
     response_model=RoleDetailResponse,
-    dependencies=[Depends(require_permission("roles:manage:write", "write"))],
 )
+@RequiresPermissions("roles:manage:write")
 async def update_role(
     role_id: str,
     body: UpdateRoleRequest,
@@ -257,8 +269,8 @@ async def update_role(
 @router.delete(
     "/roles/{role_id}",
     status_code=status.HTTP_204_NO_CONTENT,
-    dependencies=[Depends(require_permission("roles:manage:write", "write"))],
 )
+@RequiresPermissions("roles:manage:write")
 async def delete_role(
     role_id: str,
     db: AsyncSession = Depends(get_db),
@@ -291,8 +303,8 @@ async def delete_role(
 @router.post(
     "/roles/{role_id}/parents",
     response_model=RoleDetailResponse,
-    dependencies=[Depends(require_permission("roles:manage:write", "write"))],
 )
+@RequiresPermissions("roles:manage:write")
 async def add_parent_role(
     role_id: str,
     body: RoleRef,
@@ -348,8 +360,8 @@ async def add_parent_role(
 @router.delete(
     "/roles/{role_id}/parents/{parent_id}",
     response_model=RoleDetailResponse,
-    dependencies=[Depends(require_permission("roles:manage:write", "write"))],
 )
+@RequiresPermissions("roles:manage:write")
 async def remove_parent_role(
     role_id: str,
     parent_id: str,
@@ -432,8 +444,8 @@ async def get_role_permissions(
 @router.get(
     "/roles/{role_id}/permissions/direct",
     response_model=list[RolePermissionItem],
-    dependencies=[Depends(require_permission("roles:read", "read"))],
 )
+@RequiresPermissions("roles:read")
 async def get_role_direct_permissions(
     role_id: str,
     db: AsyncSession = Depends(get_db),
@@ -465,8 +477,8 @@ async def get_role_direct_permissions(
 @router.get(
     "/roles/{role_id}/permissions/detail",
     response_model=list[RolePermissionItem],
-    dependencies=[Depends(require_permission("roles:read", "read"))],
 )
+@RequiresPermissions("roles:read")
 async def get_role_permissions_detail(
     role_id: str,
     db: AsyncSession = Depends(get_db),
@@ -507,8 +519,8 @@ async def get_role_permissions_detail(
 @router.put(
     "/roles/{role_id}/permissions",
     response_model=list[RolePermissionItem],
-    dependencies=[Depends(require_permission("roles:manage:write", "write"))],
 )
+@RequiresPermissions("roles:manage:write")
 async def update_role_permissions(
     role_id: str,
     body: UpdateRolePermissionsRequest,
@@ -556,3 +568,250 @@ async def update_role_permissions(
 
     await db.commit()
     return await get_role_direct_permissions(role_id, db, current_user)
+
+
+@router.get(
+    "/roles/{role_id}/permissions/preview/{parent_role_id}",
+    response_model=dict[str, str],
+)
+@RequiresPermissions("roles:read")
+async def preview_inherited_permissions(
+    role_id: str,
+    parent_role_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    role = await db.execute(select(RBACRole).where(RBACRole.id == role_id))
+    if role.scalar_one_or_none() is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="当前角色不存在",
+        )
+
+    parent = await db.execute(select(RBACRole).where(RBACRole.id == parent_role_id))
+    if parent.scalar_one_or_none() is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="父角色不存在",
+        )
+
+    if not await validate_role_hierarchy(parent_role_id, role_id, db):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="添加此父角色会形成循环继承",
+        )
+
+    parent_ancestors = await get_role_ancestors(parent_role_id, db)
+    all_parent_role_ids = {parent_role_id} | {a.id for a in parent_ancestors}
+
+    result = await db.execute(
+        select(RBACPermission.key, RBACResource.name)
+        .join(RBACRolePermission, RBACRolePermission.permission_id == RBACPermission.id)
+        .join(RBACResource, RBACPermission.resource_id == RBACResource.id)
+        .where(
+            RBACRolePermission.role_id.in_(all_parent_role_ids),
+            RBACPermission.is_active.is_(True),
+        )
+    )
+
+    inherited: dict[str, str] = {}
+    for key, name in result.all():
+        inherited[key] = name
+
+    return inherited
+
+
+class InheritanceRoleRef(BaseModel):
+    id: str
+    name: str
+    display_name: str
+    role_type: str
+    is_super_admin: bool
+    is_builtin: bool
+
+    model_config = {"from_attributes": True}
+
+
+class InheritanceNode(BaseModel):
+    role: InheritanceRoleRef
+    direct_permissions: dict[str, str] = Field(default_factory=dict)
+    level: int = 0
+
+
+class InheritanceResponse(BaseModel):
+    role: InheritanceRoleRef
+    direct_permissions: dict[str, str] = Field(default_factory=dict)
+    ancestor_chain: list[InheritanceNode] = Field(default_factory=list)
+    descendant_tree: list[InheritanceNode] = Field(default_factory=list)
+
+
+async def _build_ancestor_chain(
+    role_id: str,
+    db: AsyncSession,
+) -> list[InheritanceNode]:
+    ancestors = await get_role_ancestors(role_id, db)
+    if not ancestors:
+        return []
+
+    ancestor_ids = {a.id for a in ancestors}
+    parent_map: dict[str, list[str]] = {}
+    for a in ancestors:
+        parent_map[a.id] = []
+
+    h_result = await db.execute(
+        select(RBACRoleHierarchy).where(
+            RBACRoleHierarchy.child_role_id.in_(ancestor_ids),
+        )
+    )
+    for h in h_result.scalars().all():
+        if h.parent_role_id in ancestor_ids:
+            parent_map[h.child_role_id].append(h.parent_role_id)
+
+    def _depth(rid: str, visited: set[str]) -> int:
+        if rid in visited:
+            return 0
+        visited.add(rid)
+        max_depth = 0
+        for pid in parent_map.get(rid, []):
+            d = _depth(pid, visited)
+            if d > max_depth:
+                max_depth = d
+        return max_depth + 1
+
+    ancestor_depths: dict[str, int] = {}
+    for a in ancestors:
+        ancestor_depths[a.id] = _depth(a.id, set())
+
+    sorted_ancestors = sorted(ancestors, key=lambda a: ancestor_depths.get(a.id, 0))
+
+    chain: list[InheritanceNode] = []
+    for a in sorted_ancestors:
+        perms = await _get_role_direct_permissions_dict(a.id, db)
+        chain.append(InheritanceNode(
+            role=InheritanceRoleRef(
+                id=a.id,
+                name=a.name,
+                display_name=a.display_name,
+                role_type=a.role_type,
+                is_super_admin=a.is_super_admin,
+                is_builtin=a.is_builtin,
+            ),
+            direct_permissions=perms,
+            level=ancestor_depths.get(a.id, 0),
+        ))
+    return chain
+
+
+async def _build_descendant_tree(
+    role_id: str,
+    db: AsyncSession,
+) -> list[InheritanceNode]:
+    descendants = await get_role_descendants(role_id, db)
+    if not descendants:
+        return []
+
+    descendant_ids = {d.id for d in descendants}
+    parent_map: dict[str, list[str]] = {}
+    for d in descendants:
+        parent_map[d.id] = []
+
+    h_result = await db.execute(
+        select(RBACRoleHierarchy).where(
+            RBACRoleHierarchy.child_role_id.in_(descendant_ids),
+        )
+    )
+    for h in h_result.scalars().all():
+        if h.parent_role_id in descendant_ids or h.parent_role_id == role_id:
+            parent_map[h.child_role_id].append(h.parent_role_id)
+
+    def _depth(rid: str, visited: set[str]) -> int:
+        if rid in visited:
+            return 0
+        visited.add(rid)
+        min_depth: int | None = None
+        for pid in parent_map.get(rid, []):
+            if pid == role_id:
+                return 1
+            d = _depth(pid, visited)
+            if d > 0 and (min_depth is None or d < min_depth):
+                min_depth = d
+        return (min_depth or 0) + 1 if min_depth is not None else 1
+
+    descendant_depths: dict[str, int] = {}
+    for d in descendants:
+        descendant_depths[d.id] = _depth(d.id, set())
+
+    sorted_descendants = sorted(descendants, key=lambda d: descendant_depths.get(d.id, 99))
+
+    tree: list[InheritanceNode] = []
+    for d in sorted_descendants:
+        perms = await _get_role_direct_permissions_dict(d.id, db)
+        tree.append(InheritanceNode(
+            role=InheritanceRoleRef(
+                id=d.id,
+                name=d.name,
+                display_name=d.display_name,
+                role_type=d.role_type,
+                is_super_admin=d.is_super_admin,
+                is_builtin=d.is_builtin,
+            ),
+            direct_permissions=perms,
+            level=descendant_depths.get(d.id, 1),
+        ))
+    return tree
+
+
+async def _get_role_direct_permissions_dict(
+    role_id: str,
+    db: AsyncSession,
+) -> dict[str, str]:
+    result = await db.execute(
+        select(RBACPermission.key, RBACResource.name)
+        .join(RBACRolePermission, RBACRolePermission.permission_id == RBACPermission.id)
+        .join(RBACResource, RBACPermission.resource_id == RBACResource.id)
+        .where(
+            RBACRolePermission.role_id == role_id,
+            RBACPermission.is_active.is_(True),
+        )
+    )
+    perms: dict[str, str] = {}
+    for key, name in result.all():
+        perms[key] = name
+    return perms
+
+
+@router.get(
+    "/roles/{role_id}/inheritance",
+    response_model=InheritanceResponse,
+)
+@RequiresPermissions("roles:read")
+async def get_role_inheritance(
+    role_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    role = await db.execute(select(RBACRole).where(RBACRole.id == role_id))
+    role_obj = role.scalar_one_or_none()
+    if role_obj is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="角色不存在",
+        )
+
+    ancestor_chain = await _build_ancestor_chain(role_id, db)
+    descendant_tree = await _build_descendant_tree(role_id, db)
+    direct_perms = await _get_role_direct_permissions_dict(role_id, db)
+
+    return InheritanceResponse(
+        role=InheritanceRoleRef(
+            id=role_obj.id,
+            name=role_obj.name,
+            display_name=role_obj.display_name,
+            role_type=role_obj.role_type,
+            is_super_admin=role_obj.is_super_admin,
+            is_builtin=role_obj.is_builtin,
+        ),
+        direct_permissions=direct_perms,
+        ancestor_chain=ancestor_chain,
+        descendant_tree=descendant_tree,
+    )

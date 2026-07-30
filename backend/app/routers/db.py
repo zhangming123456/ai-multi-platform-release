@@ -7,12 +7,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 from sqlalchemy import func, select, text
 
-from app.core.deps import require_permission
+from app.core.deps import get_current_user, PermAPIRoute, RequiresPermissions
 from app.database import async_session_factory
 from app.models.sql_history import SqlHistory
 from app.models.user import User
 
-router = APIRouter(prefix="/api/db", tags=["数据库管理"])
+router = APIRouter(prefix="/api/db", tags=["数据库管理"], route_class=PermAPIRoute)
 
 
 class SqlRequest(BaseModel):
@@ -97,10 +97,10 @@ def _sort_key(value: Any) -> str:
 
 
 @router.get("/history", response_model=SqlHistoryResponse)
+@RequiresPermissions("db_history:view:read")
 async def list_history(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=200),
-    current_user: User = Depends(require_permission("db_history:read:read", "read")),
 ):
     async with async_session_factory() as session:
         count_result = await session.execute(
@@ -138,9 +138,10 @@ async def list_history(
 
 
 @router.post("/execute", response_model=SqlResponse)
+@RequiresPermissions("db:execute:write")
 async def execute_sql(
     request: SqlRequest,
-    current_user: User = Depends(require_permission("db:execute:write", "write")),
+    current_user: User = Depends(get_current_user),
 ):
     sql = request.sql.strip()
     if not sql:
