@@ -183,8 +183,9 @@ function updateOpenKeys() {
   menuItems.value.forEach((item) => {
     if (isGroup(item)) {
       const matched = item.children.some((child) => {
-        if (child.path === '/') return route.path === '/'
-        return route.path.startsWith(child.path)
+        if (route.path === child.path) return true
+        if (child.path !== '/' && route.path.startsWith(child.path + '/')) return true
+        return false
       })
       if (matched) open.push(item.key)
     }
