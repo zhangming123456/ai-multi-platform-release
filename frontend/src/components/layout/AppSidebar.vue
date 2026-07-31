@@ -160,11 +160,20 @@ const allEntries = computed<MenuEntry[]>(() => {
 })
 
 const selectedKey = computed(() => {
-  const match = allEntries.value.find((item) => {
-    if (item.path === '/') return route.path === '/'
-    return route.path.startsWith(item.path)
-  })
-  return match ? match.key : 'dashboard'
+  // 优先精确匹配，其次按路径长度降序匹配（最长优先）
+  const sorted = [...allEntries.value].sort((a, b) => b.path.length - a.path.length)
+  for (const item of sorted) {
+    if (route.path === item.path) return item.key
+  }
+  for (const item of sorted) {
+    if (item.path !== '/' && route.path.startsWith(item.path + '/')) return item.key
+  }
+  // 根路径特殊处理
+  if (route.path === '/') {
+    const root = allEntries.value.find((item) => item.path === '/')
+    return root ? root.key : 'dashboard'
+  }
+  return 'dashboard'
 })
 
 const openKeys = ref<string[]>([])
