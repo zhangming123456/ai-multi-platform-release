@@ -74,15 +74,22 @@
 | /developer/database | 数据库控制台 | SQL 执行与历史记录 | db:read |
 | /rbac/users | 用户管理 | 用户列表、角色分配入口 | users:read |
 | /rbac/users/create | 创建用户 | 创建新用户（管理员直接创建/非管理员走审核） | users:create:write |
-| /rbac/users/:id/edit | 编辑用户 | 编辑用户基本信息和角色 | users:update:write |
-| /rbac/users/:id/password | 修改密码 | 修改用户密码 | users:change_password:write |
-| /rbac/users/:id/permissions | 自定义权限 | 用户级权限覆盖配置 | users:custom_permissions:write |
+| /rbac/users/:id/edit | 编辑用户 | 编辑用户基本信息和角色 | users:update:read \|\| isSelf(id) |
+| /rbac/users/:id/password | 修改密码 | 修改用户密码 | users:change_password:write \|\| isSelf(id) |
+| /rbac/users/:id/permissions | 自定义权限 | 用户级权限覆盖配置 | users:custom_permissions:read \|\| isSelf(id) |
 | /rbac/roles | 角色管理 | 角色 CRUD、父子关系配置 | roles:read |
 | /rbac/permissions | 权限管理 | 按资源树配置角色权限 | permissions:read |
-| /rbac/permissions/enum | 权限字典管理 | 超级管理员专用：权限枚举编辑 | permissions:read |
+| /rbac/permissions/enum | 权限字典管理 | 超级管理员专用：权限枚举编辑 | permissions:manage:read |
+| /rbac/permissions/enum/create | 新增权限字典 | 创建新的资源与权限枚举 | permissions:manage:write |
+| /rbac/permissions/enum/edit/:resourceId | 编辑权限字典 | 编辑指定资源的权限枚举 | permissions:manage:write |
 | /rbac/constraints | 约束管理 | 互斥/先决/基数约束 | constraints:read |
 | /profile | 个人中心 | 当前用户信息查看与编辑 | 登录即可 |
 | /403 | 无权限页 | 权限不足提示页 | 无条件放行 |
+
+> **权限表达式说明**：部分路由的 `permKey` 使用权限表达式而非单一权限 key（如 `users:update:read || isSelf(id)`）。表达式支持以下运算符与内置函数：
+> - 运算符：`||`（或）、`&`（与）、`!`（非）、`()`（分组）
+> - 内置函数：`isSelf(id)`（是否本人）、`isAdmin()`（是否管理员）、`isSuperAdmin()`、`isBuiltInAdmin(id)`、`isOwnAccount(account)`、`isOwnContent(content)`、`hasSameRole(target_user)` 等
+> - 路由守卫在 `hasPerm` 中将 `to.query` 与 `to.params` 合并为上下文传入 `permStore.hasPermission(keyOrExpr, ctx)`，由前端表达式解析器求值；后端 `require_permission` 通过 `is_expression()` 判断后调用 `evaluate_permission` 求值。
 
 ## 3. 核心流程
 
@@ -172,6 +179,10 @@ flowchart TD
 
 - 多角色 JWT 认证与基于权限表达式的路由鉴权守卫
 - RBAC3 权限中台（角色继承、约束、权限表达式、用户自定义权限覆盖）
+- 权限表达式 DSL（前后端统一的 `||`、`&`、`!`、`()` 运算符 + isSelf/isAdmin 等内置函数，前端 `utils/permExpression.ts` + 后端 `services/perm_expression.py`）
+- 权限字典编辑页（`/rbac/permissions/enum/create` 与 `/rbac/permissions/enum/edit/:resourceId`，资源与权限枚举的增删改）
+- 角色继承关系可视化（`RoleInheritanceTree.vue` 组件 + `/api/v2/roles/{id}/inheritance` 接口，展示祖先链与后代树及各层级直接权限）
+- 权限覆盖预览（`/api/v2/roles/{id}/permissions/preview/{parent_role_id}` 预览添加父角色后继承的权限）
 - 仪表盘实时聚合统计（账号数、发布数、待处理任务、AI 生成次数）
 - 平台账号 CRUD + 状态检测（微信公众号、小红书、抖音、视频号）
 - 内容 AI 生成 + 列表管理

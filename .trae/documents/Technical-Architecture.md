@@ -60,19 +60,21 @@ flowchart TB
 
 | 层级 | 技术选型 |
 |------|----------|
-| **前端框架** | Vue 3 + TypeScript + Vite 8 |
-| **UI 组件库** | Arco Design Vue + 自定义组件 |
-| **状态管理** | Pinia |
-| **HTTP 客户端** | Axios（JWT 拦截器 + 401 自动跳转） |
+| **前端框架** | Vue 3.5+ + TypeScript 6.0 + Vite 8.1.0 |
+| **UI 组件库** | Arco Design Vue 2.58 + Tailwind CSS v4（Vite 插件模式）+ Sass |
+| **状态管理** | Pinia 4.0 |
+| **HTTP 客户端** | Axios 1.18（JWT 拦截器 + 401 自动跳转） |
+| **前端工具库** | lodash-es、dayjs（时区插件）、lucide-vue-next（图标） |
 | **后端框架** | Python 3.11+ / FastAPI |
 | **ORM** | SQLAlchemy 2.0（异步模式）+ Alembic |
-| **数据库** | SQLite（开发）→ PostgreSQL（生产） |
+| **数据库** | SQLite + aiosqlite（开发）→ PostgreSQL（生产） |
 | **数据库 ID 规范** | 所有表主键使用 UUID `VARCHAR(36)`，超级管理员用户 ID 固定为 `"1"` |
 | **任务队列** | Celery + Redis |
 | **缓存** | Redis |
 | **浏览器自动化** | Playwright |
 | **AI 接入** | OpenAI 兼容 API（DeepSeek / OpenAI / Moonshot / 智谱 AI / 自定义） |
-| **权限模型** | RBAC3（角色继承 + 约束 + 会话级授权） |
+| **权限模型** | RBAC3（角色继承 + 约束 + 权限表达式 DSL + 用户级权限覆盖） |
+| **权限注解** | `PermAPIRoute` + `@RequiresPermissions()` 装饰器模式 |
 | **容器化** | Docker + Docker Compose |
 
 ## 3. 前端路由定义
@@ -80,34 +82,39 @@ flowchart TB
 | 路由 | 名称 | 组件 | 鉴权 | 说明 |
 |------|------|------|------|------|
 | /login | Login | Login.vue | 公开 | 管理员登录页 |
-| / | Dashboard | Dashboard.vue | 需鉴权 | 仪表盘（数据概览） |
-| /accounts | Accounts | Accounts.vue | 需鉴权 | 平台账号管理 |
-| /content | ContentList | ContentList.vue | 需鉴权 | 内容列表 |
-| /content/create | ContentCreate | ContentCreate.vue | 需鉴权 | AI 内容生成 |
-| /publish | Publish | Publish.vue | 需鉴权 | 发布管理中心 |
-| /templates | Templates | Templates.vue | 需鉴权 | 模板中心 |
-| /settings/token-plan | TokenPlan | TokenPlan.vue | 需鉴权 | AI 模型配置 |
-| /developer/docs | ApiDocs | ApiDocs.vue | 需鉴权 | Swagger API 文档 |
-| /developer/database | DatabaseConsole | DatabaseConsole.vue | 需鉴权 | 数据库控制台 |
-| /review | Review | Review.vue | 需鉴权 | 内容审核 |
-| /sql-review | SqlReview | SqlReview.vue | 需鉴权 | SQL 变更审核 |
-| /settings/user-creation-review | UserCreationReview | UserCreationReview.vue | 需鉴权 | 用户注册审核 |
-| /rbac/users | RBACUserManage | RBACUserManage.vue | 需鉴权 | RBAC3 用户管理 |
-| /rbac/users/create | RBACUserCreate | RBACUserCreate.vue | 需鉴权 | 创建用户 |
-| /rbac/users/:id/edit | RBACUserEdit | RBACUserEdit.vue | 需鉴权 | 编辑用户 |
-| /rbac/users/:id/password | RBACUserPassword | RBACUserPassword.vue | 需鉴权 | 修改密码 |
-| /rbac/users/:id/permissions | RBACUserPermissionCustomize | RBACUserPermissionCustomize.vue | 需鉴权 | 自定义权限 |
-| /rbac/roles | RBACRoleManage | RBACRoleManage.vue | 需鉴权 | 角色管理 |
-| /rbac/permissions | RBACPermissionManage | RBACPermissionManage.vue | 需鉴权 | 权限管理 |
-| /rbac/permissions/enum | RBACPermissionEnumManage | RBACPermissionEnumManage.vue | 需鉴权 | 权限字典管理 |
-| /rbac/constraints | RBACConstraintManage | RBACConstraintManage.vue | 需鉴权 | 约束管理 |
+| / | Dashboard | Dashboard.vue | dashboard:read | 仪表盘（数据概览） |
+| /403 | Forbidden | Forbidden.vue | 跳过检查 | 无权限提示页 |
+| /profile | Profile | Profile.vue | 跳过检查 | 个人中心 |
+| /platforms | Platforms | Platforms.vue | platforms:read | 平台管理 |
+| /content | ContentList | ContentList.vue | content:read | 内容列表 |
+| /content/create | ContentCreate | ContentCreate.vue | content:read | AI 内容生成 |
+| /publish | Publish | Publish.vue | publish:read | 发布管理中心 |
+| /review | Review | Review.vue | review:read | 内容审核 |
+| /sql-review | SqlReview | SqlReview.vue | sql_review:read | SQL 变更审核 |
+| /templates | Templates | Templates.vue | templates:read | 模板中心 |
+| /settings/token-plan | TokenPlan | TokenPlan.vue | token_plan:read | AI 模型配置 |
+| /developer/docs | ApiDocs | ApiDocs.vue | api_docs:read | Swagger API 文档 |
+| /developer/database | DatabaseConsole | DatabaseConsole.vue | db:read | 数据库控制台 |
+| /settings/user-creation-review | UserCreationReview | UserCreationReview.vue | review:read | 用户注册审核 |
+| /rbac/users | RBACUserManage | RBACUserManage.vue | users:read | RBAC3 用户管理 |
+| /rbac/users/create | RBACUserCreate | RBACUserCreate.vue | users:create:write | 创建用户 |
+| /rbac/users/:id/edit | RBACUserEdit | RBACUserEdit.vue | users:update:read \|\| isSelf(id) | 编辑用户 |
+| /rbac/users/:id/password | RBACUserPassword | RBACUserPassword.vue | users:change_password:write \|\| isSelf(id) | 修改密码 |
+| /rbac/users/:id/permissions | RBACUserPermissionCustomize | RBACUserPermissionCustomize.vue | users:custom_permissions:read \|\| isSelf(id) | 自定义权限 |
+| /rbac/roles | RBACRoleManage | RBACRoleManage.vue | roles:read | 角色管理 |
+| /rbac/permissions | RBACPermissionManage | RBACPermissionManage.vue | permissions:read | 权限管理 |
+| /rbac/permissions/enum | RBACPermissionEnumManage | RBACPermissionEnumManage.vue | permissions:manage:read | 权限字典管理 |
+| /rbac/permissions/enum/create | RBACPermissionEnumCreate | RBACPermissionEnumEdit.vue | permissions:manage:write | 新增权限字典 |
+| /rbac/permissions/enum/edit/:resourceId | RBACPermissionEnumEdit | RBACPermissionEnumEdit.vue | permissions:manage:write | 编辑权限字典 |
+| /rbac/constraints | RBACConstraintManage | RBACConstraintManage.vue | constraints:read | 约束管理 |
 
 ### 3.1 路由守卫
 
 - `router.beforeEach`：未登录用户访问需鉴权页面 → 重定向到 `/login`
 - `router.beforeEach`：已登录用户访问 `/login` → 重定向到 `/`
-- `hasPerm`：根据 `route.meta.permKey` 检查当前用户是否拥有对应权限
-- 鉴权依据：`permissionStore.hasPermission(key)`（基于 `/api/v2/me/permissions` 返回的有效权限）
+- `hasPerm`：根据 `route.meta.permKey` 检查权限，支持权限表达式（如 `users:update:read || isSelf(id)`），将 `query` 和 `params` 合并为上下文传递
+- 路由 meta 扩展字段：`sidebarType`（top/content/review/platforms/rbac/system）、`sidebarOrder`、`icon`，用于侧边栏动态菜单渲染
+- 鉴权依据：`permissionStore.hasPermission(key, ctx)`（基于 `/api/v2/me/permissions` 返回的有效权限，支持表达式求值）
 
 ## 4. 后端 API 路由定义
 
@@ -144,7 +151,7 @@ flowchart TB
 
 ```typescript
 interface LoginRequest {
-  email: string
+  username: string
   password: string
 }
 
@@ -156,8 +163,8 @@ interface LoginResponse {
 
 interface UserInfo {
   id: string
-  email: string
   username: string
+  email: string | null
   nickname: string
   role: 'admin' | 'manager' | 'operator' | 'reviewer'
   avatar_url?: string | null
@@ -170,12 +177,16 @@ interface UserInfo {
 | 方法 | 路径 | 说明 | 鉴权 |
 |------|------|------|------|
 | GET | /api/v2/users | 用户列表（含角色分配） | 是 |
-| POST | /api/v2/users | 创建用户 | 是 |
+| POST | /api/v2/users | 创建用户（非管理员创建需审核） | 是 |
 | GET | /api/v2/users/{id} | 用户详情 | 是 |
 | PUT | /api/v2/users/{id} | 更新用户 | 是 |
 | PUT | /api/v2/users/{id}/password | 修改密码 | 是 |
 | PUT | /api/v2/users/{id}/roles | 分配/替换角色 | 是 |
 | GET | /api/v2/users/{id}/permissions | 用户有效权限 | 是 |
+| GET | /api/v2/users/{id}/permission-overrides | 用户权限覆盖列表 | 是 |
+| PUT | /api/v2/users/{id}/permission-overrides | 更新权限覆盖 | 是 |
+| DELETE | /api/v2/users/{id} | 删除用户 | 是 |
+| GET | /api/v2/users/{id}/password-status | 检测是否默认密码 | 是 |
 | GET | /api/v2/me/permissions | 当前用户有效权限（{key: name}） | 是 |
 
 ### 4.4 RBAC3 角色管理（/api/v2）
@@ -184,14 +195,17 @@ interface UserInfo {
 |------|------|------|------|
 | GET | /api/v2/roles | 角色列表 | 是 |
 | POST | /api/v2/roles | 创建角色 | 是 |
+| GET | /api/v2/roles/{id} | 角色详情 | 是 |
 | PUT | /api/v2/roles/{id} | 更新角色 | 是 |
-| DELETE | /api/v2/roles/{id} | 删除角色 | 是 |
-| POST | /api/v2/roles/{id}/parents | 添加父角色 | 是 |
+| DELETE | /api/v2/roles/{id} | 删除角色（内置不可删） | 是 |
+| POST | /api/v2/roles/{id}/parents | 添加父角色（含循环检测） | 是 |
 | DELETE | /api/v2/roles/{id}/parents/{parent_id} | 移除父角色 | 是 |
-| GET | /api/v2/roles/{id}/permissions | 角色有效权限 | 是 |
+| GET | /api/v2/roles/{id}/permissions | 角色有效权限（{key: name}） | 是 |
 | GET | /api/v2/roles/{id}/permissions/direct | 角色直接权限 | 是 |
 | GET | /api/v2/roles/{id}/permissions/detail | 继承 + 直接权限（含 grant_type） | 是 |
-| PUT | /api/v2/roles/{id}/permissions | 更新直接权限 | 是 |
+| PUT | /api/v2/roles/{id}/permissions | 更新直接权限（超管不可改） | 是 |
+| GET | /api/v2/roles/{id}/permissions/preview/{parent_role_id} | 预览继承权限 | 是 |
+| GET | /api/v2/roles/{id}/inheritance | 角色继承关系图（祖先链 + 后代树） | 是 |
 
 ### 4.5 RBAC3 资源与权限管理（/api/v2）
 
@@ -714,38 +728,50 @@ CREATE INDEX idx_sql_change_requests_status ON sql_change_requests(status);
 ```
 frontend/src/
 ├── App.vue                     # 根组件（router-view）
-├── main.ts                     # 应用入口（Pinia + Router + Arco Design）
-├── style.css                   # 全局样式（TailwindCSS + 自定义动画）
+├── main.ts                     # 应用入口（Pinia + Router + Arco Design + v-perm 指令）
+├── style.css                   # 全局样式（Tailwind CSS v4 + Apple 设计系统变量 + Arco 主题覆盖）
+├── env.d.ts                    # 环境类型声明（vite/client + .vue + swagger-ui）
 ├── router/
-│   └── index.ts                # 路由定义 + beforeEach 守卫
+│   └── index.ts                # 路由定义 + beforeEach 守卫（支持权限表达式 + sidebarType meta）
 ├── stores/
 │   ├── user.ts                 # 登录/用户信息状态管理
+│   ├── permission.ts           # RBAC3 权限状态管理（支持权限表达式求值）
+│   ├── notification.ts         # 通知消息状态管理
 │   ├── tokenPlan.ts            # AI 模型配置状态管理
-│   └── permission.ts           # RBAC3 权限状态管理
+│   └── region.ts               # 时区/区域切换状态（函数式 store）
 ├── types/
 │   └── index.ts                # 全局 TypeScript 类型定义
 ├── utils/
-│   └── api.ts                  # Axios 实例（baseURL + 拦截器）
+│   ├── api.ts                  # Axios 实例（baseURL + JWT 拦截器 + 401 跳转）
+│   ├── permExpression.ts       # 权限表达式 DSL 解析器（词法分析 + 递归下降解析）
+│   ├── rbac.ts                 # RBAC 工具函数（管理类型权限过滤）
+│   └── time.ts                 # 时间/时区工具（dayjs 插件 + 11 个时区选项）
 ├── directives/
-│   └── permission.ts           # v-perm 指令（权限控制显示/隐藏）
+│   └── permission.ts           # v-perm 指令（DOM 移除/恢复 + WeakMap 缓存）
 ├── components/
+│   ├── NotificationBell.vue    # 通知铃铛组件（Popover + Badge）
 │   ├── layout/
-│   │   ├── AppLayout.vue       # 主布局（侧边栏 + 顶栏 + 内容区）
-│   │   ├── AppHeader.vue       # 顶部导航（面包屑 + 搜索 + 通知）
-│   │   ├── AppSidebar.vue      # 侧边导航（菜单 + 折叠/展开）
-│   │   └── PageHeader.vue      # 页面标题组件
-│   ├── shared/
-│   │   ├── Modal.vue           # 通用弹窗组件
-│   │   ├── PlatformIcon.vue    # 平台图标组件
-│   │   ├── SegmentedControl.vue # 分段控制器组件
-│   │   ├── StatCard.vue        # 统计卡片组件
-│   │   └── StatusBadge.vue     # 状态标签组件
-│   └── rbac/
-│       └── ResourcePermissionCard.vue  # 权限卡片（继承/直接区分）
+│   │   ├── AppLayout.vue       # 主布局（毛玻璃侧边栏 + 顶栏 + 内容区，响应式）
+│   │   ├── AppHeader.vue       # 顶部导航（面包屑 + 搜索 + 通知 + 时区切换）
+│   │   ├── AppSidebar.vue      # 侧边导航（路由 meta 动态菜单 + 权限过滤）
+│   │   ├── PageHeader.vue      # 页面标题组件（title + subtitle + 插槽）
+│   │   └── RegionSwitcher.vue  # 时区切换器组件
+│   ├── rbac/
+│   │   ├── ResourcePermissionCard.vue  # 权限卡片（递归渲染资源树 + 继承/直接区分）
+│   │   ├── PermissionModuleCard.vue    # 权限模块卡片（批量选择 + 半选状态）
+│   │   └── RoleInheritanceTree.vue     # 角色继承关系树（祖先链 + 后代树可视化）
+│   └── shared/
+│       ├── Modal.vue           # 通用弹窗组件
+│       ├── PlatformIcon.vue    # 平台图标组件
+│       ├── SegmentedControl.vue # 分段控制器组件
+│       ├── StatCard.vue        # 统计卡片组件
+│       └── StatusBadge.vue     # 状态标签组件
 └── pages/
     ├── Login.vue               # 登录页
+    ├── Forbidden.vue           # 403 无权限页
+    ├── Profile.vue             # 个人中心
     ├── Dashboard.vue           # 仪表盘
-    ├── Accounts.vue            # 平台账号管理
+    ├── Platforms.vue           # 平台管理
     ├── ContentCreate.vue       # AI 内容生成
     ├── ContentList.vue         # 内容列表
     ├── Publish.vue             # 发布管理
@@ -764,6 +790,7 @@ frontend/src/
     ├── RBACRoleManage.vue      # 角色管理
     ├── RBACPermissionManage.vue        # 权限管理
     ├── RBACPermissionEnumManage.vue    # 权限字典管理
+    ├── RBACPermissionEnumEdit.vue      # 权限字典编辑
     └── RBACConstraintManage.vue        # 约束管理
 ```
 
@@ -776,8 +803,10 @@ frontend/src/
     │       └── 响应拦截器：401 → 跳转登录页
     ├── 调用 Pinia Store (stores/*.ts)
     │       ├── user store：登录/用户信息/退出
+    │       ├── permission store：RBAC3 权限加载/表达式求值
+    │       ├── notification store：通知消息/未读数
     │       ├── tokenPlan store：模型配置 CRUD
-    │       └── permission store：RBAC3 权限加载/校验
+    │       └── region store：时区切换
     └── 本地状态管理 (ref/reactive/computed)
             ├── 列表数据 (ref<T[]>)
             ├── 加载状态 (ref<boolean>)
@@ -792,12 +821,15 @@ export const usePermissionStore = defineStore('permission', () => {
   const permissions = ref<Record<string, string>>({})  // { key: name }
   const lastPermissionsUserId = ref<string | null>(null)
 
-  function hasPermission(key: string): boolean {
-    return key in permissions.value
+  function hasPermission(keyOrExpr: string, ctx?: PermContext): boolean {
+    if (!isExpression(keyOrExpr)) {
+      return keyOrExpr in permissions.value
+    }
+    return evaluatePermission(keyOrExpr, permissions.value, _mergeContext(ctx))
   }
 
   async function loadPermissions(userId?: string) {
-    const { data } = await api.get<Record<string, string>>('/api/v2/me/permissions')
+    const { data } = await api.get<Record<string, string>>('/v2/me/permissions')
     permissions.value = data || {}
     lastPermissionsUserId.value = userId ?? null
   }
@@ -807,9 +839,14 @@ export const usePermissionStore = defineStore('permission', () => {
     lastPermissionsUserId.value = null
   }
 
-  return { permissions, hasPermission, loadPermissions, clearPermissions, lastPermissionsUserId }
+  return { permissions, lastPermissionsUserId, hasPermission, loadPermissions, clearPermissions }
 })
 ```
+
+权限表达式引擎（`utils/permExpression.ts`）提供完整的词法分析 + 递归下降解析器，支持：
+- 运算符：`||`（或）、`&`（且）、`!`（非）、`()`（分组）
+- 内置函数：`isSelf`、`isAdmin`、`isSuperAdmin`、`isBuiltInAdmin`、`isOwnAccount`、`isOwnContent`、`hasSameRole`
+- `PermContext` 上下文：`currentUser`、`user_id`、`account`、`content`、`target_user` 等
 
 ### 7.4 组件通讯模式
 
@@ -825,7 +862,7 @@ export const usePermissionStore = defineStore('permission', () => {
 services:
   frontend:
     build: docker/frontend/Dockerfile
-    ports: ["5173:5173"]
+    ports: ["5500:5500"]
     volumes: ["./frontend:/app"]  # 热重载开发模式
     depends_on: [backend]
 

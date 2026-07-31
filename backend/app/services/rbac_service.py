@@ -15,6 +15,35 @@ from app.models.rbac_role_permission import RBACRolePermission
 from app.models.rbac_user_permission_override import RBACUserPermissionOverride
 from app.models.rbac_user_role_assignment import RBACUserRoleAssignment
 
+
+@dataclass
+class UserEffectivePermissions:
+    """Complete effective permission bundle for a user.
+
+    Intersection model:
+      有效权限 = 角色权限(含继承) ∩ 自定义权限(granted=True)
+
+    Fields:
+      access_map: role permissions merged with role-hierarchy inheritance
+                  (raw, NOT filtered by overrides).
+      granted_keys: permission keys explicitly granted=True by the user via
+                    RBACUserPermissionOverride. When has_overrides is False
+                    this set is empty and callers should return the full
+                    role permission set.
+      has_overrides: whether any RBACUserPermissionOverride records exist.
+                     When False, effective = role permissions (default).
+                     When True, effective = role permissions ∩ granted_keys.
+      is_super_admin: whether the user (or any role in the closure) is a
+                      super admin. Super admins are not constrained by
+                      user-level permission overrides.
+    """
+
+    access_map: dict[str, "PermissionAccess"]
+    granted_keys: set[str]
+    has_overrides: bool
+    is_super_admin: bool
+
+
 READ_OPERATIONS = {"read", "execute", "custom_permissions"}
 WRITE_OPERATIONS = {"create", "update", "delete", "approve", "reject", "execute", "custom_permissions"}
 
@@ -82,18 +111,14 @@ def _implied_read_keys(perm_key: str) -> list[str]:
 async def flatten_effective_permissions(
     effective: dict[str, PermissionAccess],
     db: AsyncSession,
-    denied_keys: set[str] | None = None,
 ) -> dict[str, str]:
-    deny = denied_keys or set()
+    """Resolve role permissions to the flat key set (with derivation).
 
-    if deny:
-        derivable: set[str] = set()
-        for perm_key in effective:
-            derivable.update(resolve_read_keys(perm_key))
-            derivable.update(resolve_write_keys(perm_key))
-            derivable.update(_implied_read_keys(perm_key))
-        deny = deny & derivable
-
+    Derivation:
+      - resolve_read_keys: write → also produce the :read variant
+      - resolve_write_keys: keep :write as-is
+      - _implied_read_keys: action :write → parent page :read
+    """
     flat: set[str] = set()
     for perm_key, access in effective.items():
         if access.read or access.write:
@@ -104,8 +129,6 @@ async def flatten_effective_permissions(
                 flat.add(write_key)
             for implied in _implied_read_keys(perm_key):
                 flat.add(implied)
-
-    flat -= deny
 
     if not flat:
         return {}
@@ -205,20 +228,37 @@ async def get_role_descendants(role_id: str, db: AsyncSession) -> list[RBACRole]
     return descendants
 
 
-async def get_user_effective_permissions(
+async def compute_user_effective_permissions(
     user_id: str,
     db: AsyncSession,
     active_role_ids: Optional[list[str]] = None,
-) -> dict[str, PermissionAccess]:
-    """
-    1. 超级管理员 -> 所有权限全开（不受自定义权限约束）。
-    2. 查询用户已分配角色。
-    3. 若 active_role_ids 提供，则取交集（会话级授权）。
-    4. 对每个角色取祖先闭包，聚合角色权限（role_access_map）。
-    5. 查询用户自定义权限覆盖（user_permission_overrides）。
-    6. 无自定义覆盖 → 返回全部角色权限。
-    7. 有自定义覆盖 → 有效 = 角色权限 - {key | override.granted=false}。
-       仅移除明确拒绝的权限，未覆盖的权限保持角色默认值。
+) -> UserEffectivePermissions:
+    """Compute the full effective permission bundle for a user.
+
+    Processing pipeline (matches the design diagram layers):
+
+      1. User-role assignments (RBACUserRoleAssignment) filtered by validity
+         window. When active_role_ids is provided it intersects with the
+         assigned set (session-level activation).
+      2. Role inheritance closure: for every directly assigned role the
+         ancestor chain is resolved via RBACRoleHierarchy so permissions
+         propagate up the hierarchy.
+      3. Super-admin shortcut: any role (directly assigned or inherited)
+         marked with is_super_admin=True yields the full permission set
+         and the user is considered immune from custom overrides.
+      4. Role-level permission aggregation: every (role, permission) pair
+         from RBACRolePermission is merged into an access map with the
+         read/write scope derived from the permission key.
+      5. User custom overrides (RBACUserPermissionOverride):
+         - When any override exists (has_overrides=True), granted_keys
+           collects the keys with granted=True. The effective permission
+           set is computed later as the intersection of the role
+           permission closure (access_map → flatten) and granted_keys.
+         - access_map itself is NOT filtered here; intersection is applied
+           in get_user_effective_flat_permissions() after derivation.
+         - Super admins bypass this step entirely.
+
+    Returns a UserEffectivePermissions dataclass.
     """
     now = datetime.utcnow()
 
@@ -242,7 +282,12 @@ async def get_user_effective_permissions(
         assigned_role_ids &= set(active_role_ids)
 
     if not assigned_role_ids:
-        return {}
+        return UserEffectivePermissions(
+            access_map={},
+            granted_keys=set(),
+            has_overrides=False,
+            is_super_admin=False,
+        )
 
     super_admin_result = await db.execute(
         select(RBACRole).where(
@@ -254,10 +299,16 @@ async def get_user_effective_permissions(
         all_permissions = await db.execute(
             select(RBACPermission).where(RBACPermission.is_active.is_(True))
         )
-        return {
+        access_map = {
             permission.key: PermissionAccess(read=True, write=True)
             for permission in all_permissions.scalars().all()
         }
+        return UserEffectivePermissions(
+            access_map=access_map,
+            granted_keys=set(),
+            has_overrides=False,
+            is_super_admin=True,
+        )
 
     all_role_ids: set[str] = set()
     for role_id in assigned_role_ids:
@@ -275,10 +326,16 @@ async def get_user_effective_permissions(
         all_permissions = await db.execute(
             select(RBACPermission).where(RBACPermission.is_active.is_(True))
         )
-        return {
+        access_map = {
             permission.key: PermissionAccess(read=True, write=True)
             for permission in all_permissions.scalars().all()
         }
+        return UserEffectivePermissions(
+            access_map=access_map,
+            granted_keys=set(),
+            has_overrides=False,
+            is_super_admin=True,
+        )
 
     result = await db.execute(
         select(RBACRolePermission, RBACPermission)
@@ -314,20 +371,66 @@ async def get_user_effective_permissions(
     overrides_list = overrides.scalars().all()
 
     if not overrides_list:
-        return role_access_map
+        return UserEffectivePermissions(
+            access_map=role_access_map,
+            granted_keys=set(),
+            has_overrides=False,
+            is_super_admin=False,
+        )
 
-    denied_keys: set[str] = {
+    # 交集模型：有效权限 = 角色权限 ∩ 自定义权限(granted=True)
+    # 这里不过滤 access_map，只收集 granted_keys，交集在 flatten 之后应用
+    granted_keys: set[str] = {
         override.permission_key
         for override in overrides_list
-        if not override.granted
+        if override.granted
     }
 
-    access_map: dict[str, PermissionAccess] = {}
-    for key, access in role_access_map.items():
-        if key not in denied_keys:
-            access_map[key] = access
+    return UserEffectivePermissions(
+        access_map=role_access_map,
+        granted_keys=granted_keys,
+        has_overrides=True,
+        is_super_admin=False,
+    )
 
-    return access_map
+
+async def get_user_effective_permissions(
+    user_id: str,
+    db: AsyncSession,
+    active_role_ids: Optional[list[str]] = None,
+) -> dict[str, PermissionAccess]:
+    """Backward-compatible wrapper around compute_user_effective_permissions.
+
+    Returns only the access_map portion (role permissions + inheritance,
+    NOT filtered by overrides). Callers that need the intersection with
+    granted_keys or the super-admin flag should call
+    compute_user_effective_permissions() or
+    get_user_effective_flat_permissions() directly.
+    """
+    bundle = await compute_user_effective_permissions(user_id, db, active_role_ids)
+    return bundle.access_map
+
+
+async def get_user_effective_flat_permissions(
+    user_id: str,
+    db: AsyncSession,
+    active_role_ids: Optional[list[str]] = None,
+) -> dict[str, str]:
+    """返回当前用户最终有效权限（key → display_name）。
+
+    交集模型：
+      - 无自定义权限覆盖 → 有效权限 = 角色权限（含继承、派生）
+      - 有自定义权限覆盖 → 有效权限 = 角色权限(含继承、派生) ∩ granted_keys
+      - 超级管理员 → 全部权限，不受覆盖约束
+    """
+    bundle = await compute_user_effective_permissions(user_id, db, active_role_ids)
+    flat = await flatten_effective_permissions(bundle.access_map, db)
+
+    if bundle.is_super_admin or not bundle.has_overrides:
+        return flat
+
+    # 交集：只保留用户明确 granted=True 的权限
+    return {k: v for k, v in flat.items() if k in bundle.granted_keys}
 
 
 async def _role_closure_role_ids(
@@ -384,19 +487,45 @@ async def has_permission(
     db: AsyncSession,
     active_role_ids: Optional[list[str]] = None,
 ) -> bool:
+    """判断用户是否拥有指定权限（交集模型）。
+
+    有效权限 = 角色权限(含继承、派生) ∩ 自定义权限(granted=True)
+    超级管理员不受覆盖约束。
+    """
     if mode not in {"read", "write"}:
         raise ValueError(f"Unsupported permission mode: {mode}")
-    effective = await get_user_effective_permissions(
-        user_id,
-        db,
-        active_role_ids=active_role_ids,
-    )
-    access = effective.get(permission_key)
-    if access is None:
-        return False
+
+    bundle = await compute_user_effective_permissions(user_id, db, active_role_ids)
+
+    # 超级管理员：直接放行
+    if bundle.is_super_admin:
+        return True
+
+    # 角色权限闭包（含派生）
+    flat = await flatten_effective_permissions(bundle.access_map, db)
+
+    # 无自定义覆盖 → 角色权限即为有效权限
+    if not bundle.has_overrides:
+        in_role = permission_key in flat
+        if not in_role and mode == "read":
+            # write 派生 read：检查 write 变体是否在角色权限中
+            parts = permission_key.split(":")
+            if len(parts) == 3 and parts[2] == "read":
+                in_role = f"{parts[0]}:{parts[1]}:write" in flat
+        return in_role
+
+    # 交集：必须在角色权限闭包中 且 必须在 granted_keys 中
+    candidate_keys = set(resolve_read_keys(permission_key)) if mode == "read" else set(resolve_write_keys(permission_key))
     if mode == "read":
-        return access.read or access.write
-    return access.write
+        # write 派生 read
+        parts = permission_key.split(":")
+        if len(parts) == 3 and parts[2] == "read":
+            candidate_keys |= {f"{parts[0]}:{parts[1]}:write"}
+
+    return any(
+        key in flat and key in bundle.granted_keys
+        for key in candidate_keys
+    )
 
 
 async def has_permission_direct(
@@ -406,6 +535,12 @@ async def has_permission_direct(
     db: AsyncSession,
     active_role_ids: Optional[list[str]] = None,
 ) -> bool:
+    """判断用户是否拥有指定权限（交集模型，直接查询数据库）。
+
+    与 has_permission 等价，但避免加载全部有效权限，用于高频调用场景。
+    有效权限 = 角色权限(含继承、派生) ∩ 自定义权限(granted=True)
+    超级管理员不受覆盖约束。
+    """
     if mode not in {"read", "write"}:
         raise ValueError(f"Unsupported permission mode: {mode}")
 
@@ -413,36 +548,48 @@ async def has_permission_direct(
     if not all_role_ids:
         return False
 
+    # 超级管理员：直接放行
     if await _closure_has_super_admin(all_role_ids, db):
         return True
 
-    candidate_keys = resolve_read_keys(permission_key) if mode == "read" else resolve_write_keys(permission_key)
+    candidate_keys = set(resolve_read_keys(permission_key)) if mode == "read" else set(resolve_write_keys(permission_key))
+    if mode == "read":
+        parts = permission_key.split(":")
+        if len(parts) == 3 and parts[2] == "read":
+            candidate_keys |= {f"{parts[0]}:{parts[1]}:write"}
 
-    result = await db.execute(
+    # 1. 检查角色权限闭包是否包含候选 key
+    role_result = await db.execute(
         select(RBACPermission.key)
         .join(RBACRolePermission, RBACRolePermission.permission_id == RBACPermission.id)
         .where(
             RBACRolePermission.role_id.in_(all_role_ids),
-            RBACPermission.key.in_(candidate_keys),
+            RBACPermission.key.in_(list(candidate_keys)),
             RBACPermission.is_active.is_(True),
         )
     )
-    granted_keys = {row[0] for row in result.all()}
-
-    write_candidates = set(resolve_write_keys(permission_key))
-    read_candidates = set(resolve_read_keys(permission_key))
-
-    deny_result = await db.execute(
-        select(RBACUserPermissionOverride).where(
-            RBACUserPermissionOverride.user_id == user_id,
-            RBACUserPermissionOverride.permission_key.in_(list(read_candidates | write_candidates)),
-            RBACUserPermissionOverride.granted.is_(False),
-        )
-    )
-    explicitly_denied = deny_result.scalars().first() is not None
-    if explicitly_denied:
+    role_granted = {row[0] for row in role_result.all()}
+    if not role_granted:
         return False
 
-    if mode == "read":
-        return bool(granted_keys & (read_candidates | write_candidates))
-    return bool(granted_keys & write_candidates)
+    # 2. 检查用户是否有自定义权限覆盖
+    override_count_result = await db.execute(
+        select(RBACUserPermissionOverride.permission_key).where(
+            RBACUserPermissionOverride.user_id == user_id,
+        )
+    )
+    override_rows = override_count_result.all()
+    if not override_rows:
+        # 无自定义覆盖 → 角色权限即为有效权限
+        return True
+
+    # 3. 交集：必须在 granted_keys 中
+    granted_true_result = await db.execute(
+        select(RBACUserPermissionOverride.permission_key).where(
+            RBACUserPermissionOverride.user_id == user_id,
+            RBACUserPermissionOverride.permission_key.in_(list(candidate_keys)),
+            RBACUserPermissionOverride.granted.is_(True),
+        )
+    )
+    granted_true = {row[0] for row in granted_true_result.all()}
+    return bool(role_granted & granted_true)

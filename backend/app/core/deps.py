@@ -16,7 +16,7 @@ from app.services.perm_expression import (
     extract_perm_keys,
     is_expression,
 )
-from app.services.rbac_service import flatten_effective_permissions, get_user_effective_permissions
+from app.services.rbac_service import get_user_effective_flat_permissions
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 
@@ -70,8 +70,7 @@ def require_permission(
             current_user: User = Depends(get_current_user),
             db: AsyncSession = Depends(get_db),
         ) -> User:
-            effective = await get_user_effective_permissions(current_user.id, db)
-            flat_perms = await flatten_effective_permissions(effective, db)
+            flat_perms = await get_user_effective_flat_permissions(current_user.id, db)
 
             eval_ctx: dict[str, Any] = {
                 "current_user": current_user,
@@ -101,8 +100,7 @@ def require_permission(
         current_user: User = Depends(get_current_user),
         db: AsyncSession = Depends(get_db),
     ) -> User:
-        effective = await get_user_effective_permissions(current_user.id, db)
-        flat_perms = await flatten_effective_permissions(effective, db)
+        flat_perms = await get_user_effective_flat_permissions(current_user.id, db)
 
         if permission_key in flat_perms:
             return current_user

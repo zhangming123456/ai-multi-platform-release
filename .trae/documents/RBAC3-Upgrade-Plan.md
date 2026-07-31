@@ -38,11 +38,13 @@
 ### 1.3 核心变化
 
 1. **权限表达式**：从扁平字符串 `permission_key` 变为标准化的 `{name}:{operation}:{read|write}` 或 `{name}:read` 格式。权限类型根据 key 格式自动推断，无需在数据库中存储显式 type 字段。
-2. **角色不再只一个**：用户可同时拥有多个角色，会话中可激活子集。
-3. **继承显式化**：子角色自动获得父角色权限，权限卡片中可区分"继承"与"自定义"。
-4. **约束引擎**：新增互斥角色、先决角色、角色成员数量限制。
-5. **权限中台化**：`require_permission` 统一走 RBAC3 服务，不再读取旧 `RolePermission`。
-6. **权限描述**：每个权限枚举均需配置 `description`，前端权限管理界面展示权限描述信息。
+2. **权限表达式 DSL**：支持 `||`（或）、`&`（且）、`!`（非）、`()`（分组）运算符，以及 `isSelf()`、`isAdmin()`、`isBuiltInAdmin()` 等内置判断函数，支持复杂的权限判断逻辑（如"管理员或本人可修改密码"）。
+3. **角色不再只一个**：用户可同时拥有多个角色，会话中可激活子集。
+4. **继承显式化**：子角色自动获得父角色权限，权限卡片中可区分"继承"与"自定义"。
+5. **约束引擎**：新增互斥角色、先决角色、角色成员数量限制。
+6. **权限中台化**：采用 `@RequiresPermissions()` 装饰器 + `PermAPIRoute` 路由类模式，统一走 RBAC3 服务，不再读取旧 `RolePermission`。
+7. **权限描述**：每个权限枚举均需配置 `description`，前端权限管理界面展示权限描述信息。
+8. **自定义权限覆盖**：用户级权限覆盖（`rbac_user_permission_overrides`）支持"拒绝"语义，`denied_keys` 在权限计算链路中传递，防止 write 权限衍生出被拒绝的 read 权限。
 
 ---
 
@@ -216,13 +218,15 @@ async def get_user_effective_permissions(
 async def flatten_effective_permissions(
     effective: dict[str, PermissionAccess],
     db: AsyncSession,
+    denied_keys: Optional[set[str]] = None,
 ) -> dict[str, str]:
     """
     将 PermissionAccess 展平为 { key: name } 格式。
     - read/write 权限分别展开为独立的 key
     - write 权限隐含授予对应 read 权限和父页面 read 权限
+    - denied_keys 中的权限会被跳过，且 write 权限不会衍生出被拒绝的 read 权限
+    - denied_keys 来自 rbac_user_permission_overrides 中 granted=False 的记录
     """
-    ...
 
 async def has_permission(
     user_id: str,
@@ -367,23 +371,101 @@ async def validate_role_hierarchy(
 
 前端 `permissionStore.loadPermissions()` 直接调用 `/api/v2/me/permissions` 获取最终有效权限。
 
-### 4.6 依赖注入
+### 4.6 依赖注入与权限表达式
 
-`backend/app/core/deps.py`：
+`backend/app/core/deps.py` 采用 **装饰器 + 路由类** 模式，支持权限表达式 DSL（`||`、`&`、`!`、`()`）与内置判断函数（`isSelf()`、`isAdmin()` 等）：
 
 ```python
-def require_permission(permission_key: str, mode: str = "read"):
-    async def checker(
-        current_user: User = Depends(get_current_user),
-        db: AsyncSession = Depends(get_db),
-    ):
-        if await has_permission(current_user.id, permission_key, mode, db):
-            return current_user
-        raise HTTPException(status_code=403, detail="无权限")
-    return checker
+_PERM_MARKER = "_requires_perm_info_"
+
+
+def require_permission(
+    permission_key: str,
+    context: Optional[dict[str, Any]] = None,
+) -> Callable:
+    """
+    权限校验依赖工厂：
+    - 权限表达式（含 ||, &, !, () 或内置函数）→ 走 evaluate_permission 求值
+    - 单一权限 key → 直接检查是否在有效权限集合中
+    两者均会查询用户自定义权限覆盖（denied_keys）并传入 flatten_effective_permissions，
+    防止 write 权限衍生出被拒绝的 read 权限。
+    """
+    use_expression = is_expression(permission_key)
+    # ... 返回 _checker_expr 或 _checker
+    ...
+
+
+def RequiresPermissions(permission_expr: str, context: Optional[dict[str, Any]] = None):
+    """路由端点装饰器，标记需要权限校验。"""
+    def decorator(endpoint):
+        setattr(endpoint, _PERM_MARKER, {"expr": permission_expr, "ctx": context})
+        return endpoint
+    return decorator
+
+
+class PermAPIRoute(APIRoute):
+    """自定义路由类：在注册时自动为带 _PERM_MARKER 的端点追加权限依赖。"""
+    def __init__(self, path: str, endpoint: Callable, **kwargs: Any):
+        perm_info = getattr(endpoint, _PERM_MARKER, None)
+        if perm_info is not None:
+            dep = require_permission(perm_info["expr"], perm_info["ctx"])
+            kwargs.setdefault("dependencies", []).append(Depends(dep))
+        super().__init__(path, endpoint, **kwargs)
 ```
 
-所有旧路由统一替换为 `require_permission("resource:operation", "read"/"write")`。
+**路由使用方式**：
+
+```python
+router = APIRouter(prefix="/api/v2", tags=["RBAC"], route_class=PermAPIRoute)
+
+# 单一权限 key
+@router.get("/users")
+@RequiresPermissions("users:read")
+async def list_users(...): ...
+
+# 权限表达式（OR 逻辑）
+@router.get("/permissions")
+@RequiresPermissions("permissions:read||permissions:manage:read")
+async def list_permissions(...): ...
+
+# 权限表达式（含内置判断函数，需配合 context 传递参数）
+@router.put("/users/{user_id}/password")
+@RequiresPermissions(
+    "users:change_password:write || isSelf(user_id)",
+    context={"user_id": "path.user_id"},  # 从路径参数提取
+)
+async def change_password(...): ...
+```
+
+**权限表达式 DSL**：
+
+| 运算符 | 含义 | 示例 |
+|--------|------|------|
+| `||` | 或（OR） | `permissions:read \|\| permissions:manage:read` |
+| `&` | 且（AND） | `users:delete:write & !isBuiltInAdmin(user_id)` |
+| `!` | 非（NOT） | `!isSelf(user_id)` |
+| `()` | 分组 | `(A \|\| B) & C` |
+
+**内置判断函数**（完整定义见 [权限表达式内置判断函数](role/权限表达式内置判断函数.md)）：
+
+| 函数 | 含义 |
+|------|------|
+| `isAuthenticated()` | 当前用户已登录 |
+| `isSuperAdmin()` | 当前用户为超级管理员 |
+| `isAdmin()` | 当前用户为管理员 |
+| `isSelf(user_id)` | 目标用户为当前登录用户 |
+| `isBuiltInAdmin(user_id)` | 目标用户为内置超级管理员（ID="1"） |
+| `isAdminType(role_type)` | 角色 role_type 为 "admin" |
+| `isOtherType(role_type)` | 角色 role_type 为 "other" |
+
+**denied_keys 传递机制**：
+
+`require_permission` 在校验时会查询 `rbac_user_permission_overrides` 中 `granted=False` 的权限键集合（`denied_keys`），并传入 `flatten_effective_permissions(effective, db, denied_keys)`。该函数在展平权限时会：
+1. 跳过 `denied_keys` 中的权限
+2. 阻止 write 权限衍生出被拒绝的 read 权限
+3. 确保自定义权限覆盖的"拒绝"语义在权限计算链路中生效
+
+所有业务路由统一使用 `@RequiresPermissions("resource:operation", ...)` 装饰器，路由类必须设置为 `route_class=PermAPIRoute`。
 
 ---
 
@@ -613,7 +695,7 @@ function _isPageKey(key: string): boolean {
 ```
 backend/app/
 ├── core/
-│   └── deps.py                    # require_permission 切到 RBAC3
+│   └── deps.py                    # require_permission + PermAPIRoute + @RequiresPermissions() 装饰器，支持权限表达式 DSL
 ├── models/
 │   ├── rbac_role.py
 │   ├── rbac_resource.py           # 移除 type 字段，添加 _infer_resource_type()、description
@@ -633,7 +715,8 @@ backend/app/
 ├── services/
 │   ├── rbac_service.py
 │   ├── rbac_constraint_service.py
-│   └── rbac_init_service.py      # RBAC_RESOURCES 含 description，type 由 key 推断
+│   ├── rbac_init_service.py      # RBAC_RESOURCES 含 description，type 由 key 推断
+│   └── perm_expression.py        # 权限表达式 DSL 解析与求值（||, &, !, () + 内置判断函数）
 frontend/src/
 ├── stores/
 │   └── permission.ts             # 权限状态管理，权限为 {open, name} 结构
@@ -726,6 +809,9 @@ frontend/src/
 5. **约束性能**：互斥约束在用户角色分配时校验，角色继承扩展后用户数大时需注意查询性能（可缓存）。
 6. **权限类型推断**：权限类型不再存储在数据库中，通过 `_infer_resource_type(key)` 函数根据 key 格式动态计算。确保所有新增权限遵循 `{name}:{operation}:{read|write}` 命名规范。
 7. **权限描述必填**：`RBAC_RESOURCES` 中每条记录需填写 `description`，前端权限管理界面依赖此字段展示。系统启动时 `_ensure_resources_and_permissions()` 自动将描述写入数据库。
+8. **权限表达式上下文**：使用内置判断函数（如 `isSelf(user_id)`）时，必须通过 `context` 参数传递所需的路径参数或查询参数，否则函数无法获取目标用户 ID 等信息。
+9. **denied_keys 链路**：`require_permission` 必须查询用户权限覆盖表中的 `granted=False` 记录，并传入 `flatten_effective_permissions`，否则 write 权限会衍生出被拒绝的 read 权限，导致权限收窄失效。
+10. **权限字典接口鉴权**：权限字典管理相关 GET 接口使用 `permissions:read||permissions:manage:read` 表达式，确保"权限管理"和"权限字典管理"两种角色均可访问；写操作使用 `permissions:manage:write`。
 
 ---
 
@@ -846,8 +932,9 @@ frontend/src/
 
 ---
 
-*文档版本：v1.3*
-*最后更新：2026-07-30*
-*变更说明：v1.3 - 根据项目实际代码更新实施任务清单，标记 Phase 1~4 及 Phase 5 清理任务为已完成；同步更新文件结构，移除已删除的旧文件；更新版本信息。*
+*文档版本：v1.4*
+*最后更新：2026-07-31*
+*变更说明：v1.4 - 更新 4.6 节依赖注入为 @RequiresPermissions() 装饰器 + PermAPIRoute 路由类模式；补充权限表达式 DSL（||, &, !, ()）与内置判断函数说明；补充 denied_keys 传递机制；更新 flatten_effective_permissions 签名；新增 perm_expression.py 到文件结构；补充权限表达式上下文、denied_keys 链路、权限字典接口鉴权等风险注意点。*
+*v1.3 - 根据项目实际代码更新实施任务清单，标记 Phase 1~4 及 Phase 5 清理任务为已完成；同步更新文件结构，移除已删除的旧文件；更新版本信息。*
 *v1.2 - 重构权限接口数据格式：/api/auth/me 的 permissions 改为 { key: name } 返回全部权限枚举，用户有效权限改由 /api/v2/roles/{id}/permissions 获取（也返回 { key: name }）；前端权限 store 改为汇总多角色权限；更新 API 接口文档。*
 *v1.1 - 移除 RBACResource.type 字段，改为基于 key 格式推断类型；添加 description 字段到权限枚举；更新前后端权限筛选逻辑；更新 API 接口文档。*

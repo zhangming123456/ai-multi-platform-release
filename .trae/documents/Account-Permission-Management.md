@@ -321,9 +321,13 @@ async def validate_role_hierarchy(
 | POST | /api/v2/users | 创建用户 |
 | GET | /api/v2/users/{id} | 用户详情 |
 | PUT | /api/v2/users/{id} | 更新用户 |
+| DELETE | /api/v2/users/{id} | 删除用户（禁止删除 admin 与本人） |
 | PUT | /api/v2/users/{id}/password | 修改密码 |
+| GET | /api/v2/users/{id}/password-status | 查询是否为默认密码 |
 | PUT | /api/v2/users/{id}/roles | 分配/替换角色 |
 | GET | /api/v2/users/{id}/permissions | 用户有效权限 |
+| GET | /api/v2/users/{id}/permission-overrides | 用户自定义权限覆盖列表 |
+| PUT | /api/v2/users/{id}/permission-overrides | 全量替换用户权限覆盖 |
 | GET | /api/v2/me/permissions | 当前用户有效权限 `{key: name}` |
 
 ### 4.2 RBAC3 角色管理（/api/v2）
@@ -332,13 +336,17 @@ async def validate_role_hierarchy(
 |------|------|------|
 | GET | /api/v2/roles | 角色列表 |
 | POST | /api/v2/roles | 创建角色 |
+| GET | /api/v2/roles/{id} | 角色详情 |
 | PUT | /api/v2/roles/{id} | 更新角色 |
 | DELETE | /api/v2/roles/{id} | 删除角色 |
 | POST | /api/v2/roles/{id}/parents | 添加父角色 |
 | DELETE | /api/v2/roles/{id}/parents/{parent_id} | 移除父角色 |
 | GET | /api/v2/roles/{id}/permissions | 有效权限 |
+| GET | /api/v2/roles/{id}/permissions/direct | 直接权限列表 |
 | GET | /api/v2/roles/{id}/permissions/detail | 继承 + 直接权限 |
 | PUT | /api/v2/roles/{id}/permissions | 更新直接权限 |
+| GET | /api/v2/roles/{id}/permissions/preview/{parent_role_id} | 预览添加父角色后继承的权限 |
+| GET | /api/v2/roles/{id}/inheritance | 角色继承关系（祖先链 + 后代树 + 各层级直接权限） |
 
 ### 4.3 RBAC3 资源与权限管理（/api/v2）
 
@@ -393,64 +401,140 @@ get_current_user          — 解析 JWT Token，获取当前用户
   └─ require_permission   — 细粒度权限校验（支持权限表达式）
 ```
 
-### 5.2 require_permission 依赖
+### 5.2 路由权限注解模式（推荐用法）
+
+所有业务路由统一采用 `route_class=PermAPIRoute` + `@RequiresPermissions("permission_key")` 装饰器模式，而非在每个端点显式写 `Depends(require_permission(...))`。
+
+```python
+from app.core.deps import PermAPIRoute, RequiresPermissions
+
+router = APIRouter(prefix="/api/v2", tags=["RBAC 用户管理"], route_class=PermAPIRoute)
+
+@router.get("/users", response_model=list[UserDetailResponse])
+@RequiresPermissions("users:read")
+async def list_users(db: AsyncSession = Depends(get_db),
+                     current_user: User = Depends(get_current_user)):
+    ...
+```
+
+**机制说明**：
+- `@RequiresPermissions(expr, context=None)` 装饰器将权限表达式与上下文写入端点函数的 `_requires_perm_info_` 标记位
+- `PermAPIRoute` 在注册路由时读取该标记，自动构造 `require_permission(expr, ctx)` 依赖并追加到 `dependencies`
+- 支持传入上下文（如 `{"content": some_content_obj}`）供表达式内置函数使用
+- 少数特殊端点（如 `GET /users/{id}/permissions`、`GET /users/{id}/permission-overrides`）因需要细粒度的同角色访问控制，未使用装饰器，而是在函数体内调用 `has_permission_direct` 进行手工校验
+
+### 5.3 require_permission 依赖
 
 ```python
 # 普通权限校验
 require_permission("content:create:write")
 
 # 权限表达式校验（支持内置判断函数）
+require_permission("users:update:read || isSelf(id)")
 require_permission("isAdmin() || isOwnContent(content)")
 ```
 
+**表达式判断**：通过 `is_expression(permission_key)` 判断是否为表达式（字符串中包含 `|`、`&`、`(`、`)`、`!` 任一字符即为表达式）。
+
 **校验流程**：
 1. 获取用户有效权限（`get_user_effective_permissions`）
-2. 展平为 `{ key: name }` 格式（`flatten_effective_permissions`）
-3. 若为权限表达式 → 调用 `evaluate_permission` 进行表达式求值
-4. 若为普通 key → 检查 key 是否在展平后的权限集合中
-5. 未通过 → 403 "无权限"
+2. 查询 `RBACUserPermissionOverride` 表中 `granted=False` 的记录，得到 `denied_keys` 集合
+3. 调用 `flatten_effective_permissions(effective, db, denied_keys)` 展平为 `{ key: name }` 格式（denied_keys 中的 key 会被剔除）
+4. 若 `is_expression(permission_key)` 为 True → 调用 `evaluate_permission(permission_key, flat_perms, eval_ctx)` 进行表达式求值（表达式语法错误返回 500）
+5. 若为普通 key → 检查 key 是否在展平后的权限集合中
+6. 未通过 → 403 "无权限" / "无访问权限"
 
-### 5.3 前端路由守卫
+### 5.4 前端路由守卫
 
 ```typescript
 router.beforeEach(async (to) => {
+  const token = localStorage.getItem('token')
+  if (to.name === 'Login' && token) return { name: 'Dashboard' }
+  if (to.meta.public) return true
+  if (!token) return { name: 'Login', query: { redirect: to.fullPath } }
+
   const userStore = useUserStore()
   const permStore = usePermissionStore()
 
-  if (to.meta.public) return true
-  if (!userStore.token) return '/login'
-
   if (!userStore.userInfo) await userStore.fetchUserInfo()
-  if (permStore.lastPermissionsUserId !== userStore.userInfo.id) {
+  if (permStore.lastPermissionsUserId !== userStore.userInfo.id
+      || Object.keys(permStore.permissions).length === 0) {
     await permStore.loadPermissions(userStore.userInfo.id)
   }
 
-  if (to.meta.skipPermCheck) return true
-  const key = to.meta.permKey as string
-  if (key && !permStore.hasPermission(key)) return '/403'
-
+  if (!hasPerm(to)) return { name: 'Forbidden', query: { from: to.fullPath } }
   return true
 })
+
+// permKey 支持表达式，将 query+params 合并为上下文
+function hasPerm(to: RouteLocationNormalized): boolean {
+  if (to.meta.skipPermCheck) return true
+  const permKey = to.meta.permKey as string | undefined
+  if (!permKey) return true
+  const permStore = usePermissionStore()
+  return permStore.hasPermission(permKey, {
+    ...(to.query ?? {}),
+    ...(to.params ?? {}),
+  })
+}
 ```
 
-### 5.4 前端权限工具
+### 5.5 前端权限工具
 
 ```typescript
 // stores/permission.ts
-function hasPermission(key: string): boolean {
-  return key in permissions.value
+function hasPermission(
+  keyOrExpr: string,
+  ctx?: PermContext,
+): boolean {
+  if (!isExpression(keyOrExpr)) {
+    return keyOrExpr in permissions.value
+  }
+  return evaluatePermission(keyOrExpr, permissions.value, _mergeContext(ctx))
 }
 
-// directives/permission.ts
-const vPerm = {
-  mounted(el: HTMLElement, binding: DirectiveBinding<string>) {
-    const permStore = usePermissionStore()
-    if (!permStore.hasPermission(binding.value)) {
-      el.style.display = 'none'
-    }
-  },
+// directives/permission.ts —— DOM 移除/恢复机制（WeakMap 缓存 + Comment 占位符）
+const _permCache = new WeakMap<HTMLElement, {
+  placeholder: Comment
+  originalParent: Node
+  originalNext: Node | null
+}>()
+
+function removeEl(el: HTMLElement) {
+  const parent = el.parentNode
+  if (!parent) return
+  const placeholder = document.createComment('v-perm')
+  const next = el.nextSibling
+  parent.insertBefore(placeholder, el)
+  parent.removeChild(el)
+  _permCache.set(el, { placeholder, originalParent: parent, originalNext: next })
+}
+
+function restoreEl(el: HTMLElement) {
+  const cache = _permCache.get(el)
+  if (!cache) return
+  const { placeholder, originalParent, originalNext } = cache
+  if (!placeholder.parentNode) {
+    originalParent.insertBefore(el, originalNext)
+  } else {
+    placeholder.parentNode.insertBefore(el, placeholder)
+    placeholder.parentNode.removeChild(placeholder)
+  }
+  _permCache.delete(el)
+}
+
+const vPerm: ObjectDirective<HTMLElement, string | PermBinding> = {
+  mounted: checkAndApply,
+  updated: checkAndApply,
+  beforeUnmount(el) { _permCache.delete(el) },
 }
 ```
+
+**v-perm 指令说明**：
+- 相比 `display: none`，采用真实 DOM 移除 + `Comment('v-perm')` 占位符机制，权限不足时元素从 DOM 树中彻底移除
+- `WeakMap` 缓存原节点关系（父节点、兄弟节点、占位符），权限恢复时可在原位置重新插入
+- `mounted` 与 `updated` 钩子均调用 `checkAndApply`，权限状态变化时自动移除/恢复
+- binding.value 支持字符串（权限 key/表达式）或对象 `{ key, ctx }` 两种形式
 
 ---
 

@@ -21,7 +21,12 @@ from app.models.user import User, UserRole
 from app.models.user_creation_request import UserCreationRequest, UserCreationStatus
 from app.schemas.auth import UserInfo
 from app.services.rbac_constraint_service import validate_user_role_assignments
-from app.services.rbac_service import get_user_effective_permissions, has_permission_direct, flatten_effective_permissions, _role_closure_role_ids, _closure_has_super_admin
+from app.services.rbac_service import (
+    get_user_effective_flat_permissions,
+    has_permission_direct,
+    _role_closure_role_ids,
+    _closure_has_super_admin,
+)
 
 router = APIRouter(prefix="/api/v2", tags=["RBAC 用户管理"], route_class=PermAPIRoute)
 
@@ -544,19 +549,12 @@ async def get_user_permissions(
                 detail="无权查看其他用户的自定义权限",
             )
 
-    effective = await get_user_effective_permissions(user_id, db)
-    deny_result = await db.execute(
-        select(RBACUserPermissionOverride.permission_key).where(
-            RBACUserPermissionOverride.user_id == user_id,
-            RBACUserPermissionOverride.granted.is_(False),
-        )
-    )
-    denied_keys = {row[0] for row in deny_result.all()}
-    effective_permissions = await flatten_effective_permissions(effective, db, denied_keys)
+    # 交集模型：有效权限 = 角色权限(含继承、派生) ∩ 自定义权限(granted=True)
+    # 超级管理员不受覆盖约束，无覆盖时直接使用角色权限
+    effective_permissions = await get_user_effective_flat_permissions(user_id, db)
 
     all_role_ids = await _role_closure_role_ids(user_id, db)
     if await _closure_has_super_admin(all_role_ids, db):
-        role_permission_keys: set[str] = set()
         perm_keys_result = await db.execute(
             select(RBACPermission.key).where(RBACPermission.is_active.is_(True))
         )
@@ -716,6 +714,46 @@ async def update_user_permission_overrides(
         )
         for o in overrides
     ]
+
+
+@router.delete(
+    "/users/{user_id}/permission-overrides",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+@RequiresPermissions("users:custom_permissions:write")
+async def reset_user_permission_overrides(
+    user_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """重置用户自定义权限覆盖（移除该用户全部 override 记录，回到角色默认权限）。"""
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="用户不存在",
+        )
+
+    if _is_admin(user):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="超级管理员账号不可修改权限覆盖",
+        )
+
+    if not await _can_access_user_target(current_user, user, db, allow_self=False):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="无法访问该用户：非管理角色只能操作同角色用户",
+        )
+
+    await db.execute(
+        delete(RBACUserPermissionOverride).where(
+            RBACUserPermissionOverride.user_id == user_id,
+        )
+    )
+    await db.commit()
+    return None
 
 
 @router.delete(

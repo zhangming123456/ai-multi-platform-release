@@ -355,14 +355,20 @@ interface NotificationResponse {
 
 | 方法 | 路径 | 说明 | 鉴权 |
 |------|------|------|------|
-| GET | /api/v2/users | 用户列表（含角色分配） | 是 |
-| POST | /api/v2/users | 创建用户 | 是 |
-| GET | /api/v2/users/{id} | 用户详情 | 是 |
-| PUT | /api/v2/users/{id} | 更新用户 | 是 |
-| PUT | /api/v2/users/{id}/password | 修改密码 | 是 |
-| PUT | /api/v2/users/{id}/roles | 分配/替换角色 | 是 |
+| GET | /api/v2/users | 用户列表（含角色分配） | 是（users:read） |
+| POST | /api/v2/users | 创建用户 | 是（users:create:write） |
+| GET | /api/v2/users/{id} | 用户详情 | 是（users:read） |
+| PUT | /api/v2/users/{id} | 更新用户 | 是（users:update:write） |
+| DELETE | /api/v2/users/{id} | 删除用户 | 是（users:delete:write） |
+| PUT | /api/v2/users/{id}/password | 修改密码 | 是（users:change_password:write） |
+| GET | /api/v2/users/{id}/password-status | 检测是否默认密码 | 是（users:read） |
+| PUT | /api/v2/users/{id}/roles | 分配/替换角色 | 是（users:update:write） |
 | GET | /api/v2/users/{id}/permissions | 用户有效权限 | 是 |
+| GET | /api/v2/users/{id}/permission-overrides | 用户权限覆盖列表 | 是 |
+| PUT | /api/v2/users/{id}/permission-overrides | 更新权限覆盖（全量替换） | 是（users:custom_permissions:write） |
 | GET | /api/v2/me/permissions | 当前用户有效权限（{key: name}） | 是 |
+
+> **创建用户审核流程**：`POST /api/v2/users` 由非管理员（manager/admin 之外的角色）发起时，不会直接创建账号，而是自动写入 `UserCreationRequest` 提交审核，接口返回 `202 Accepted`，提示"账号创建申请已提交审核，请等待管理员审批"。管理员/经理角色可直接创建账号。
 
 ```typescript
 interface UserListItem {
@@ -408,22 +414,38 @@ interface UpdateUserPasswordRequest {
 interface UpdateUserRolesRequest {
   role_ids: string[]
 }
+
+interface PermissionOverrideEntry {
+  permission_key: string
+  granted: boolean
+}
+
+interface UpdateUserPermissionOverridesRequest {
+  overrides: PermissionOverrideEntry[]
+}
+
+interface PasswordStatusResponse {
+  is_default_password: boolean
+}
 ```
 
 ### 角色管理
 
 | 方法 | 路径 | 说明 | 鉴权 |
 |------|------|------|------|
-| GET | /api/v2/roles | 角色列表 | 是 |
-| POST | /api/v2/roles | 创建角色 | 是 |
-| PUT | /api/v2/roles/{id} | 更新角色 | 是 |
-| DELETE | /api/v2/roles/{id} | 删除角色 | 是 |
-| POST | /api/v2/roles/{id}/parents | 添加父角色 | 是 |
-| DELETE | /api/v2/roles/{id}/parents/{parent_id} | 移除父角色 | 是 |
+| GET | /api/v2/roles | 角色列表 | 是（roles:read） |
+| POST | /api/v2/roles | 创建角色 | 是（roles:manage:write） |
+| GET | /api/v2/roles/{id} | 角色详情 | 是（roles:read） |
+| PUT | /api/v2/roles/{id} | 更新角色 | 是（roles:manage:write） |
+| DELETE | /api/v2/roles/{id} | 删除角色 | 是（roles:manage:write） |
+| POST | /api/v2/roles/{id}/parents | 添加父角色 | 是（roles:manage:write） |
+| DELETE | /api/v2/roles/{id}/parents/{parent_id} | 移除父角色 | 是（roles:manage:write） |
 | GET | /api/v2/roles/{id}/permissions | 角色有效权限 | 是 |
-| GET | /api/v2/roles/{id}/permissions/direct | 角色直接权限 | 是 |
-| GET | /api/v2/roles/{id}/permissions/detail | 继承 + 直接权限（含 grant_type） | 是 |
-| PUT | /api/v2/roles/{id}/permissions | 更新直接权限 | 是 |
+| GET | /api/v2/roles/{id}/permissions/direct | 角色直接权限 | 是（roles:read） |
+| GET | /api/v2/roles/{id}/permissions/detail | 继承 + 直接权限（含 grant_type） | 是（roles:read） |
+| PUT | /api/v2/roles/{id}/permissions | 更新直接权限 | 是（roles:manage:write） |
+| GET | /api/v2/roles/{id}/permissions/preview/{parent_role_id} | 预览继承指定父角色后的权限 | 是（roles:read） |
+| GET | /api/v2/roles/{id}/inheritance | 角色继承关系图（ancestor_chain + descendant_tree） | 是（roles:read） |
 
 ```typescript
 interface RoleDef {
@@ -443,6 +465,28 @@ interface RolePermissionItem {
   key: string
   name: string
   grant_type: 'direct' | 'inherited'
+}
+
+interface InheritanceRoleRef {
+  id: string
+  name: string
+  display_name: string
+  role_type: string
+  is_super_admin: boolean
+  is_builtin: boolean
+}
+
+interface InheritanceNode {
+  role: InheritanceRoleRef
+  direct_permissions: Record<string, string>
+  level: number
+}
+
+interface InheritanceResponse {
+  role: InheritanceRoleRef
+  direct_permissions: Record<string, string>
+  ancestor_chain: InheritanceNode[]
+  descendant_tree: InheritanceNode[]
 }
 ```
 
@@ -547,3 +591,43 @@ interface ConstraintItem {
 用户有效权限由 `GET /api/v2/me/permissions` 获取（返回 `{ key: name }`），后端已内置交集计算：
 - 无自定义权限覆盖 → 返回角色权限的全部
 - 有自定义权限覆盖 → 返回角色权限 ∩ 自定义权限（仅两者共有的权限生效）
+
+### 权限校验机制
+
+#### 路由权限注解模式
+
+所有业务路由均使用 `route_class=PermAPIRoute` 配合 `@RequiresPermissions("permission_key")` 装饰器声明所需权限。`PermAPIRoute` 在路由注册时读取装饰器写入的标记，自动将权限校验作为依赖注入到对应端点。
+
+采用该模式的路由模块：`accounts`、`contents`、`publish`、`templates`、`reviews`、`db`、`db_changes`、`dashboard`、`model_configs`、`models`、`user_creation_reviews`，以及 RBAC3 中台的 `rbac_users`、`rbac_roles`、`rbac_permissions`、`rbac_constraints`。
+
+**例外**：`notifications.py` 未使用 `PermAPIRoute`，通过数据隔离（查询时按 `user_id` 过滤）控制访问，每个用户只能看到自己的通知。
+
+#### 权限表达式支持
+
+`require_permission` 支持两种模式：
+
+1. **简单 key 模式**：直接传权限键，如 `@RequiresPermissions("users:read")`。校验时判断该 key 是否在用户有效权限集合中。
+2. **表达式模式**：通过 `is_expression()` 判断字符串是否包含 `||`、`&`、`!`、`()` 运算符来识别。表达式支持下列运算符及内置函数调用，最终求值为布尔结果：
+   - `||`：逻辑或
+   - `&&`：逻辑与（`&` 单字符亦会触发表达式模式）
+   - `!`：逻辑非
+   - `()`：分组
+   - 内置函数：如 `isSelf(user_id)` 判断目标用户是否为当前用户
+
+表达式示例：
+- `permissions:read||permissions:manage:read` — 满足任一权限即可
+- `users:update:write && isSelf(user_id)` — 同时具备写入权限且操作本人记录
+
+#### 权限覆盖（Override）机制
+
+`require_permission` 在校验权限时会查询 `RBACUserPermissionOverride` 中当前用户被拒绝的权限（`granted=False`），并将这些 `permission_key` 收集为 `denied_keys` 传入 `flatten_effective_permissions`。
+
+`flatten_effective_permissions(effective, db, denied_keys)` 的处理流程：
+1. 先按 `resolve_read_keys` / `resolve_write_keys` / `_implied_read_keys` 对角色权限进行派生（如 `:write` 自动派生对应 `:read` 及父页面 `:read`）。
+2. 派生完成后，通过集合差集 `flat -= deny` 应用拒绝项。
+
+由于拒绝在派生之后应用，因此可以单独拒绝某个 `:read` 权限而保留对应的 `:write` 权限，实现细粒度的权限收回。
+
+权限覆盖的读写接口：
+- `GET /api/v2/users/{id}/permission-overrides` — 查询覆盖列表（本人或具备 `users:custom_permissions:read` 的同角色用户可查）
+- `PUT /api/v2/users/{id}/permission-overrides` — 全量替换覆盖列表（需 `users:custom_permissions:write`，超级管理员账号不可设置）

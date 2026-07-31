@@ -99,8 +99,7 @@ erDiagram
     }
 
     model_configs {
-        string id PK "UUID"
-        string user_id FK
+        string id PK "全局配置 ID（非 UUID，如 plan-xxx）"
         string name
         string display_name
         string provider
@@ -243,7 +242,6 @@ erDiagram
     rbac_permissions ||--o{ rbac_role_permissions : "授权"
     rbac_constraints ||--o{ rbac_constraint_role_associations : "关联"
     rbac_roles ||--o{ rbac_constraint_role_associations : "受约束"
-    users ||--o{ model_configs : "配置"
     users ||--o{ accounts : "管理"
     users ||--o{ contents : "创建"
     users ||--o{ ai_generations : "生成"
@@ -440,29 +438,30 @@ erDiagram
 
 #### model_configs（模型配置表）
 
+全局模型配置表，不与特定用户绑定（无 user_id 字段）。
+
 | 字段 | 类型 | 约束 | 说明 |
 |------|------|------|------|
-| id | VARCHAR(36) | PK | UUID 主键 |
-| user_id | VARCHAR(36) | FK → users.id, NOT NULL | 所属用户 |
-| name | VARCHAR(200) | NOT NULL | 配置名称 |
-| display_name | VARCHAR(200) | | 展示名称 |
-| provider | VARCHAR(50) | DEFAULT 'openai', NOT NULL | 提供商 |
-| mode | VARCHAR(20) | DEFAULT 'provider' | 模式 |
-| api_format | VARCHAR(50) | DEFAULT 'openai_chat' | API 格式 |
-| api_key | VARCHAR(500) | DEFAULT '' | API 密钥 |
-| base_url | VARCHAR(500) | DEFAULT '' | 基础 URL |
-| full_url | BOOLEAN | DEFAULT FALSE | 是否使用完整 URL |
-| model | VARCHAR(200) | DEFAULT '' | 模型名称 |
-| multimodal | BOOLEAN | DEFAULT FALSE | 是否多模态 |
-| model_series | VARCHAR(100) | DEFAULT 'default' | 模型系列 |
-| context_input | INTEGER | DEFAULT 128000 | 输入上下文长度 |
-| context_output | INTEGER | DEFAULT 4096 | 输出上下文长度 |
-| tool_call_rounds | INTEGER | DEFAULT 200 | 工具调用轮数 |
-| enabled | BOOLEAN | DEFAULT FALSE | 是否启用 |
-| monthly_quota | INTEGER | DEFAULT 1000000 | 月度配额 |
-| used_tokens | INTEGER | DEFAULT 0 | 已用 Token 数 |
-| created_at | TIMESTAMP | DEFAULT CURRENT_TIMESTAMP | 创建时间 |
-| updated_at | TIMESTAMP | DEFAULT CURRENT_TIMESTAMP | 更新时间 |
+| id | VARCHAR(64) | PK | 配置 ID（非 UUID，如 `plan-xxx`） |
+| name | VARCHAR(100) | NOT NULL | 配置名称 |
+| display_name | VARCHAR(100) | NOT NULL | 展示名称 |
+| provider | VARCHAR(20) | NOT NULL | 提供商 |
+| mode | VARCHAR(20) | NOT NULL | 模式 |
+| api_format | VARCHAR(50) | NOT NULL, DEFAULT 'openai_chat' | API 格式 |
+| api_key | VARCHAR(500) | | API 密钥 |
+| base_url | VARCHAR(500) | | 基础 URL |
+| full_url | BOOLEAN | NOT NULL, DEFAULT FALSE | 是否使用完整 URL |
+| model | VARCHAR(2000) | NOT NULL | 模型名称 |
+| multimodal | BOOLEAN | NOT NULL, DEFAULT FALSE | 是否多模态 |
+| model_series | VARCHAR(50) | NOT NULL, DEFAULT 'default' | 模型系列 |
+| context_input | INTEGER | NOT NULL, DEFAULT 128000 | 输入上下文长度 |
+| context_output | INTEGER | NOT NULL, DEFAULT 4096 | 输出上下文长度 |
+| tool_call_rounds | INTEGER | NOT NULL, DEFAULT 200 | 工具调用轮数 |
+| enabled | BOOLEAN | NOT NULL, DEFAULT FALSE | 是否启用 |
+| monthly_quota | INTEGER | NOT NULL, DEFAULT 1000000 | 月度配额 |
+| used_tokens | INTEGER | NOT NULL, DEFAULT 0 | 已用 Token 数 |
+| created_at | TIMESTAMP | NOT NULL, DEFAULT CURRENT_TIMESTAMP | 创建时间 |
+| updated_at | TIMESTAMP | NOT NULL, DEFAULT CURRENT_TIMESTAMP | 更新时间 |
 
 #### user_creation_requests（用户创建审核表）
 
@@ -478,7 +477,7 @@ erDiagram
 | avatar_url | VARCHAR(500) | | 头像 |
 | status | VARCHAR(20) | DEFAULT 'pending' | 审核状态 |
 | reviewer_id | VARCHAR(36) | FK → users.id | 审批人 |
-| reject_reason | TEXT | | 驳回原因 |
+| reject_reason | VARCHAR(500) | | 驳回原因 |
 | created_at | TIMESTAMP | DEFAULT CURRENT_TIMESTAMP | 创建时间 |
 | updated_at | TIMESTAMP | DEFAULT CURRENT_TIMESTAMP | 更新时间 |
 
@@ -591,27 +590,26 @@ CREATE TABLE users (
 );
 
 CREATE TABLE model_configs (
-    id VARCHAR(36) PRIMARY KEY,
-    user_id VARCHAR(36) NOT NULL REFERENCES users(id),
-    name VARCHAR(200) NOT NULL,
-    display_name VARCHAR(200),
-    provider VARCHAR(50) NOT NULL DEFAULT 'openai',
-    mode VARCHAR(20) DEFAULT 'provider',
-    api_format VARCHAR(50) DEFAULT 'openai_chat',
-    api_key VARCHAR(500) NOT NULL DEFAULT '',
-    base_url VARCHAR(500) NOT NULL DEFAULT '',
-    full_url BOOLEAN DEFAULT FALSE,
-    model VARCHAR(200) NOT NULL DEFAULT '',
-    multimodal BOOLEAN DEFAULT FALSE,
-    model_series VARCHAR(100) DEFAULT 'default',
-    context_input INTEGER DEFAULT 128000,
-    context_output INTEGER DEFAULT 4096,
-    tool_call_rounds INTEGER DEFAULT 200,
-    enabled BOOLEAN DEFAULT FALSE,
-    monthly_quota INTEGER DEFAULT 1000000,
-    used_tokens INTEGER DEFAULT 0,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    id VARCHAR(64) PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    display_name VARCHAR(100) NOT NULL,
+    provider VARCHAR(20) NOT NULL,
+    mode VARCHAR(20) NOT NULL,
+    api_format VARCHAR(50) NOT NULL DEFAULT 'openai_chat',
+    api_key VARCHAR(500),
+    base_url VARCHAR(500),
+    full_url BOOLEAN NOT NULL DEFAULT FALSE,
+    model VARCHAR(2000) NOT NULL,
+    multimodal BOOLEAN NOT NULL DEFAULT FALSE,
+    model_series VARCHAR(50) NOT NULL DEFAULT 'default',
+    context_input INTEGER NOT NULL DEFAULT 128000,
+    context_output INTEGER NOT NULL DEFAULT 4096,
+    tool_call_rounds INTEGER NOT NULL DEFAULT 200,
+    enabled BOOLEAN NOT NULL DEFAULT FALSE,
+    monthly_quota INTEGER NOT NULL DEFAULT 1000000,
+    used_tokens INTEGER NOT NULL DEFAULT 0,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE accounts (
@@ -722,7 +720,7 @@ CREATE TABLE user_creation_requests (
     avatar_url VARCHAR(500),
     status VARCHAR(20) DEFAULT 'pending',
     reviewer_id VARCHAR(36) REFERENCES users(id),
-    reject_reason TEXT,
+    reject_reason VARCHAR(500),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -738,10 +736,14 @@ CREATE INDEX idx_contents_platform ON contents(platform);
 CREATE INDEX idx_contents_status ON contents(status);
 CREATE INDEX idx_publish_tasks_status ON publish_tasks(status);
 CREATE INDEX idx_publish_tasks_scheduled_at ON publish_tasks(scheduled_at);
-CREATE INDEX idx_model_configs_user_id ON model_configs(user_id);
 CREATE INDEX idx_model_configs_enabled ON model_configs(enabled);
 CREATE INDEX idx_notifications_user_id ON notifications(user_id);
 CREATE INDEX idx_notifications_is_read ON notifications(is_read);
 CREATE INDEX idx_user_permissions_user_id ON rbac_user_permission_overrides(user_id);
+CREATE INDEX idx_rbac_user_role_assignments_user_id ON rbac_user_role_assignments(user_id);
+CREATE INDEX idx_rbac_user_role_assignments_role_id ON rbac_user_role_assignments(role_id);
+CREATE INDEX idx_rbac_role_permissions_role_id ON rbac_role_permissions(role_id);
+CREATE INDEX idx_rbac_role_hierarchy_parent ON rbac_role_hierarchy(parent_role_id);
+CREATE INDEX idx_rbac_role_hierarchy_child ON rbac_role_hierarchy(child_role_id);
 CREATE INDEX idx_sql_change_requests_status ON sql_change_requests(status);
 ```

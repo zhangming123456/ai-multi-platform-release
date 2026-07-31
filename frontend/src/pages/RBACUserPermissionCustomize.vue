@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Message } from '@arco-design/web-vue'
-import { IconLeft, IconSafe } from '@arco-design/web-vue/es/icon'
+import { Message, Modal } from '@arco-design/web-vue'
+import { IconLeft, IconSafe, IconRefresh } from '@arco-design/web-vue/es/icon'
 import PageHeader from '@/components/layout/PageHeader.vue'
 import { usePermissionStore } from '@/stores/permission'
 import api from '@/utils/api'
@@ -75,6 +75,7 @@ const userId = computed(() => route.params.id as string)
 
 const loading = ref(false)
 const saving = ref(false)
+const resetting = ref(false)
 const targetUser = ref<UserInfo | null>(null)
 const permissions = ref<Permission[]>([])
 const effectivePermissions = ref<Record<string, string>>({})
@@ -108,38 +109,43 @@ const activePermissions = computed(() => {
   return permissions.value.filter((p) => p.is_active)
 })
 
-const initialOverrideMap = computed(() => {
-  const map = new Map<string, boolean>()
-  for (const o of permissionOverrides.value) {
-    map.set(o.permission_key, o.granted)
-  }
-  return map
-})
-
-const roleDefaultKeys = computed(() => {
-  const keys = new Set(Object.keys(effectivePermissions.value))
-  for (const [key, granted] of initialOverrideMap.value) {
-    if (!granted) {
-      keys.add(key)
-    }
+// 所有可勾选的权限 key 集合（来自 available_permissions，即角色权限闭包）
+const allAvailableKeys = computed(() => {
+  const keys = new Set<string>()
+  for (const p of activePermissions.value) {
+    keys.add(p.key)
   }
   return keys
 })
 
+// 交集模型：保存所有可勾选 key 的状态
+// 勾选 = granted=true，未勾选 = granted=false
 const currentOverrides = computed(() => {
   const overrides: PermissionOverrideEntry[] = []
-  for (const key of roleDefaultKeys.value) {
-    if (!selectedKeys.value.has(key)) {
-      overrides.push({ permission_key: key, granted: false })
-    }
+  for (const key of allAvailableKeys.value) {
+    overrides.push({
+      permission_key: key,
+      granted: selectedKeys.value.has(key),
+    })
   }
   return overrides
 })
 
+// 初始化选中状态：
+// - 有覆盖：从 permissionOverrides 中 granted=true 的 keys 初始化
+// - 无覆盖：从 effectivePermissions 初始化（此时 effective = 角色权限）
 function initSelectedKeys() {
   const keys = new Set<string>()
-  for (const key of Object.keys(effectivePermissions.value)) {
-    keys.add(key)
+  if (permissionOverrides.value.length > 0) {
+    for (const o of permissionOverrides.value) {
+      if (o.granted) {
+        keys.add(o.permission_key)
+      }
+    }
+  } else {
+    for (const key of Object.keys(effectivePermissions.value)) {
+      keys.add(key)
+    }
   }
   selectedKeys.value = keys
 }
@@ -394,6 +400,29 @@ async function saveOverrides() {
   }
 }
 
+function resetOverrides() {
+  if (!userId.value || !canWrite.value || readOnly.value) return
+  Modal.warning({
+    title: '重置自定义权限',
+    content: '确定要移除该用户的所有自定义权限覆盖吗？移除后将恢复为角色默认权限。',
+    okText: '确认重置',
+    cancelText: '取消',
+    hideCancel: false,
+    onOk: async () => {
+      resetting.value = true
+      try {
+        await api.delete(`/v2/users/${userId.value}/permission-overrides`)
+        Message.success('已重置为角色默认权限')
+        await Promise.all([fetchAllPermissions(), fetchOverrides()])
+      } catch (e: any) {
+        Message.error(e.response?.data?.detail || '重置失败')
+      } finally {
+        resetting.value = false
+      }
+    },
+  })
+}
+
 function goBack() {
   router.push({ name: 'RBACUserManage' })
 }
@@ -416,6 +445,18 @@ onMounted(loadAll)
           <a-button @click="goBack">
             <template #icon><IconLeft /></template>
             返回用户列表
+          </a-button>
+          <a-button
+            v-perm="{
+              key: 'users:custom_permissions:write & !isBuiltInAdmin(user_id)',
+              ctx: { user_id: targetUser?.id },
+            }"
+            :loading="resetting"
+            :disabled="readOnly"
+            @click="resetOverrides"
+          >
+            <template #icon><IconRefresh /></template>
+            重置权限
           </a-button>
           <a-button
             v-perm="{

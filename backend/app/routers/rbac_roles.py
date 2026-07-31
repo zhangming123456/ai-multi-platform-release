@@ -17,7 +17,7 @@ from app.models.rbac_role_hierarchy import RBACRoleHierarchy
 from app.models.rbac_role_permission import RBACRolePermission
 from app.models.user import User
 from app.services.rbac_constraint_service import validate_role_hierarchy
-from app.services.rbac_service import get_role_ancestors, get_role_descendants, get_user_effective_permissions
+from app.services.rbac_service import get_role_ancestors, get_role_descendants
 
 router = APIRouter(prefix="/api/v2", tags=["RBAC 角色管理"], route_class=PermAPIRoute)
 

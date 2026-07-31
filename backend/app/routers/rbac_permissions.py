@@ -12,9 +12,8 @@ from app.core.deps import get_current_user, PermAPIRoute, RequiresPermissions
 from app.database import get_db
 from app.models.rbac_permission import RBACPermission
 from app.models.rbac_resource import RBACResource, _infer_resource_type
-from app.models.rbac_user_permission_override import RBACUserPermissionOverride
 from app.models.user import User
-from app.services.rbac_service import get_user_effective_permissions, flatten_effective_permissions
+from app.services.rbac_service import get_user_effective_flat_permissions
 
 router = APIRouter(prefix="/api/v2", tags=["RBAC 权限管理"], route_class=PermAPIRoute)
 
@@ -133,15 +132,18 @@ async def get_my_permissions(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    effective = await get_user_effective_permissions(current_user.id, db)
-    deny_result = await db.execute(
-        select(RBACUserPermissionOverride.permission_key).where(
-            RBACUserPermissionOverride.user_id == current_user.id,
-            RBACUserPermissionOverride.granted.is_(False),
-        )
-    )
-    denied_keys = {row[0] for row in deny_result.all()}
-    return await flatten_effective_permissions(effective, db, denied_keys)
+    """获取当前登录用户的最终有效权限。
+
+    处理链（对应设计图权限层级模型）：
+
+      全部权限（系统激活的所有权限定义）
+        └─ 角色权限（用户直接分配角色 + 角色继承链祖先闭包）
+             └─ 个人自定义权限（排除 override(granted=False) 的权限，
+                超级管理员不受此约束）
+
+    返回值是 {permission_key: display_name}，前端通过 `key in dict` 判断是否有权限。
+    """
+    return await get_user_effective_flat_permissions(current_user.id, db)
 
 
 # ---------------------------------------------------------------------------
@@ -152,7 +154,7 @@ async def get_my_permissions(
     "/permission-enums",
     response_model=list[PermissionEnumDetail],
 )
-@RequiresPermissions("permissions:read")
+@RequiresPermissions("permissions:read||permissions:manage:read")
 async def list_permission_enum(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -181,7 +183,7 @@ async def list_permission_enum(
     "/permission-pages",
     response_model=list[PermissionEnumDetail],
 )
-@RequiresPermissions("permissions:read")
+@RequiresPermissions("permissions:read||permissions:manage:read")
 async def list_page_permissions(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -216,7 +218,7 @@ def _resource_type(key: str) -> str:
     "/resources",
     response_model=list[ResourceNode],
 )
-@RequiresPermissions("permissions:read")
+@RequiresPermissions("permissions:read||permissions:manage:read")
 async def list_resources(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -385,7 +387,7 @@ async def delete_resource(
     "/permissions",
     response_model=list[PermissionItem],
 )
-@RequiresPermissions("permissions:read")
+@RequiresPermissions("permissions:read||permissions:manage:read")
 async def list_permissions(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),

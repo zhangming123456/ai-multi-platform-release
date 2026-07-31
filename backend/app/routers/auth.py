@@ -5,8 +5,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.deps import get_current_user
 from app.core.security import hash_password, verify_password
 from app.database import get_db
-from app.models.rbac_permission import RBACPermission
-from app.models.rbac_resource import RBACResource
 from app.models.rbac_role import RBACRole
 from app.models.rbac_user_role_assignment import RBACUserRoleAssignment
 from app.models.user import User
@@ -27,6 +25,7 @@ from app.services.auth_service import (
     get_user_by_email,
     get_user_by_username,
 )
+from app.services.rbac_service import get_user_effective_flat_permissions
 
 router = APIRouter(prefix="/api/auth", tags=["认证"])
 
@@ -85,14 +84,9 @@ async def get_me(
         for role in roles_result.scalars().all()
     ]
 
-    perm_result = await db.execute(
-        select(RBACPermission.key, RBACResource.name)
-        .join(RBACResource, RBACPermission.resource_id == RBACResource.id)
-        .where(RBACPermission.is_active.is_(True))
-    )
-    permissions: dict[str, str] = {}
-    for key, name in perm_result.all():
-        permissions[key] = name
+    # 获取当前用户最终有效权限（含角色继承链、自定义角色权限，
+    # 排除用户自定义权限覆盖中 granted=False 的项；超级管理员不受约束）
+    permissions = await get_user_effective_flat_permissions(current_user.id, db)
 
     return UserInfoWithRoles(
         id=current_user.id,
