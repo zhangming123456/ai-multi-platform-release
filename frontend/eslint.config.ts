@@ -31,6 +31,12 @@ export default tseslint.config(
       'vue/multi-word-component-names': 'off',
       'vue/attributes-order': 'off',
       'vue/no-deprecated-filter': 'warn',
+      'vue/component-tags-order': [
+        'error',
+        {
+          order: ['template', ['script', 'script setup'], 'style'],
+        },
+      ],
       '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
       '@typescript-eslint/no-explicit-any': 'warn',
     },
