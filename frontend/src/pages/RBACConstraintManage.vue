@@ -233,7 +233,10 @@ function validateForm(): boolean {
     Message.warning('互斥约束至少需要两个作用角色')
     return false
   }
-  if (form.value.constraint_type === 'prerequisite' && form.value.prerequisite_role_ids.length === 0) {
+  if (
+    form.value.constraint_type === 'prerequisite' &&
+    form.value.prerequisite_role_ids.length === 0
+  ) {
     Message.warning('请至少选择一个先决角色')
     return false
   }
@@ -311,7 +314,10 @@ function onPrerequisiteRoleIdsChange(value: unknown) {
     </PageHeader>
 
     <a-spin :loading="loading" tip="加载中..." class="w-full">
-      <div v-if="constraints.length > 0" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div
+        v-if="constraints.length > 0"
+        class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
+      >
         <div
           v-for="constraint in constraints"
           :key="constraint.id"
@@ -406,7 +412,7 @@ function onPrerequisiteRoleIdsChange(value: unknown) {
                 size="small"
                 @change="(v: boolean | string | number) => toggleActive(constraint, Boolean(v))"
               />
-              <a-tag v-else size="small" :color="constraint.is_active ? 'green' : 'gray'" class="!m-0">
+              <a-tag size="small" :color="constraint.is_active ? 'green' : 'gray'" class="!m-0">
                 {{ constraint.is_active ? '启用' : '停用' }}
               </a-tag>
             </div>
@@ -476,16 +482,16 @@ function onPrerequisiteRoleIdsChange(value: unknown) {
           />
           <template #extra>
             <span class="text-[11px] text-[#86868b]">
-              {{ form.constraint_type === 'mutual_exclusive' ? '至少选择两个角色' : '至少选择一个角色' }}
+              {{
+                form.constraint_type === 'mutual_exclusive'
+                  ? '至少选择两个角色'
+                  : '至少选择一个角色'
+              }}
             </span>
           </template>
         </a-form-item>
 
-        <a-form-item
-          v-if="form.constraint_type === 'prerequisite'"
-          label="先决角色"
-          required
-        >
+        <a-form-item v-if="form.constraint_type === 'prerequisite'" label="先决角色" required>
           <a-select
             :model-value="form.prerequisite_role_ids"
             placeholder="选择必须先拥有的角色"
