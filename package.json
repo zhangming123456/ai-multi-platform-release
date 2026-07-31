@@ -10,10 +10,20 @@
     "lint": "cd frontend && npm run lint",
     "lint:fix": "cd frontend && npm run lint:fix",
     "format": "prettier --write \"*.{json,yml,yaml,md}\" \".trae/documents/*.md\" && cd frontend && npm run format && cd ../backend && python3 -m ruff format . && python3 -m ruff check --fix .",
-    "format:check": "prettier --check \"*.{json,yml,yaml,md}\" \".trae/documents/*.md\" && cd frontend && npm run format:check && cd ../backend && python3 -m ruff format --check . && python3 -m ruff check ."
+    "format:check": "prettier --check \"*.{json,yml,yaml,md}\" \".trae/documents/*.md\" && cd frontend && npm run format:check && cd ../backend && python3 -m ruff format --check . && python3 -m ruff check .",
+    "prepare": "husky"
   },
   "devDependencies": {
     "concurrently": "^9.1.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.4.0",
     "prettier": "^3.9.6"
+  },
+  "lint-staged": {
+    "*.{ts,vue,css,scss,json,yml,yaml,md}": "prettier --write",
+    "*.py": [
+      "python3 -m ruff check --fix",
+      "python3 -m ruff format"
+    ]
   }
 }
