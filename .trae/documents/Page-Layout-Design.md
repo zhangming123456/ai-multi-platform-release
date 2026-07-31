@@ -1,5 +1,7 @@
 # 页面布局设计
 
+> **版本**：v1.1 · **更新**：2026-07-31 · **核对源码**：`AppLayout.vue` / `AppSidebar.vue` / `AppHeader.vue` / `PageHeader.vue` / `router/index.ts`
+
 ## 1. 整体布局架构
 
 ### 1.1 布局组合方式
@@ -16,11 +18,16 @@
 │     │  ├─ <aside> 侧边栏（fixed 定位）                   │
 │     │  │   └─ AppSidebar                                 │
 │     │  └─ <div> 主区域（flex-1 + flex-col）              │
+│     │      │  · marginLeft 动态绑定 siderWidth           │
+│     │      │  · maxWidth = calc(100vw - siderWidth)      │
 │     │      ├─ AppHeader（sticky top-0 z-20）             │
 │     │      └─ <main> 主内容区（max-w-[1400px] mx-auto）  │
+│     │          ├─ <div style="width:999999px"> 防收缩    │
 │     │          └─ <router-view />                        │
 └─────────────────────────────────────────────────────────┘
 ```
+
+> **防收缩 hack**：`<main>` 内插入 `width: 999999px` 的空 div，用于撑开 flex 子项最小宽度，避免表格/栅格在窄屏被压缩错位。
 
 ### 1.2 布局状态
 
@@ -65,9 +72,22 @@
 
 支持 12 个图标别名，来源于 `@arco-design/web-vue/es/icon`：
 
-`home / file / send / apps / settings / code / safe / storage / tool / check / user / edit`
+| 别名     | 组件              |
+| -------- | ----------------- |
+| home     | `IconHome`        |
+| file     | `IconFile`        |
+| send     | `IconSend`        |
+| apps     | `IconApps`        |
+| settings | `IconSettings`    |
+| code     | `IconCode`        |
+| safe     | `IconSafe`        |
+| storage  | `IconStorage`     |
+| tool     | `IconTool`        |
+| check    | `IconCheckCircle` |
+| user     | `IconUser`        |
+| edit     | `IconEdit`        |
 
-默认回退到 `IconFile`。
+未命中时默认回退到 `IconFile`。
 
 ### 2.3 菜单生成逻辑
 
@@ -97,24 +117,71 @@
 
 ## 3. 头部设计（AppHeader）
 
-固定高度 `56px`，`sticky top-0 z-20`，毛玻璃背景 `bg-white/60 backdrop-blur-xl`。
+固定高度 `56px`，`sticky top-0 z-20`，毛玻璃背景 `bg-white/60 backdrop-blur-xl`，左右两端对齐 `justify-between`。
 
 ### 3.1 左侧区域
 
-| 元素     | 说明                                                                            | 响应式        |
-| -------- | ------------------------------------------------------------------------------- | ------------- |
-| 汉堡按钮 | `a-button type="text"`，根据 `collapsed` 切换 `IconMenuUnfold` / `IconMenuFold` | 全屏显示      |
-| 面包屑   | `a-breadcrumb`，结构：`Matrix`（首页）+ 当前路径名称                            | `sm` 以上显示 |
+| 元素     | 说明                                                                                                 | 响应式        |
+| -------- | ---------------------------------------------------------------------------------------------------- | ------------- |
+| 汉堡按钮 | `a-button type="text" size="small"`，根据 `collapsed` 切换 `IconMenuUnfold` / `IconMenuFold`（20px） | 全屏显示      |
+| 面包屑   | `a-breadcrumb`，结构：`Matrix`（首页）+ 当前路径名称；末项加粗 `#1D1D1F`，前置项灰色 `#86868B`       | `sm` 以上显示 |
 
-面包屑内置 14 条路径映射（`/`→仪表盘、`/profile`→个人资料、`/rbac/users`→用户设置 等），未命中时回退为 "页面"。
+面包屑标题**直接同步路由 `meta.title`**，不再使用静态映射表，避免与路由配置不一致。
+
+```
+items = [{ label: 'Matrix', path: '/' }]
+if route.path !== '/':
+  items.push({ label: route.meta.title || '页面', path: route.path })
+```
+
+各页面面包屑标题来源（路由 `meta.title`）：
+
+| 路径                                      | 面包屑标题   |
+| ----------------------------------------- | ------------ |
+| `/`                                       | 仪表盘       |
+| `/profile`                                | 个人中心     |
+| `/platforms`                              | 平台管理     |
+| `/content`                                | 内容列表     |
+| `/content/create`                         | 创作内容     |
+| `/publish`                                | 发布管理     |
+| `/review`                                 | 内容审核     |
+| `/templates`                              | 模板管理     |
+| `/settings/token-plan`                    | Token方案    |
+| `/developer/docs`                         | API文档      |
+| `/developer/database`                     | 数据库控制台 |
+| `/sql-review`                             | SQL审核      |
+| `/settings/user-creation-review`          | 用户注册审核 |
+| `/rbac/users`                             | 用户管理     |
+| `/rbac/users/create`                      | 创建用户     |
+| `/rbac/users/:id/edit`                    | 编辑用户     |
+| `/rbac/users/:id/password`                | 修改密码     |
+| `/rbac/users/:id/permissions`             | 自定义权限   |
+| `/rbac/roles`                             | 角色管理     |
+| `/rbac/permissions`                       | 权限管理     |
+| `/rbac/permissions/enum`                  | 权限字典管理 |
+| `/rbac/permissions/enum/create`           | 新增权限字典 |
+| `/rbac/permissions/enum/edit/:resourceId` | 编辑权限字典 |
+| `/rbac/constraints`                       | 约束管理     |
+| `/403`                                    | 无权限       |
+
+未配置 `meta.title` 时回退为 "页面"。
 
 ### 3.2 右侧区域
 
-| 元素               | 说明                                        | 响应式        |
-| ------------------ | ------------------------------------------- | ------------- |
-| `RegionSwitcher`   | 区域切换器                                  | 全屏显示      |
-| 搜索框             | `a-input-search`，宽度 224px，`allow-clear` | `md` 以上显示 |
-| `NotificationBell` | 通知铃铛组件                                | 全屏显示      |
+| 元素               | 说明                                                                                                   | 响应式               |
+| ------------------ | ------------------------------------------------------------------------------------------------------ | -------------------- |
+| 区域切换器         | `a-popover` + `IconLanguage`（18px）+ 简称标签（CN/TW/HK/JP/KR/SG/US-E/US-W/UK/FR 等）                 | 全屏显示             |
+| 搜索框             | `a-input-search`，宽度 `200px`，`allow-clear`，placeholder "搜索..."                                   | `md` 以上显示        |
+| `NotificationBell` | 通知铃铛组件                                                                                           | 全屏显示             |
+| 更多工具按钮       | `a-button type="text"` + `IconMore`（20px），触发右侧 `a-drawer width=300` 抽屉（含搜索框 + 区域下拉） | 仅移动端 `md:hidden` |
+
+#### 区域切换器实现细节
+
+- **桌面端**：`a-popover trigger="click" position="br"`，弹出区域列表（自定义 `.region-list-item`）
+- **移动端**：通过"更多工具"按钮打开 Drawer，内含 `a-select` 区域选择
+- **区域数据**：来自 `useRegionStore()`，包含 `value` / `label` / `offset` 字段
+- **简称映射**：根据 `label` 关键字匹配（"大陆"→CN、"台湾"→TW、"日本"→JP 等），未匹配取前 2 字符
+- **样式**：选中态 `rgba(0,122,255,0.08)` 背景；offset 使用 `tabular-nums` 等宽数字
 
 ---
 
@@ -132,9 +199,13 @@
 ### 4.2 移动端侧边栏抽屉模式
 
 - 侧边栏：`fixed inset-y-0 left-0` + `-translate-x-full`（关闭）/ `translate-x-0`（打开）
+- 侧边栏最大宽度限制：`maxWidth: 70vw`（避免窄屏覆盖过宽）
 - 遮罩层：`fixed inset-0 bg-black/20 backdrop-blur-sm z-30 md:hidden animate-fade-in`
-- 主区域 `marginLeft` 为 `0`（不预留侧边栏空间）
-- 点击菜单项后自动关闭抽屉
+- 主区域 `marginLeft`：
+  - 移动端（`<768px`）：始终 `0`（侧边栏覆盖式抽屉，不挤压主区域）
+  - 桌面端：`siderWidth`（248px 或 64px，根据折叠状态）
+- 主区域 `maxWidth`：`calc(100vw - siderWidth)`（桌面端）
+- 点击菜单项后通过 `emit('closeMobile')` 自动关闭抽屉
 
 ### 4.3 极小屏适配（< 248px）
 
@@ -221,11 +292,20 @@
 
 ### 6.1 PageHeader 组件
 
-除 `Review.vue` 和 `Forbidden.vue` 外，所有页面统一使用 `PageHeader` 组件作为顶部标题栏，包含：
+除 `Review.vue` 和 `Forbidden.vue` 外，所有页面统一使用 `PageHeader` 组件作为顶部标题栏：
 
-- 页面标题（h2）
-- 副标题描述（灰色小字）
-- 右侧操作区（按钮/标签）
+- **Props**：`title: string`（必填）、`subtitle?: string`（选填）
+- **Slots**：
+  - `actions`：右侧操作区（按钮/标签）
+  - `below-title`：标题下方区域（标签/状态条）
+- **结构**：`a-space` 水平排列，左侧垂直堆叠（标题 + 副标题 + below-title），右侧 actions
+- **标题样式**：`<h1>` 28px 加粗 `tracking-[-0.025em] leading-[1.15]`
+- **副标题样式**：13px `#86868B`
+- **入场动画**：`animate-fade-up`，默认 `mb-7`
+- **响应式**：
+  - `≤ 768px`：改为垂直排列，标题缩至 22px，actions 换行
+  - `≤ 480px`：标题缩至 20px
+  - `≤ 248px`：标题缩至 16px，副标题 11px，`mb-3`
 
 ### 6.2 SegmentedControl 分段控件
 
@@ -712,7 +792,7 @@
 - 表结构展开 chevron 旋转动画
 - "查询"按钮 hover 才显示，带位移动画
 
-### 7.20 SQL 审核 `/sql-review`
+### 7.21 SQL 审核 `/sql-review`
 
 **布局结构**：PageHeader + 筛选 + 表格
 
@@ -731,7 +811,7 @@
 - 类型/状态使用彩色 `a-tag`（红/橘/蓝/绿）
 - 操作列 `fixed="right"`
 
-### 7.21 用户注册审核 `/settings/user-creation-review`
+### 7.22 用户注册审核 `/settings/user-creation-review`
 
 **布局结构**：PageHeader + 表格 + 驳回弹窗
 
@@ -812,13 +892,15 @@
 
 ### 8.2 响应式策略
 
-| 策略          | 说明                                                                      |
-| ------------- | ------------------------------------------------------------------------- |
-| Arco 栅格     | `a-row :gutter="[16, 16]"` + `:xs="24" :md="12" :lg="6"`                  |
-| Tailwind Grid | `grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4`                    |
-| Tailwind Flex | `flex flex-col lg:flex-row gap-5`                                         |
-| 媒体查询      | `@media (max-width: 900px)` / `(max-width: 480px)` / `(max-width: 248px)` |
-| 显示/隐藏     | `hidden md:block`（搜索框）、`hidden sm:block`（面包屑）                  |
+| 策略          | 说明                                                                                             |
+| ------------- | ------------------------------------------------------------------------------------------------ |
+| Arco 栅格     | `a-row :gutter="[16, 16]"` + `:xs="24" :md="12" :lg="6"`                                         |
+| Tailwind Grid | `grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4`                                           |
+| Tailwind Flex | `flex flex-col lg:flex-row gap-5`                                                                |
+| 媒体查询      | `@media (max-width: 900px)` / `(max-width: 768px)` / `(max-width: 480px)` / `(max-width: 248px)` |
+| 显示/隐藏     | `hidden md:block`（搜索框）、`hidden sm:block`（面包屑）、`md:hidden`（更多按钮）                |
+| 移动端 Drawer | AppHeader "更多工具"按钮触发 `a-drawer width=300`，收纳搜索框 + 区域下拉                         |
+| 抽屉式侧边栏  | 移动端侧边栏 `-translate-x-full` 隐藏，配合遮罩层 `bg-black/20 backdrop-blur-sm`                 |
 
 ### 8.3 通用设计原则
 

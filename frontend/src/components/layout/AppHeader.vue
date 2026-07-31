@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useRoute } from 'vue-router'
-import { IconMenuFold, IconMenuUnfold, IconMore, IconLanguage } from '@arco-design/web-vue/es/icon'
+import { IconMenuFold, IconMenuUnfold, IconMenu, IconLanguage } from '@arco-design/web-vue/es/icon'
 import { useRegionStore } from '@/stores/region'
 import NotificationBell from '@/components/NotificationBell.vue'
 
@@ -16,29 +16,12 @@ const emit = defineEmits<{
 const route = useRoute()
 const { selectedTz, regions, switchRegion } = useRegionStore()
 
-const breadcrumbMap: Record<string, string> = {
-  '/': '仪表盘',
-  '/profile': '个人资料',
-  '/platforms': '平台管理',
-  '/content': '内容工坊',
-  '/content/create': '创建内容',
-  '/publish': '发布管理',
-  '/review': '审核管理',
-  '/templates': '模板中心',
-  '/settings/token-plan': 'Token 配置',
-  '/developer/docs': 'API 文档',
-  '/rbac/users': '用户设置',
-  '/rbac/roles': '角色设置',
-  '/rbac/permissions': '权限设置',
-  '/rbac/permissions/enum': '权限字典管理',
-  '/rbac/constraints': '职责分离',
-}
-
+// 面包屑标题直接同步路由 meta.title，避免静态映射与路由配置不一致
 const breadcrumbs = computed(() => {
-  const path = route.path
   const items: { label: string; path: string }[] = [{ label: 'Matrix', path: '/' }]
-  if (path !== '/') {
-    items.push({ label: breadcrumbMap[path] || '页面', path })
+  if (route.path !== '/') {
+    const title = (route.meta.title as string | undefined) || '页面'
+    items.push({ label: title, path: route.path })
   }
   return items
 })
@@ -140,7 +123,7 @@ function regionShortLabel(value: string): string {
         @click="mobileDrawerVisible = true"
       >
         <template #icon>
-          <IconMore :size="20" />
+          <IconMenu :size="20" />
         </template>
       </a-button>
     </div>
