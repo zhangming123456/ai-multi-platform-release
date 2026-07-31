@@ -79,13 +79,13 @@ const fetching = ref(false)
 const fetchedModels = ref<string[]>([])
 
 const dedupedFetchedModels = computed(() => {
-  const preset = form.value.mode === 'provider' ? (presetModels[form.value.provider] || []) : []
+  const preset = form.value.mode === 'provider' ? presetModels[form.value.provider] || [] : []
   const presetSet = new Set(preset)
   return fetchedModels.value.filter((m) => !presetSet.has(m))
 })
 
 function availableModelsForEntry(currentIdx: number): string[] {
-  const preset = form.value.mode === 'provider' ? (presetModels[form.value.provider] || []) : []
+  const preset = form.value.mode === 'provider' ? presetModels[form.value.provider] || [] : []
   const allAvailable = [...preset, ...dedupedFetchedModels.value]
   const selectedElsewhere = new Set(
     form.value.models
@@ -198,14 +198,16 @@ async function doFetch(url: string, _target: 'provider' | 'custom') {
     const models: string[] = res.data.models || []
     fetchedModels.value = models
     if (models.length === 0) {
-        Message.warning('未获取到模型列表')
-      } else {
-        Message.success(`获取到 ${models.length} 个模型`)
-        if (form.value.models.length === 0) {
-          form.value.models = [{ id: models[0], types: ['text'], contextInput: null, contextOutput: null }]
-          applyContext(models[0])
-        }
+      Message.warning('未获取到模型列表')
+    } else {
+      Message.success(`获取到 ${models.length} 个模型`)
+      if (form.value.models.length === 0) {
+        form.value.models = [
+          { id: models[0], types: ['text'], contextInput: null, contextOutput: null },
+        ]
+        applyContext(models[0])
       }
+    }
   } catch (e: unknown) {
     const msg =
       e instanceof Error
@@ -227,7 +229,9 @@ function fetchCustomModels() {
 
 function onProviderChange() {
   const defaultModel = providerDefaultModel[form.value.provider] || ''
-  form.value.models = defaultModel ? [{ id: defaultModel, types: ['text'], contextInput: null, contextOutput: null }] : []
+  form.value.models = defaultModel
+    ? [{ id: defaultModel, types: ['text'], contextInput: null, contextOutput: null }]
+    : []
   fetchedModels.value = []
   if (defaultModel) applyContext(defaultModel)
 }
@@ -239,7 +243,9 @@ function setMode(m: 'provider' | 'custom') {
     form.value.models = []
   } else if (form.value.provider === 'custom') {
     form.value.provider = 'openai'
-    form.value.models = [{ id: providerDefaultModel.openai, types: ['text'], contextInput: null, contextOutput: null }]
+    form.value.models = [
+      { id: providerDefaultModel.openai, types: ['text'], contextInput: null, contextOutput: null },
+    ]
     applyContext(providerDefaultModel.openai)
   }
   fetchedModels.value = []
@@ -465,8 +471,8 @@ onBeforeUnmount(() => {
           </template>
           {{ store.activePlan ? '已就绪' : '未配置' }}
         </a-tag>
-        <a-button type="primary" size="small" @click="openAdd">
-          <template #icon><IconPlus /></template>添加模型
+        <a-button type="text" size="mini" class="!text-[#007AFF] !px-0 !h-auto" @click="openAdd">
+          <template #icon><IconPlus :size="13" /></template>添加模型
         </a-button>
       </template>
     </PageHeader>
@@ -523,7 +529,16 @@ onBeforeUnmount(() => {
                 <template v-for="m in parseModelField(plan.model)" :key="m.id">
                   <span
                     class="model-tag"
-                    :style="{ background: ((m.types && m.types[0]) ? (MODEL_TYPE_COLORS[m.types[0]] || '#007AFF') : '#007AFF') + '15', color: (m.types && m.types[0]) ? (MODEL_TYPE_COLORS[m.types[0]] || '#0062CC') : '#0062CC' }"
+                    :style="{
+                      background:
+                        (m.types && m.types[0]
+                          ? MODEL_TYPE_COLORS[m.types[0]] || '#007AFF'
+                          : '#007AFF') + '15',
+                      color:
+                        m.types && m.types[0]
+                          ? MODEL_TYPE_COLORS[m.types[0]] || '#0062CC'
+                          : '#0062CC',
+                    }"
                   >
                     <span v-if="m.types && m.types.length" class="model-tag__icons">
                       <component
@@ -735,7 +750,11 @@ onBeforeUnmount(() => {
             >
               <div class="model-entry__top">
                 <span class="model-entry__grip" title="拖拽排序">
-                  <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M8 6a2 2 0 1 1 0-4 2 2 0 0 1 0 4zm8 0a2 2 0 1 1 0-4 2 2 0 0 1 0 4zM8 14a2 2 0 1 1 0-4 2 2 0 0 1 0 4zm8 0a2 2 0 1 1 0-4 2 2 0 0 1 0 4zM8 22a2 2 0 1 1 0-4 2 2 0 0 1 0 4zm8 0a2 2 0 1 1 0-4 2 2 0 0 1 0 4z"/></svg>
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+                    <path
+                      d="M8 6a2 2 0 1 1 0-4 2 2 0 0 1 0 4zm8 0a2 2 0 1 1 0-4 2 2 0 0 1 0 4zM8 14a2 2 0 1 1 0-4 2 2 0 0 1 0 4zm8 0a2 2 0 1 1 0-4 2 2 0 0 1 0 4zM8 22a2 2 0 1 1 0-4 2 2 0 0 1 0 4zm8 0a2 2 0 1 1 0-4 2 2 0 0 1 0 4z"
+                    />
+                  </svg>
                 </span>
                 <div class="model-entry__id">
                   <a-select
@@ -746,14 +765,35 @@ onBeforeUnmount(() => {
                     size="mini"
                     @change="(val: unknown) => onModelIdInput(entry, val as string)"
                   >
-                    <a-select-opt-group v-if="form.mode === 'provider' && presetModels[form.provider].length" label="预设模型">
-                      <a-option v-for="m in presetModels[form.provider].filter(pm => availableModelsForEntry(idx).includes(pm))" :key="m" :value="m">
-                        {{ m }}<span class="tp-opt-meta">{{ getModelContext(m).i.toLocaleString() }} tokens</span>
+                    <a-select-opt-group
+                      v-if="form.mode === 'provider' && presetModels[form.provider].length"
+                      label="预设模型"
+                    >
+                      <a-option
+                        v-for="m in presetModels[form.provider].filter((pm) =>
+                          availableModelsForEntry(idx).includes(pm),
+                        )"
+                        :key="m"
+                        :value="m"
+                      >
+                        {{ m
+                        }}<span class="tp-opt-meta"
+                          >{{ getModelContext(m).i.toLocaleString() }} tokens</span
+                        >
                       </a-option>
                     </a-select-opt-group>
                     <a-select-opt-group v-if="dedupedFetchedModels.length" label="API 拉取">
-                      <a-option v-for="m in dedupedFetchedModels.filter(fm => availableModelsForEntry(idx).includes(fm))" :key="m" :value="m">
-                        {{ m }}<span class="tp-opt-meta">{{ getModelContext(m).i.toLocaleString() }} tokens</span>
+                      <a-option
+                        v-for="m in dedupedFetchedModels.filter((fm) =>
+                          availableModelsForEntry(idx).includes(fm),
+                        )"
+                        :key="m"
+                        :value="m"
+                      >
+                        {{ m
+                        }}<span class="tp-opt-meta"
+                          >{{ getModelContext(m).i.toLocaleString() }} tokens</span
+                        >
                       </a-option>
                     </a-select-opt-group>
                   </a-select>
@@ -775,7 +815,7 @@ onBeforeUnmount(() => {
                     placeholder="模型类型（可多选）"
                     multiple
                     size="mini"
-                    :options="MODEL_TYPE_OPTIONS as unknown as {value: string; label: string}[]"
+                    :options="MODEL_TYPE_OPTIONS as unknown as { value: string; label: string }[]"
                   />
                 </div>
                 <div class="model-entry__ctx">
@@ -799,7 +839,9 @@ onBeforeUnmount(() => {
             <IconPlus :size="14" /> 添加模型
           </button>
           <div class="tp-aux">
-            <span class="tp-aux-hint">每个模型可配置多个类型与独立上下文窗口，留空则使用高级配置中的默认值</span>
+            <span class="tp-aux-hint"
+              >每个模型可配置多个类型与独立上下文窗口，留空则使用高级配置中的默认值</span
+            >
             <button
               v-if="form.apiKey && (form.mode === 'provider' || form.baseUrl)"
               type="button"
@@ -807,9 +849,7 @@ onBeforeUnmount(() => {
               :disabled="fetching"
               @click="form.mode === 'provider' ? fetchProviderModels() : fetchCustomModels()"
             >
-              <IconRefresh :class="{ 'tp-spin': fetching }" />{{
-                fetching ? '拉取中' : '拉取列表'
-              }}
+              <IconRefresh :class="{ 'tp-spin': fetching }" />{{ fetching ? '拉取中' : '拉取列表' }}
             </button>
           </div>
         </div>
@@ -1510,7 +1550,11 @@ body.tp-cabin-open .tp-opt-meta {
   border: 1px solid rgba(0, 0, 0, 0.06);
   border-radius: 10px;
   cursor: default;
-  transition: border-color 0.18s, box-shadow 0.18s, transform 0.15s, opacity 0.15s;
+  transition:
+    border-color 0.18s,
+    box-shadow 0.18s,
+    transform 0.15s,
+    opacity 0.15s;
 }
 .model-entry.dragging {
   opacity: 0.45;
@@ -1530,7 +1574,9 @@ body.tp-cabin-open .tp-opt-meta {
   border-radius: 5px;
   color: #aeaeb2;
   cursor: grab;
-  transition: background 0.18s, color 0.18s;
+  transition:
+    background 0.18s,
+    color 0.18s;
 }
 .model-entry__grip:active {
   cursor: grabbing;
@@ -1580,7 +1626,9 @@ body.tp-cabin-open .tp-opt-meta {
   background: transparent;
   color: #aeaeb2;
   cursor: pointer;
-  transition: background 0.18s, color 0.18s;
+  transition:
+    background 0.18s,
+    color 0.18s;
 }
 .model-entry__del:hover {
   background: rgba(255, 59, 48, 0.1);
@@ -1599,7 +1647,9 @@ body.tp-cabin-open .tp-opt-meta {
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
-  transition: background 0.18s, border-color 0.18s;
+  transition:
+    background 0.18s,
+    border-color 0.18s;
 }
 .model-add-btn:hover {
   background: rgba(0, 122, 255, 0.08);

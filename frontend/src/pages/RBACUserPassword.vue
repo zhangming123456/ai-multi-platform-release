@@ -84,10 +84,13 @@ function goBack() {
 
 <template>
   <div class="page-main">
-    <PageHeader :title="`修改密码 - ${user?.nickname || '...'}`" subtitle="重置或修改用户的登录密码">
+    <PageHeader
+      :title="`修改密码 - ${user?.nickname || '...'}`"
+      subtitle="重置或修改用户的登录密码"
+    >
       <template #actions>
-        <a-button @click="goBack">
-          <template #icon><IconLeft /></template>
+        <a-button type="text" size="mini" class="!text-[#007AFF] !px-0 !h-auto" @click="goBack">
+          <template #icon><IconLeft :size="13" /></template>
           返回列表
         </a-button>
       </template>
@@ -98,7 +101,10 @@ function goBack() {
         <a-card :bordered="false" class="!rounded-xl">
           <a-form layout="vertical" class="!max-w-[400px]">
             <a-form-item label="用户">
-              <a-input :model-value="`${user?.nickname || '...'}  (${user?.username || '...'})`" disabled />
+              <a-input
+                :model-value="`${user?.nickname || '...'}  (${user?.username || '...'})`"
+                disabled
+              />
             </a-form-item>
 
             <div v-if="isDefaultPwd" class="mb-4">
@@ -106,7 +112,9 @@ function goBack() {
                 class="flex items-center gap-2 px-4 py-3 rounded-lg bg-[#30d158]/[0.06] border border-[#30d158]/[0.15]"
               >
                 <IconSafe :size="16" class="text-[#30d158] shrink-0" />
-                <span class="text-[13px] text-[#30d158] font-medium">当前为默认密码或管理员重置，可直接设置新密码</span>
+                <span class="text-[13px] text-[#30d158] font-medium"
+                  >当前为默认密码或管理员重置，可直接设置新密码</span
+                >
               </div>
             </div>
 
@@ -117,7 +125,9 @@ function goBack() {
             <a-form-item label="新密码" required>
               <a-input-password v-model="newPassword" placeholder="输入新密码" />
               <template #extra>
-                <span class="text-[11px] text-[#86868b]">首字符须为字母，支持大小写字母、数字及 . _ @ $</span>
+                <span class="text-[11px] text-[#86868b]"
+                  >首字符须为字母，支持大小写字母、数字及 . _ @ $</span
+                >
               </template>
             </a-form-item>
 

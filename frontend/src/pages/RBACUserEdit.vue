@@ -41,7 +41,9 @@ const saving = ref(false)
 const user = ref<UserDetail | null>(null)
 const roles = ref<Role[]>([])
 const canManageUsers = computed(() => permStore.hasPermission('users:update:write&isAdmin()'))
-const canWrite = computed(() => permStore.hasPermission('users:update:write||isSelf(user_id)', { user_id: userId }))
+const canWrite = computed(() =>
+  permStore.hasPermission('users:update:write||isSelf(user_id)', { user_id: userId }),
+)
 
 const form = ref({
   nickname: '',
@@ -139,10 +141,13 @@ function goBack() {
 
 <template>
   <div class="page-main">
-    <PageHeader :title="`编辑用户 - ${user?.nickname || '...'}`" :subtitle="canWrite ? '修改用户基本信息和角色分配' : '查看用户基本信息（只读模式）'">
+    <PageHeader
+      :title="`编辑用户 - ${user?.nickname || '...'}`"
+      :subtitle="canWrite ? '修改用户基本信息和角色分配' : '查看用户基本信息（只读模式）'"
+    >
       <template #actions>
-        <a-button @click="goBack">
-          <template #icon><IconLeft /></template>
+        <a-button type="text" size="mini" class="!text-[#007AFF] !px-0 !h-auto" @click="goBack">
+          <template #icon><IconLeft :size="13" /></template>
           返回列表
         </a-button>
       </template>
@@ -162,10 +167,19 @@ function goBack() {
               <a-input v-model="form.nickname" placeholder="用户昵称" :disabled="formDisabled" />
             </a-form-item>
             <a-form-item label="邮箱（选填）">
-              <a-input v-model="form.email" type="text" placeholder="user@example.com" :disabled="formDisabled" />
+              <a-input
+                v-model="form.email"
+                type="text"
+                placeholder="user@example.com"
+                :disabled="formDisabled"
+              />
             </a-form-item>
             <a-form-item label="头像链接（选填）">
-              <a-input v-model="form.avatar_url" placeholder="https://example.com/avatar.png" :disabled="formDisabled" />
+              <a-input
+                v-model="form.avatar_url"
+                placeholder="https://example.com/avatar.png"
+                :disabled="formDisabled"
+              />
             </a-form-item>
             <a-form-item label="RBAC3 角色分配">
               <a-select
@@ -177,7 +191,11 @@ function goBack() {
                 @change="onRoleIdsChange"
               />
               <template v-if="formHint" #extra>
-                <span class="text-[11px]" :class="user?.id === '1' ? 'text-[#ff3b30]' : 'text-[#86868b]'">{{ formHint }}</span>
+                <span
+                  class="text-[11px]"
+                  :class="user?.id === '1' ? 'text-[#ff3b30]' : 'text-[#86868b]'"
+                  >{{ formHint }}</span
+                >
               </template>
             </a-form-item>
             <a-form-item v-if="canWrite">

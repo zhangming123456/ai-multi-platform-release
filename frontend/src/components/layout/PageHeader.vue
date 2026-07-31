@@ -14,11 +14,17 @@ defineProps<{
     class="page-header w-full animate-fade-up mb-7"
   >
     <a-space direction="vertical" :size="4" class="flex-1 page-header__left">
-      <h1 class="page-header__title text-[28px] font-bold tracking-[-0.025em] text-[#1D1D1F] leading-[1.15] m-0">
+      <h1
+        class="page-header__title text-[28px] font-bold tracking-[-0.025em] text-[#1D1D1F] leading-[1.15] m-0"
+      >
         {{ title }}
       </h1>
-      <p v-if="subtitle" class="page-header__subtitle text-[13px] text-[#86868B] m-0">{{ subtitle }}</p>
-      <slot name="below-title"></slot>
+      <p v-if="subtitle" class="page-header__subtitle text-[13px] text-[#86868B] m-0">
+        {{ subtitle }}
+      </p>
+      <div class="page-header__below">
+        <slot name="below-title"></slot>
+      </div>
     </a-space>
     <div class="flex items-center gap-2.5 shrink-0 page-header__actions">
       <slot name="actions"></slot>
@@ -67,5 +73,15 @@ defineProps<{
   .page-header__subtitle {
     font-size: 11px !important;
   }
+  .page-header__below {
+    flex-wrap: wrap;
+  }
+}
+
+.page-header__below {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 </style>

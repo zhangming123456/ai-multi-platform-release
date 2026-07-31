@@ -12,6 +12,9 @@ import {
   IconDown,
   IconRight,
   IconEye,
+  IconApps,
+  IconList,
+  IconLink as IconLinkMini,
 } from '@arco-design/web-vue/es/icon'
 import PageHeader from '@/components/layout/PageHeader.vue'
 import RoleInheritanceTree from '@/components/rbac/RoleInheritanceTree.vue'
@@ -239,8 +242,10 @@ function isExpanded(roleId: string): boolean {
 }
 
 function hasIndirectRelations(role: Role): boolean {
-  return role.all_ancestors.length > role.parent_roles.length ||
+  return (
+    role.all_ancestors.length > role.parent_roles.length ||
     role.all_descendants.length > role.child_roles.length
+  )
 }
 
 function indirectAncestors(role: Role): RoleRef[] {
@@ -329,7 +334,10 @@ watch(
   { immediate: false },
 )
 
-function groupedPreviewPermissions(): { resource: string; keys: { key: string; name: string }[] }[] {
+function groupedPreviewPermissions(): {
+  resource: string
+  keys: { key: string; name: string }[]
+}[] {
   const preview = parentPreviewMap.value
   const pid = previewedParentId()
   if (!pid) return []
@@ -421,9 +429,7 @@ function constraintTypeColor(type: string): string {
 }
 
 function constraintsForRole(roleId: string): Constraint[] {
-  return constraints.value.filter(
-    (c) => c.is_active && c.roles.some((r) => r.role_id === roleId),
-  )
+  return constraints.value.filter((c) => c.is_active && c.roles.some((r) => r.role_id === roleId))
 }
 
 function formatConstraintRoles(constraint: Constraint, roleId: string): string {
@@ -459,38 +465,71 @@ onMounted(() => {
   window.addEventListener('resize', onResize)
 })
 const isMobile = computed(() => windowWidth.value < 1024)
+
+const viewMode = ref<'card' | 'table'>('card')
 </script>
 
 <template>
   <div class="page-main relative">
+    <PageHeader title="角色管理" subtitle="管理系统角色、自定义角色与角色继承关系">
+      <template #actions>
+        <a-button type="text" size="mini" class="!text-[#007AFF] !px-0 !h-auto" @click="openAdd">
+          <template #icon><IconPlus :size="13" /></template>
+          创建角色
+        </a-button>
+      </template>
+    </PageHeader>
+
+    <div class="view-mode-toggle mb-5">
+      <button
+        class="toggle-btn"
+        :class="{ active: viewMode === 'card' }"
+        @click="viewMode = 'card'"
+      >
+        <IconApps :size="14" /> 卡片
+      </button>
+      <button
+        class="toggle-btn"
+        :class="{ active: viewMode === 'table' }"
+        @click="viewMode = 'table'"
+      >
+        <IconList :size="14" /> 列表
+      </button>
+    </div>
+
     <div class="inherit-panel-wrapper" :class="{ 'panel-open': inheritanceRole && !isMobile }">
       <div class="inherit-main-content">
-        <PageHeader title="角色管理" subtitle="管理系统角色、自定义角色与角色继承关系">
-          <template #actions>
-            <a-button type="primary" @click="openAdd">
-              <template #icon><IconPlus /></template>
-              创建角色
-            </a-button>
-          </template>
-        </PageHeader>
-
         <a-spin :loading="loading" tip="加载中..." class="w-full">
-          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            <div
-              v-for="role in sortedRoles"
-              :key="role.id"
-              class="role-card"
-            >
-              <div class="p-5">
-                <div class="flex items-start justify-between mb-3">
-                  <div class="flex items-center gap-2.5 min-w-0">
-                    <a-tag :color="roleColor(role)" size="small" class="!m-0">
+          <!-- 卡片模式 -->
+          <div
+            v-if="viewMode === 'card'"
+            class="grid gap-4"
+            :class="[
+              inheritanceRole && !isMobile
+                ? 'grid-cols-1 md:grid-cols-2'
+                : 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3',
+            ]"
+          >
+            <div v-for="role in sortedRoles" :key="role.id" class="role-card">
+              <div class="p-4 md:p-5">
+                <div class="flex items-start justify-between mb-3 gap-2">
+                  <div class="flex items-center gap-2 min-w-0 flex-1">
+                    <a-tag :color="roleColor(role)" size="small" class="!m-0 truncate max-w-full">
                       {{ role.display_name }}
                     </a-tag>
-                    <IconSafe v-if="role.is_super_admin" :size="14" class="text-[#ff9500] shrink-0" />
+                    <IconSafe
+                      v-if="role.is_super_admin"
+                      :size="14"
+                      class="text-[#ff9500] shrink-0"
+                    />
                   </div>
                   <div class="flex items-center gap-1 shrink-0">
-                    <a-button type="text" size="mini" :disabled="role.is_super_admin" @click="openEdit(role)">
+                    <a-button
+                      type="text"
+                      size="mini"
+                      :disabled="role.is_super_admin"
+                      @click="openEdit(role)"
+                    >
                       <template #icon><IconEdit :size="14" /></template>
                     </a-button>
                     <a-button
@@ -509,17 +548,22 @@ const isMobile = computed(() => windowWidth.value < 1024)
                   {{ role.description || '暂无描述' }}
                 </p>
 
-                <div class="flex flex-wrap items-center gap-2 mb-4">
+                <div class="flex flex-wrap items-center gap-1.5 mb-3">
                   <code class="role-code">{{ role.name }}</code>
-                  <a-tag v-if="role.is_super_admin" size="small" color="orangered" class="!m-0">超级</a-tag>
-                  <a-tag v-else-if="role.is_builtin" size="small" color="gray" class="!m-0">内置</a-tag>
+                  <a-tag v-if="role.is_super_admin" size="small" color="orangered" class="!m-0"
+                    >超级</a-tag
+                  >
+                  <a-tag v-else-if="role.is_builtin" size="small" color="gray" class="!m-0"
+                    >内置</a-tag
+                  >
                   <a-tag v-else size="small" color="arcoblue" class="!m-0">自定义</a-tag>
                   <a-tag
                     v-if="role.role_type === 'admin'"
                     size="small"
                     color="orangered"
                     class="!m-0"
-                  >管理类型</a-tag>
+                    >管理类型</a-tag
+                  >
                   <a-tag v-else size="small" color="gray" class="!m-0">普通类型</a-tag>
                 </div>
 
@@ -569,10 +613,7 @@ const isMobile = computed(() => windowWidth.value < 1024)
                     </a-button>
                   </div>
 
-                  <div
-                    v-if="isExpanded(role.id) && hasIndirectRelations(role)"
-                    class="chain-view"
-                  >
+                  <div v-if="isExpanded(role.id) && hasIndirectRelations(role)" class="chain-view">
                     <div v-if="indirectAncestors(role).length > 0" class="chain-chunk">
                       <div class="chain-label">间接祖先</div>
                       <div class="chain-flow">
@@ -581,18 +622,14 @@ const isMobile = computed(() => windowWidth.value < 1024)
                           :key="ancestor.id"
                           class="chain-node"
                         >
-                          <span class="chain-arrow" v-if="idx > 0 || role.parent_roles.length > 0">←</span>
-                          <a-tag
-                            size="small"
-                            :color="roleColorById(ancestor.id)"
-                            class="!m-0"
+                          <span class="chain-arrow" v-if="idx > 0 || role.parent_roles.length > 0"
+                            >←</span
                           >
+                          <a-tag size="small" :color="roleColorById(ancestor.id)" class="!m-0">
                             {{ ancestor.display_name }}
                           </a-tag>
                         </div>
-                        <span class="chain-arrow" v-if="role.parent_roles.length > 0">
-                          ←
-                        </span>
+                        <span class="chain-arrow" v-if="role.parent_roles.length > 0"> ← </span>
                         <span class="chain-current" v-if="role.parent_roles.length > 0">
                           {{ role.display_name }}
                         </span>
@@ -611,12 +648,10 @@ const isMobile = computed(() => windowWidth.value < 1024)
                           :key="descendant.id"
                           class="chain-node"
                         >
-                          <span class="chain-arrow" v-if="idx > 0 || role.child_roles.length > 0">→</span>
-                          <a-tag
-                            size="small"
-                            :color="roleColorById(descendant.id)"
-                            class="!m-0"
+                          <span class="chain-arrow" v-if="idx > 0 || role.child_roles.length > 0"
+                            >→</span
                           >
+                          <a-tag size="small" :color="roleColorById(descendant.id)" class="!m-0">
                             {{ descendant.display_name }}
                           </a-tag>
                         </div>
@@ -624,7 +659,10 @@ const isMobile = computed(() => windowWidth.value < 1024)
                     </div>
                   </div>
 
-                  <div v-if="constraintsForRole(role.id).length > 0" class="pt-2 mt-2 border-t border-black/[0.04]">
+                  <div
+                    v-if="constraintsForRole(role.id).length > 0"
+                    class="pt-2 mt-2 border-t border-black/[0.04]"
+                  >
                     <div class="flex items-center gap-1.5 mb-1.5">
                       <IconExclamationCircle :size="12" class="text-[#ff9500]" />
                       <span class="text-[11px] text-[#86868B]">相关约束</span>
@@ -635,7 +673,11 @@ const isMobile = computed(() => windowWidth.value < 1024)
                         :key="c.id"
                         class="flex items-center gap-2"
                       >
-                        <a-tag size="small" :color="constraintTypeColor(c.constraint_type)" class="!m-0">
+                        <a-tag
+                          size="small"
+                          :color="constraintTypeColor(c.constraint_type)"
+                          class="!m-0"
+                        >
                           {{ constraintTypeLabel(c.constraint_type) }}
                         </a-tag>
                         <span class="text-[11px] text-[#86868B] truncate">
@@ -647,47 +689,198 @@ const isMobile = computed(() => windowWidth.value < 1024)
                 </div>
               </div>
 
-              <div class="role-footer">
-                <div class="flex items-center justify-between">
-                  <span class="text-[12px] text-[#86868B]">
-                    {{ role.is_super_admin ? '超级管理员拥有所有权限' : '配置继承关系与权限' }}
-                  </span>
-                  <a-space :size="6">
+              <div class="role-footer px-4 md:px-5">
+                <div class="flex items-center gap-2">
+                  <a-tooltip content="查看继承关系" mini>
                     <a-button
-                      type="outline"
+                      type="text"
                       size="small"
                       @click="isMobile ? openInheritanceDrawer(role) : openInheritance(role)"
                     >
-                      <template #icon><IconEye :size="14" /></template>
-                      查看
+                      <template #icon><IconEye :size="15" /></template>
                     </a-button>
+                  </a-tooltip>
+                  <a-tooltip content="配置继承" mini>
                     <a-button
                       type="text"
                       size="small"
                       :disabled="role.is_super_admin"
                       @click="openParents(role)"
                     >
-                      <template #icon><IconLink :size="14" /></template>
-                      继承
+                      <template #icon><IconLink :size="15" /></template>
                     </a-button>
-                    <a-button type="text" size="small" @click="$router.push(`/rbac/permissions?role=${role.id}`)">
-                      <template #icon><IconSettings :size="14" /></template>
-                      权限
+                  </a-tooltip>
+                  <a-tooltip content="权限配置" mini>
+                    <a-button
+                      type="text"
+                      size="small"
+                      @click="$router.push(`/rbac/permissions?role=${role.id}`)"
+                    >
+                      <template #icon><IconSettings :size="15" /></template>
                     </a-button>
-                  </a-space>
+                  </a-tooltip>
                 </div>
               </div>
             </div>
+          </div>
+
+          <!-- 表格模式 -->
+          <div v-if="viewMode === 'table'" class="role-table-wrap">
+            <a-table :data="sortedRoles" :pagination="false" :bordered="false" :stripe="true">
+              <template #columns>
+                <a-table-column
+                  title="角色"
+                  data-index="display_name"
+                  :width="140"
+                  :min-width="100"
+                >
+                  <template #cell="{ record }">
+                    <div class="flex items-center gap-2">
+                      <a-tag :color="roleColor(record)" size="small" class="!m-0">
+                        {{ record.display_name }}
+                      </a-tag>
+                      <IconSafe
+                        v-if="record.is_super_admin"
+                        :size="13"
+                        class="text-[#ff9500] shrink-0"
+                      />
+                    </div>
+                  </template>
+                </a-table-column>
+                <a-table-column title="标识" data-index="name" :width="120" :min-width="100">
+                  <template #cell="{ record }">
+                    <code class="role-code">{{ record.name }}</code>
+                  </template>
+                </a-table-column>
+                <a-table-column
+                  title="描述"
+                  data-index="description"
+                  :ellipsis="true"
+                  :min-width="100"
+                >
+                  <template #cell="{ record }">
+                    <span class="text-[13px] text-[#86868B]">
+                      {{ record.description || '—' }}
+                    </span>
+                  </template>
+                </a-table-column>
+                <a-table-column title="类型" :width="100" :min-width="100">
+                  <template #cell="{ record }">
+                    <a-tag v-if="record.is_super_admin" size="small" color="orangered" class="!m-0"
+                      >超级</a-tag
+                    >
+                    <a-tag v-else-if="record.is_builtin" size="small" color="gray" class="!m-0"
+                      >内置</a-tag
+                    >
+                    <a-tag v-else size="small" color="arcoblue" class="!m-0">自定义</a-tag>
+                  </template>
+                </a-table-column>
+                <a-table-column title="继承" :width="180" :min-width="100">
+                  <template #cell="{ record }">
+                    <div class="flex flex-wrap gap-1">
+                      <a-tag
+                        v-for="parent in record.parent_roles"
+                        :key="parent.id"
+                        size="small"
+                        :color="roleColorById(parent.id)"
+                        class="!m-0"
+                      >
+                        {{ parent.display_name }}
+                      </a-tag>
+                      <span
+                        v-if="record.parent_roles.length === 0"
+                        class="text-[12px] text-[#c9c9cc]"
+                        >—</span
+                      >
+                    </div>
+                  </template>
+                </a-table-column>
+                <a-table-column title="约束" :width="140" :min-width="100">
+                  <template #cell="{ record }">
+                    <div class="flex flex-wrap gap-1">
+                      <a-tag
+                        v-for="c in constraintsForRole(record.id)"
+                        :key="c.id"
+                        size="small"
+                        :color="constraintTypeColor(c.constraint_type)"
+                        class="!m-0"
+                      >
+                        {{ constraintTypeLabel(c.constraint_type) }}
+                      </a-tag>
+                      <span
+                        v-if="constraintsForRole(record.id).length === 0"
+                        class="text-[12px] text-[#c9c9cc]"
+                        >—</span
+                      >
+                    </div>
+                  </template>
+                </a-table-column>
+                <a-table-column title="操作" :width="120" :min-width="100" fixed="right">
+                  <template #cell="{ record }">
+                    <div class="flex items-center gap-1">
+                      <a-tooltip content="查看继承关系" mini>
+                        <a-button
+                          type="text"
+                          size="small"
+                          @click="
+                            isMobile ? openInheritanceDrawer(record) : openInheritance(record)
+                          "
+                        >
+                          <template #icon><IconEye :size="15" /></template>
+                        </a-button>
+                      </a-tooltip>
+                      <a-tooltip content="配置继承" mini>
+                        <a-button
+                          type="text"
+                          size="small"
+                          :disabled="record.is_super_admin"
+                          @click="openParents(record)"
+                        >
+                          <template #icon><IconLink :size="15" /></template>
+                        </a-button>
+                      </a-tooltip>
+                      <a-tooltip content="权限配置" mini>
+                        <a-button
+                          type="text"
+                          size="small"
+                          @click="$router.push(`/rbac/permissions?role=${record.id}`)"
+                        >
+                          <template #icon><IconSettings :size="15" /></template>
+                        </a-button>
+                      </a-tooltip>
+                      <a-tooltip content="编辑" mini>
+                        <a-button
+                          type="text"
+                          size="small"
+                          :disabled="record.is_super_admin"
+                          @click="openEdit(record)"
+                        >
+                          <template #icon><IconEdit :size="15" /></template>
+                        </a-button>
+                      </a-tooltip>
+                      <a-tooltip content="删除" mini>
+                        <a-button
+                          type="text"
+                          size="small"
+                          status="danger"
+                          :disabled="record.is_builtin"
+                          @click="deleteRole(record)"
+                        >
+                          <template #icon><IconDelete :size="15" /></template>
+                        </a-button>
+                      </a-tooltip>
+                    </div>
+                  </template>
+                </a-table-column>
+              </template>
+            </a-table>
           </div>
 
           <a-empty v-if="!loading && roles.length === 0" description="暂无角色数据" class="mt-20" />
         </a-spin>
       </div>
 
-      <div
-        v-if="inheritanceRole && !isMobile"
-        class="inherit-panel"
-      >
+      <div v-if="inheritanceRole && !isMobile" class="inherit-panel">
         <RoleInheritanceTree
           :role-id="inheritanceRole.id"
           :role-name="inheritanceRole.name"
@@ -743,7 +936,11 @@ const isMobile = computed(() => windowWidth.value < 1024)
           <a-radio-group v-model="newRole.role_type" :options="roleTypeOptions" />
           <template #extra>
             <span class="text-[11px] text-[#86868b]">
-              {{ newRole.role_type === 'admin' ? '管理类型角色可配置数据库等高级权限' : '普通类型角色不支持数据库相关权限' }}
+              {{
+                newRole.role_type === 'admin'
+                  ? '管理类型角色可配置数据库等高级权限'
+                  : '普通类型角色不支持数据库相关权限'
+              }}
             </span>
           </template>
         </a-form-item>
@@ -752,7 +949,11 @@ const isMobile = computed(() => windowWidth.value < 1024)
             v-model="newRole.parent_role_ids"
             placeholder="选择父角色以继承其权限"
             multiple
-            :options="roles.filter((r) => !r.is_super_admin).map((r) => ({ value: r.id, label: r.display_name }))"
+            :options="
+              roles
+                .filter((r) => !r.is_super_admin)
+                .map((r) => ({ value: r.id, label: r.display_name }))
+            "
           />
         </a-form-item>
       </a-form>
@@ -793,11 +994,7 @@ const isMobile = computed(() => windowWidth.value < 1024)
     >
       <a-form v-if="parentsRole" :model="{ selectedParents }" layout="vertical">
         <a-form-item label="选择父角色">
-          <a-select
-            v-model="selectedParents"
-            placeholder="选择父角色以继承其权限"
-            multiple
-          >
+          <a-select v-model="selectedParents" placeholder="选择父角色以继承其权限" multiple>
             <a-option
               v-for="opt in availableParentOptions(parentsRole)"
               :key="opt.id"
@@ -839,7 +1036,10 @@ const isMobile = computed(() => windowWidth.value < 1024)
             tip="加载权限..."
             class="w-full"
           >
-            <div v-if="parentPreviewMap[previewedParentId()!]?._error === 'cycle'" class="text-[12px] text-[#ff3b30] py-2">
+            <div
+              v-if="parentPreviewMap[previewedParentId()!]?._error === 'cycle'"
+              class="text-[12px] text-[#ff3b30] py-2"
+            >
               无法预览：添加此父角色会形成循环继承
             </div>
 
@@ -851,11 +1051,7 @@ const isMobile = computed(() => windowWidth.value < 1024)
               >
                 <span class="preview-resource">{{ group.keys[0]?.name || group.resource }}</span>
                 <div class="preview-keys">
-                  <code
-                    v-for="item in group.keys"
-                    :key="item.key"
-                    class="preview-key"
-                  >
+                  <code v-for="item in group.keys" :key="item.key" class="preview-key">
                     {{ item.key }}
                   </code>
                 </div>
@@ -901,20 +1097,85 @@ const isMobile = computed(() => windowWidth.value < 1024)
   font-size: 12px;
 }
 .role-footer {
-  padding: 12px 20px;
+  padding-top: 12px;
+  padding-bottom: 12px;
   background: rgba(0, 0, 0, 0.01);
   border-top: 1px solid rgba(0, 0, 0, 0.04);
+}
+
+.role-table-wrap {
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+.role-table-wrap :deep(.arco-table) {
+  background: transparent;
+}
+
+.role-table-wrap :deep(.arco-table-th) {
+  background: rgba(0, 0, 0, 0.02) !important;
+  font-size: 12px;
+  color: #86868b;
+  font-weight: 500;
+}
+
+.role-table-wrap :deep(.arco-table-td) {
+  font-size: 13px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.04) !important;
+}
+
+.role-table-wrap :deep(.arco-table-tr:last-child .arco-table-td) {
+  border-bottom: none !important;
+}
+
+.view-mode-toggle {
+  display: inline-flex;
+  align-items: center;
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  border-radius: 999px;
+  padding: 3px;
+  gap: 2px;
+}
+
+.toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #86868b;
+  background: transparent;
+  border: none;
+  border-radius: 999px;
+  padding: 5px 14px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.toggle-btn:hover {
+  color: #1d1d1f;
+}
+
+.toggle-btn.active {
+  background: #f2f4f8;
+  color: #1d1d1f;
 }
 
 .inherit-panel-wrapper {
   display: flex;
   gap: 0;
   min-height: 0;
+  align-items: flex-start;
 }
 
 .inherit-panel-wrapper.panel-open .inherit-main-content {
-  flex: 0 0 55%;
-  max-width: 55%;
+  flex: 0 0 65%;
+  max-width: 65%;
   padding-right: 20px;
 }
 
@@ -927,9 +1188,9 @@ const isMobile = computed(() => windowWidth.value < 1024)
 .inherit-panel {
   position: sticky;
   top: 0;
-  align-self: flex-start;
-  flex: 1;
-  min-width: 360px;
+  flex: 0 0 35%;
+  min-width: 320px;
+  max-width: 35%;
   max-height: calc(100vh - 100px);
   background: rgba(255, 255, 255, 0.85);
   backdrop-filter: blur(20px);
@@ -993,7 +1254,7 @@ const isMobile = computed(() => windowWidth.value < 1024)
 .chain-current {
   font-size: 11px;
   font-weight: 500;
-  color: #007AFF;
+  color: #007aff;
 }
 
 .preview-section {
@@ -1030,7 +1291,7 @@ const isMobile = computed(() => windowWidth.value < 1024)
   padding: 1px 6px;
   border-radius: 4px;
   background: rgba(0, 122, 255, 0.08);
-  color: #007AFF;
+  color: #007aff;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 </style>

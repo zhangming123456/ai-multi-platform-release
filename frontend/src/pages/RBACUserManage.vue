@@ -121,8 +121,14 @@ function removeUser(user: UserListItem) {
   <div class="page-main">
     <PageHeader title="用户管理" subtitle="管理系统用户账号与 RBAC3 角色分配">
       <template #actions>
-        <a-button v-perm="'users:create:write'" type="primary" @click="goCreate">
-          <template #icon><IconPlus /></template>
+        <a-button
+          v-perm="'users:create:write'"
+          type="text"
+          size="mini"
+          class="!text-[#007AFF] !px-0 !h-auto"
+          @click="goCreate"
+        >
+          <template #icon><IconPlus :size="13" /></template>
           添加账号
         </a-button>
       </template>

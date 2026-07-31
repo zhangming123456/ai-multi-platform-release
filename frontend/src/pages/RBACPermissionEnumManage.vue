@@ -55,7 +55,7 @@ const pagePermissions = computed(() =>
     permissions.value.filter((p) => _isPageKey(p.key)),
     ['key'],
     ['asc'],
-  )
+  ),
 )
 
 const actionPermissions = computed(() =>
@@ -63,7 +63,7 @@ const actionPermissions = computed(() =>
     permissions.value.filter((p) => !_isPageKey(p.key)),
     ['key'],
     ['asc'],
-  )
+  ),
 )
 
 async function fetchPermissions() {
@@ -124,10 +124,13 @@ onMounted(fetchPermissions)
 
 <template>
   <div class="page-main">
-    <PageHeader title="权限字典管理" subtitle="编辑权限字典的名称、Key 和描述，或自定义添加新的权限字典。仅超级管理员可操作。">
+    <PageHeader
+      title="权限字典管理"
+      subtitle="编辑权限字典的名称、Key 和描述，或自定义添加新的权限字典。仅超级管理员可操作。"
+    >
       <template #actions>
-        <a-button type="primary" @click="goCreate">
-          <template #icon><IconPlus /></template>
+        <a-button type="text" size="mini" class="!text-[#007AFF] !px-0 !h-auto" @click="goCreate">
+          <template #icon><IconPlus :size="13" /></template>
           新增权限字典
         </a-button>
       </template>
@@ -135,13 +138,13 @@ onMounted(fetchPermissions)
 
     <a-spin :loading="loading" tip="加载中..." class="w-full">
       <div class="space-y-4">
-        <div
-          class="bg-white/80 backdrop-blur-xl rounded-2xl border border-black/[0.05] p-5"
-        >
+        <div class="bg-white/80 backdrop-blur-xl rounded-2xl border border-black/[0.05] p-5">
           <div class="flex items-center justify-between mb-4">
             <div class="flex items-center gap-2">
               <h3 class="text-[15px] font-semibold text-[#1D1D1F] m-0">页面权限</h3>
-              <span class="text-[12px] text-[#86868B] font-medium">{{ pagePermissions.length }}</span>
+              <span class="text-[12px] text-[#86868B] font-medium">{{
+                pagePermissions.length
+              }}</span>
             </div>
           </div>
 
@@ -174,11 +177,7 @@ onMounted(fetchPermissions)
               </div>
               <div class="flex items-center gap-1 shrink-0">
                 <a-tooltip content="编辑">
-                  <a-button
-                    size="mini"
-                    type="text"
-                    @click="goEdit(item)"
-                  >
+                  <a-button size="mini" type="text" @click="goEdit(item)">
                     <template #icon><IconEdit :size="13" /></template>
                   </a-button>
                 </a-tooltip>
@@ -195,12 +194,7 @@ onMounted(fetchPermissions)
                   </a-button>
                 </a-tooltip>
                 <a-tooltip content="删除">
-                  <a-button
-                    size="mini"
-                    type="text"
-                    status="danger"
-                    @click="deletePermission(item)"
-                  >
+                  <a-button size="mini" type="text" status="danger" @click="deletePermission(item)">
                     <template #icon><IconDelete :size="13" /></template>
                   </a-button>
                 </a-tooltip>
@@ -209,13 +203,13 @@ onMounted(fetchPermissions)
           </div>
         </div>
 
-        <div
-          class="bg-white/80 backdrop-blur-xl rounded-2xl border border-black/[0.05] p-5"
-        >
+        <div class="bg-white/80 backdrop-blur-xl rounded-2xl border border-black/[0.05] p-5">
           <div class="flex items-center justify-between mb-4">
             <div class="flex items-center gap-2">
               <h3 class="text-[15px] font-semibold text-[#1D1D1F] m-0">操作权限</h3>
-              <span class="text-[12px] text-[#86868B] font-medium">{{ actionPermissions.length }}</span>
+              <span class="text-[12px] text-[#86868B] font-medium">{{
+                actionPermissions.length
+              }}</span>
             </div>
           </div>
 
@@ -243,16 +237,14 @@ onMounted(fetchPermissions)
                   </a-tag>
                 </div>
                 <p class="text-[11px] text-[#86868B] m-0 mt-0.5">
-                  &#123;{{ _parseKey(item.resource.key).keyName }}&#125;:&#123;{{ _parseKey(item.resource.key).operation }}&#125;:{{ _parseKey(item.resource.key).mode }}
+                  &#123;{{ _parseKey(item.resource.key).keyName }}&#125;:&#123;{{
+                    _parseKey(item.resource.key).operation
+                  }}&#125;:{{ _parseKey(item.resource.key).mode }}
                 </p>
               </div>
               <div class="flex items-center gap-1 shrink-0">
                 <a-tooltip content="编辑">
-                  <a-button
-                    size="mini"
-                    type="text"
-                    @click="goEdit(item)"
-                  >
+                  <a-button size="mini" type="text" @click="goEdit(item)">
                     <template #icon><IconEdit :size="13" /></template>
                   </a-button>
                 </a-tooltip>
@@ -269,12 +261,7 @@ onMounted(fetchPermissions)
                   </a-button>
                 </a-tooltip>
                 <a-tooltip content="删除">
-                  <a-button
-                    size="mini"
-                    type="text"
-                    status="danger"
-                    @click="deletePermission(item)"
-                  >
+                  <a-button size="mini" type="text" status="danger" @click="deletePermission(item)">
                     <template #icon><IconDelete :size="13" /></template>
                   </a-button>
                 </a-tooltip>
@@ -283,9 +270,7 @@ onMounted(fetchPermissions)
           </div>
         </div>
 
-        <div
-          class="bg-white/80 backdrop-blur-xl rounded-2xl border border-black/[0.05] p-5"
-        >
+        <div class="bg-white/80 backdrop-blur-xl rounded-2xl border border-black/[0.05] p-5">
           <div class="flex items-center gap-2 mb-4">
             <IconSafe :size="18" class="text-[#86868B]" />
             <h3 class="text-[15px] font-semibold text-[#1D1D1F] m-0">权限 Key 格式说明</h3>
@@ -300,9 +285,12 @@ onMounted(fetchPermissions)
             </div>
             <div class="p-3 rounded-xl bg-[#34C759]/[0.04] border border-[#34C759]/[0.1]">
               <p class="text-[12px] font-semibold text-[#1D1D1F] m-0 mb-1">操作权限 (action)</p>
-              <code class="text-[12px] text-[#34C759]">&#123;name&#125;:&#123;operation&#125;:read | write</code>
+              <code class="text-[12px] text-[#34C759]"
+                >&#123;name&#125;:&#123;operation&#125;:read | write</code
+              >
               <p class="text-[11px] text-[#86868B] m-0 mt-1">
-                3段格式，name 和 operation 不能含 read/write。结尾为 read 或 write。根据 key 格式自动推断类型。
+                3段格式，name 和 operation 不能含 read/write。结尾为 read 或 write。根据 key
+                格式自动推断类型。
               </p>
             </div>
           </div>

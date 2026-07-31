@@ -50,7 +50,7 @@ const route = useRoute()
 
 const isEdit = computed(() => !!route.params.resourceId)
 const resourceId = computed(() => route.params.resourceId as string | undefined)
-const pageTitle = computed(() => isEdit.value ? '编辑权限字典' : '新增权限字典')
+const pageTitle = computed(() => (isEdit.value ? '编辑权限字典' : '新增权限字典'))
 
 const loading = ref(false)
 const saving = ref(false)
@@ -162,10 +162,13 @@ onMounted(loadPermission)
 
 <template>
   <div class="page-main">
-    <PageHeader :title="pageTitle" :subtitle="isEdit ? '修改权限字典的名称、Key 和描述' : '添加新的权限字典'">
+    <PageHeader
+      :title="pageTitle"
+      :subtitle="isEdit ? '修改权限字典的名称、Key 和描述' : '添加新的权限字典'"
+    >
       <template #actions>
-        <a-button @click="goBack">
-          <template #icon><IconLeft /></template>
+        <a-button type="text" size="mini" class="!text-[#007AFF] !px-0 !h-auto" @click="goBack">
+          <template #icon><IconLeft :size="13" /></template>
           返回列表
         </a-button>
       </template>
@@ -183,17 +186,11 @@ onMounted(loadPermission)
             </a-form-item>
 
             <a-form-item label="name（Key 第1段）" required>
-              <a-input
-                v-model="form.keyName"
-                placeholder="模块名，如 dashboard、content"
-              />
+              <a-input v-model="form.keyName" placeholder="模块名，如 dashboard、content" />
             </a-form-item>
 
             <a-form-item v-if="form.type === 'action'" label="operation（Key 第2段）" required>
-              <a-input
-                v-model="form.operation"
-                placeholder="操作名，如 create、update、delete"
-              />
+              <a-input v-model="form.operation" placeholder="操作名，如 create、update、delete" />
             </a-form-item>
 
             <a-form-item v-if="form.type === 'action'" label="后缀模式（Key 第3段）">
@@ -205,7 +202,11 @@ onMounted(loadPermission)
 
             <a-form-item label="最终合成 Key">
               <div class="flex items-center gap-2">
-                <a-tag size="medium" :color="form.type === 'page' ? 'blue' : 'arcoblue'" class="!m-0 font-mono text-[13px]">
+                <a-tag
+                  size="medium"
+                  :color="form.type === 'page' ? 'blue' : 'arcoblue'"
+                  class="!m-0 font-mono text-[13px]"
+                >
                   {{ computedKey || '填写 name 后自动生成' }}
                 </a-tag>
                 <span class="text-[11px] text-[#86868B]">自动生成</span>

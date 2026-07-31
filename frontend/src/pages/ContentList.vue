@@ -146,7 +146,7 @@ async function removeContent(id: string) {
 async function submitForReview(id: string) {
   try {
     await api.post(`/reviews/${id}/submit`)
-    const idx = contents.value.findIndex(c => c.id === id)
+    const idx = contents.value.findIndex((c) => c.id === id)
     if (idx !== -1) {
       contents.value[idx].status = 'pending_review'
     }
@@ -161,8 +161,13 @@ async function submitForReview(id: string) {
   <div class="content-list">
     <PageHeader title="内容列表" subtitle="创作并管理适配各平台的内容">
       <template #actions>
-        <a-button type="primary" @click="router.push('/content/create')">
-          <template #icon><IconPlus /></template>
+        <a-button
+          type="text"
+          size="mini"
+          class="!text-[#007AFF] !px-0 !h-auto"
+          @click="router.push('/content/create')"
+        >
+          <template #icon><IconPlus :size="13" /></template>
           创建内容
         </a-button>
       </template>
@@ -283,12 +288,7 @@ async function submitForReview(id: string) {
       </a-form>
     </a-modal>
 
-    <a-modal
-      v-model:visible="detailVisible"
-      title="内容详情"
-      :width="640"
-      :footer="false"
-    >
+    <a-modal v-model:visible="detailVisible" title="内容详情" :width="640" :footer="false">
       <template v-if="detailContent">
         <a-descriptions :column="2" bordered size="small" class="mb-4">
           <a-descriptions-item label="平台">
@@ -312,12 +312,20 @@ async function submitForReview(id: string) {
           </a-descriptions-item>
         </a-descriptions>
         <div class="mb-3">
-          <div class="text-[11px] font-semibold uppercase tracking-[0.06em] text-[#aeaeb2] mb-1.5">标题</div>
+          <div class="text-[11px] font-semibold uppercase tracking-[0.06em] text-[#aeaeb2] mb-1.5">
+            标题
+          </div>
           <div class="text-[15px] font-semibold text-[#1d1d1f]">{{ detailContent.title }}</div>
         </div>
         <div>
-          <div class="text-[11px] font-semibold uppercase tracking-[0.06em] text-[#aeaeb2] mb-1.5">正文</div>
-          <div class="text-[14px] text-[#3a3a3c] leading-relaxed whitespace-pre-wrap bg-[#f5f5f7] rounded-lg p-4">{{ detailContent.body }}</div>
+          <div class="text-[11px] font-semibold uppercase tracking-[0.06em] text-[#aeaeb2] mb-1.5">
+            正文
+          </div>
+          <div
+            class="text-[14px] text-[#3a3a3c] leading-relaxed whitespace-pre-wrap bg-[#f5f5f7] rounded-lg p-4"
+          >
+            {{ detailContent.body }}
+          </div>
         </div>
       </template>
     </a-modal>

@@ -115,8 +115,8 @@ function goBack() {
   <div class="page-main">
     <PageHeader title="创建用户" subtitle="添加新的系统用户账号">
       <template #actions>
-        <a-button @click="goBack">
-          <template #icon><IconLeft /></template>
+        <a-button type="text" size="mini" class="!text-[#007AFF] !px-0 !h-auto" @click="goBack">
+          <template #icon><IconLeft :size="13" /></template>
           返回列表
         </a-button>
       </template>
@@ -134,7 +134,9 @@ function goBack() {
           <a-form-item label="密码" required>
             <a-input-password v-model="form.password" placeholder="至少6位密码" />
             <template #extra>
-              <span class="text-[11px] text-[#86868b]">默认 ${username}123，首字符须为字母，支持大小写字母、数字及 . _ @ $</span>
+              <span class="text-[11px] text-[#86868b]"
+                >默认 ${username}123，首字符须为字母，支持大小写字母、数字及 . _ @ $</span
+              >
             </template>
           </a-form-item>
           <a-form-item label="昵称" required>

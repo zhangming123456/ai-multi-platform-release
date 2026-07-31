@@ -465,16 +465,20 @@ onMounted(loadAll)
     >
       <template #actions>
         <a-button
-          type="outline"
+          type="text"
+          size="mini"
+          class="!text-[#007AFF] !px-0 !h-auto"
           v-perm="'permissions:manage:read'"
           @click="router.push({ name: 'RBACPermissionEnumManage' })"
         >
-          <template #icon><IconEdit :size="14" /></template>
+          <template #icon><IconEdit :size="13" /></template>
           权限字典管理
         </a-button>
         <a-button
           v-if="selectedRole && !selectedRole.is_super_admin"
-          type="primary"
+          type="text"
+          size="mini"
+          class="!text-[#007AFF] !px-0 !h-auto"
           :loading="saving"
           @click="savePermissions"
         >

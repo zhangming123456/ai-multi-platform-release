@@ -442,8 +442,8 @@ onMounted(loadAll)
     >
       <template #actions>
         <a-space>
-          <a-button @click="goBack">
-            <template #icon><IconLeft /></template>
+          <a-button type="text" size="mini" class="!text-[#007AFF] !px-0 !h-auto" @click="goBack">
+            <template #icon><IconLeft :size="13" /></template>
             返回用户列表
           </a-button>
           <a-button
@@ -451,11 +451,14 @@ onMounted(loadAll)
               key: 'users:custom_permissions:write & !isBuiltInAdmin(user_id)',
               ctx: { user_id: targetUser?.id },
             }"
+            type="text"
+            size="mini"
+            class="!text-[#007AFF] !px-0 !h-auto"
             :loading="resetting"
             :disabled="readOnly"
             @click="resetOverrides"
           >
-            <template #icon><IconRefresh /></template>
+            <template #icon><IconRefresh :size="13" /></template>
             重置权限
           </a-button>
           <a-button
@@ -463,7 +466,9 @@ onMounted(loadAll)
               key: 'users:custom_permissions:write & !isBuiltInAdmin(user_id)',
               ctx: { user_id: targetUser?.id },
             }"
-            type="primary"
+            type="text"
+            size="mini"
+            class="!text-[#007AFF] !px-0 !h-auto"
             :loading="saving"
             @click="saveOverrides"
           >

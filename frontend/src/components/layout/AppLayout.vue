@@ -83,7 +83,7 @@ onUnmounted(() => {
       </aside>
 
       <div
-        class="flex-1 flex flex-col transition-all duration-350 ease-out"
+        class="flex-1 flex flex-col h-screen overflow-hidden transition-all duration-350 ease-out"
         :style="{
           marginLeft: isMobile ? '0px' : `${isMobileSidebarOpen ? 0 : siderWidth}px`,
           maxWidth: `calc(100vw - ${isMobile ? 0 : siderWidth}px)`,
@@ -91,10 +91,8 @@ onUnmounted(() => {
       >
         <AppHeader :collapsed="isSidebarCollapsed" @toggle-sidebar="toggleSidebar" />
         <main
-          style="width: 100%; overflow: hidden"
-          class="flex-1 px-4 md:px-6 lg:px-8 py-4 md:py-6 lg:py-7 w-full max-w-[1400px] mx-auto"
+          class="flex-1 overflow-y-auto px-4 md:px-6 lg:px-8 py-4 md:py-6 lg:py-7 w-full max-w-[1400px] mx-auto"
         >
-          <div style="width: 999999px"></div>
           <router-view />
         </main>
       </div>

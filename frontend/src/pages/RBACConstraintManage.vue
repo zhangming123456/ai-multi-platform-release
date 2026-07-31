@@ -306,8 +306,14 @@ function onPrerequisiteRoleIdsChange(value: unknown) {
   <div class="page-main">
     <PageHeader title="约束管理" subtitle="管理角色互斥、先决条件与成员基数约束">
       <template #actions>
-        <a-button v-perm="'constraints:manage:write'" type="primary" @click="openAdd">
-          <template #icon><IconPlus /></template>
+        <a-button
+          v-perm="'constraints:manage:write'"
+          type="text"
+          size="mini"
+          class="!text-[#007AFF] !px-0 !h-auto"
+          @click="openAdd"
+        >
+          <template #icon><IconPlus :size="13" /></template>
           创建约束
         </a-button>
       </template>
