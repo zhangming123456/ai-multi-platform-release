@@ -1,11 +1,12 @@
 export interface PermContext {
-  currentUser: { id: string; role: string }
+  currentUser?: { id: string; role: string }
   user_id?: string
   account?: { user_id: string }
   content?: { user_id: string }
   target_user?: { id: string; role: string }
   current_role_ids?: string[]
   target_role_ids?: string[]
+  [key: string]: any
 }
 
 type TokenType = 'PERM' | 'FUNC' | 'IDENT' | 'OR' | 'AND' | 'NOT' | 'LPAREN' | 'RPAREN' | 'EOF'
@@ -16,7 +17,15 @@ interface Token {
   pos: number
 }
 
-const BUILTIN_FUNC_NAMES = new Set(['isSelf', 'isAdmin', 'isSuperAdmin', 'isBuiltInAdmin', 'isOwnAccount', 'isOwnContent', 'hasSameRole'])
+const BUILTIN_FUNC_NAMES = new Set([
+  'isSelf',
+  'isAdmin',
+  'isSuperAdmin',
+  'isBuiltInAdmin',
+  'isOwnAccount',
+  'isOwnContent',
+  'hasSameRole',
+])
 
 function _isExpressionChar(ch: string): boolean {
   return ch === '|' || ch === '&' || ch === '(' || ch === ')' || ch === '!'
@@ -208,9 +217,7 @@ class Parser {
   private eat(type: TokenType): Token {
     const token = this.current
     if (token.type !== type) {
-      throw new Error(
-        `位置 ${token.pos}: 期望 ${type}，实际得到 ${token.type} '${token.value}'`,
-      )
+      throw new Error(`位置 ${token.pos}: 期望 ${type}，实际得到 ${token.type} '${token.value}'`)
     }
     this.current = this.tokenizer.next()
     return token
@@ -219,9 +226,7 @@ class Parser {
   parse(): boolean {
     const result = this.expr()
     if (this.current.type !== 'EOF') {
-      throw new Error(
-        `位置 ${this.current.pos}: 多余的 token '${this.current.value}'`,
-      )
+      throw new Error(`位置 ${this.current.pos}: 多余的 token '${this.current.value}'`)
     }
     return result
   }

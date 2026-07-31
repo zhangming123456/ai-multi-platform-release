@@ -68,8 +68,12 @@ function roleColor(roleId: string): string {
 }
 
 async function fetchRoles() {
-  const res = await api.get<Role[]>('/v2/roles')
-  roles.value = Array.isArray(res.data) ? res.data : []
+  try {
+    const res = await api.get<Role[]>('/v2/roles')
+    roles.value = Array.isArray(res.data) ? res.data : []
+  } catch (e: any) {
+    Message.error(e.response?.data?.detail || '加载角色列表失败')
+  }
 }
 
 async function fetchConstraints() {

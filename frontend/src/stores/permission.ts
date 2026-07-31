@@ -26,10 +26,7 @@ export const usePermissionStore = defineStore('permission', () => {
   const permissions = ref<Record<string, string>>({})
   const lastPermissionsUserId = ref<string | null>(null)
 
-  function hasPermission(
-    keyOrExpr: string,
-    ctx?: PermContext,
-  ): boolean {
+  function hasPermission(keyOrExpr: string, ctx?: PermContext): boolean {
     if (!isExpression(keyOrExpr)) {
       return keyOrExpr in permissions.value
     }
