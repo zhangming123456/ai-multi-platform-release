@@ -7,7 +7,10 @@ interface PermBinding {
   ctx?: PermContext
 }
 
-const _permCache = new WeakMap<HTMLElement, { placeholder: Comment; originalParent: Node; originalNext: Node | null }>()
+const _permCache = new WeakMap<
+  HTMLElement,
+  { placeholder: Comment; originalParent: Node; originalNext: Node | null }
+>()
 
 function resolve(binding: DirectiveBinding<string | PermBinding>): {
   key: string
@@ -59,7 +62,13 @@ const vPerm: ObjectDirective<HTMLElement, string | PermBinding> = {
   mounted: checkAndApply,
   updated: checkAndApply,
   beforeUnmount(el: HTMLElement) {
-    if (_permCache.has(el)) {
+    const cache = _permCache.get(el)
+    if (cache) {
+      // 1. 从 DOM 中移除占位注释节点
+      if (cache.placeholder.parentNode) {
+        cache.placeholder.parentNode.removeChild(cache.placeholder)
+      }
+      // 2. 清除 WeakMap（防止后续 restoreEl 误操作）
       _permCache.delete(el)
     }
   },
