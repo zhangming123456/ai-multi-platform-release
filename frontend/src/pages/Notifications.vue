@@ -29,6 +29,10 @@ const getNotificationIcon = (type: string) => {
       return '✅'
     case 'review_rejected':
       return '❌'
+    case 'role_updated':
+      return '👤'
+    case 'role_permissions_updated':
+      return '🔐'
     default:
       return '🔔'
   }
@@ -42,16 +46,24 @@ const getNotificationTitle = (type: string) => {
       return '审核通过'
     case 'review_rejected':
       return '审核驳回'
+    case 'role_updated':
+      return '角色更新'
+    case 'role_permissions_updated':
+      return '权限变更'
     default:
       return '通知'
   }
 }
 
-async function handleNotificationClick(id: string, relatedId: string | null) {
+async function handleNotificationClick(id: string, relatedId: string | null, type: string) {
   try {
     await notificationStore.markAsRead(id)
     if (relatedId) {
-      router.push(`/review/${relatedId}`)
+      if (type === 'role_updated' || type === 'role_permissions_updated') {
+        router.push('/profile')
+      } else {
+        router.push(`/review/${relatedId}`)
+      }
     }
   } catch {
     Message.error('操作失败')
@@ -127,7 +139,9 @@ onMounted(() => {
           v-for="notification in filteredNotifications"
           :key="notification.id"
           :class="['notification-item', { unread: !notification.is_read }]"
-          @click="handleNotificationClick(notification.id, notification.related_id)"
+          @click="
+            handleNotificationClick(notification.id, notification.related_id, notification.type)
+          "
         >
           <div class="notification-icon">{{ getNotificationIcon(notification.type) }}</div>
           <div class="notification-content">

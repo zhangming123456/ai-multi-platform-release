@@ -8,13 +8,15 @@ from pydantic import BaseModel, Field
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.deps import get_current_user, PermAPIRoute, RequiresPermissions
+from app.core.deps import PermAPIRoute, RequiresPermissions, get_current_user
 from app.database import get_db
+from app.models.notification import Notification, NotificationType
 from app.models.rbac_permission import RBACPermission
 from app.models.rbac_resource import RBACResource
 from app.models.rbac_role import RBACRole
 from app.models.rbac_role_hierarchy import RBACRoleHierarchy
 from app.models.rbac_role_permission import RBACRolePermission
+from app.models.rbac_user_role_assignment import RBACUserRoleAssignment
 from app.models.user import User
 from app.services.rbac_constraint_service import validate_role_hierarchy
 from app.services.rbac_service import get_role_ancestors, get_role_descendants
@@ -199,11 +201,13 @@ async def create_role(
     await db.refresh(role)
 
     for parent_id in body.parent_role_ids:
-        db.add(RBACRoleHierarchy(
-            parent_role_id=parent_id,
-            child_role_id=role.id,
-            created_at=datetime.utcnow(),
-        ))
+        db.add(
+            RBACRoleHierarchy(
+                parent_role_id=parent_id,
+                child_role_id=role.id,
+                created_at=datetime.utcnow(),
+            )
+        )
 
     await db.commit()
     await db.refresh(role)
@@ -261,6 +265,18 @@ async def update_role(
     role.updated_at = datetime.utcnow()
 
     await db.flush()
+    await db.refresh(role)
+
+    await _notify_role_users(
+        role_id=role.id,
+        role_display_name=role.display_name,
+        title="角色信息已更新",
+        content=f"你所属的角色「{role.display_name}」信息已被 {current_user.nickname} 更新",
+        notification_type=NotificationType.role_updated,
+        db=db,
+        current_user=current_user,
+    )
+
     await db.commit()
     await db.refresh(role)
     return await _build_role_item(role, db)
@@ -290,10 +306,12 @@ async def delete_role(
             detail="内置角色不可删除",
         )
 
-    await db.execute(delete(RBACRoleHierarchy).where(
-        (RBACRoleHierarchy.parent_role_id == role_id) |
-        (RBACRoleHierarchy.child_role_id == role_id)
-    ))
+    await db.execute(
+        delete(RBACRoleHierarchy).where(
+            (RBACRoleHierarchy.parent_role_id == role_id)
+            | (RBACRoleHierarchy.child_role_id == role_id)
+        )
+    )
     await db.execute(delete(RBACRolePermission).where(RBACRolePermission.role_id == role_id))
     await db.execute(delete(RBACRole).where(RBACRole.id == role_id))
     await db.commit()
@@ -346,11 +364,27 @@ async def add_parent_role(
         )
     )
     if existing.scalar_one_or_none() is None:
-        db.add(RBACRoleHierarchy(
-            parent_role_id=parent_id,
-            child_role_id=role_id,
-            created_at=datetime.utcnow(),
-        ))
+        db.add(
+            RBACRoleHierarchy(
+                parent_role_id=parent_id,
+                child_role_id=role_id,
+                created_at=datetime.utcnow(),
+            )
+        )
+
+        parent_obj = parent.scalar_one_or_none()
+        parent_name = parent_obj.display_name if parent_obj else parent_id
+
+        await db.flush()
+        await _notify_role_users(
+            role_id=role_id,
+            role_display_name=role.display_name,
+            title="角色继承关系已变更",
+            content=f"你所属的角色「{role.display_name}」新增继承自「{parent_name}」，权限可能发生变化",
+            notification_type=NotificationType.role_permissions_updated,
+            db=db,
+            current_user=current_user,
+        )
         await db.commit()
 
     await db.refresh(role)
@@ -382,6 +416,21 @@ async def remove_parent_role(
             RBACRoleHierarchy.child_role_id == role_id,
         )
     )
+
+    parent_obj = await db.get(RBACRole, parent_id)
+    parent_name = parent_obj.display_name if parent_obj else parent_id
+
+    await db.flush()
+    await _notify_role_users(
+        role_id=role_id,
+        role_display_name=role.display_name,
+        title="角色继承关系已变更",
+        content=f"你所属的角色「{role.display_name}」已移除对「{parent_name}」的继承，权限可能发生变化",
+        notification_type=NotificationType.role_permissions_updated,
+        db=db,
+        current_user=current_user,
+    )
+
     await db.commit()
     await db.refresh(role)
     return await _build_role_item(role, db)
@@ -508,10 +557,14 @@ async def get_role_permissions_detail(
     items: list[RolePermissionItem] = []
     for rp, perm, resource in result.all():
         is_inherited = rp.role_id in ancestor_ids
-        items.append(await _role_permission_item(
-            rp, perm, resource,
-            "inherited" if is_inherited else "direct",
-        ))
+        items.append(
+            await _role_permission_item(
+                rp,
+                perm,
+                resource,
+                "inherited" if is_inherited else "direct",
+            )
+        )
 
     return items
 
@@ -554,17 +607,27 @@ async def update_role_permissions(
             detail=f"无效的权限 ID: {', '.join(sorted(missing_ids))}",
         )
 
-    await db.execute(
-        delete(RBACRolePermission).where(RBACRolePermission.role_id == role_id)
-    )
+    await db.execute(delete(RBACRolePermission).where(RBACRolePermission.role_id == role_id))
 
     for permission_id in requested_ids:
-        db.add(RBACRolePermission(
-            role_id=role_id,
-            permission_id=permission_id,
-            grant_type="direct",
-            created_at=datetime.utcnow(),
-        ))
+        db.add(
+            RBACRolePermission(
+                role_id=role_id,
+                permission_id=permission_id,
+                grant_type="direct",
+                created_at=datetime.utcnow(),
+            )
+        )
+
+    await _notify_role_users(
+        role_id=role_obj.id,
+        role_display_name=role_obj.display_name,
+        title="角色权限已更新",
+        content=f"你所属的角色「{role_obj.display_name}」权限已被 {current_user.nickname} 更新",
+        notification_type=NotificationType.role_permissions_updated,
+        db=db,
+        current_user=current_user,
+    )
 
     await db.commit()
     return await get_role_direct_permissions(role_id, db, current_user)
@@ -687,18 +750,20 @@ async def _build_ancestor_chain(
     chain: list[InheritanceNode] = []
     for a in sorted_ancestors:
         perms = await _get_role_direct_permissions_dict(a.id, db)
-        chain.append(InheritanceNode(
-            role=InheritanceRoleRef(
-                id=a.id,
-                name=a.name,
-                display_name=a.display_name,
-                role_type=a.role_type,
-                is_super_admin=a.is_super_admin,
-                is_builtin=a.is_builtin,
-            ),
-            direct_permissions=perms,
-            level=ancestor_depths.get(a.id, 0),
-        ))
+        chain.append(
+            InheritanceNode(
+                role=InheritanceRoleRef(
+                    id=a.id,
+                    name=a.name,
+                    display_name=a.display_name,
+                    role_type=a.role_type,
+                    is_super_admin=a.is_super_admin,
+                    is_builtin=a.is_builtin,
+                ),
+                direct_permissions=perms,
+                level=ancestor_depths.get(a.id, 0),
+            )
+        )
     return chain
 
 
@@ -746,18 +811,20 @@ async def _build_descendant_tree(
     tree: list[InheritanceNode] = []
     for d in sorted_descendants:
         perms = await _get_role_direct_permissions_dict(d.id, db)
-        tree.append(InheritanceNode(
-            role=InheritanceRoleRef(
-                id=d.id,
-                name=d.name,
-                display_name=d.display_name,
-                role_type=d.role_type,
-                is_super_admin=d.is_super_admin,
-                is_builtin=d.is_builtin,
-            ),
-            direct_permissions=perms,
-            level=descendant_depths.get(d.id, 1),
-        ))
+        tree.append(
+            InheritanceNode(
+                role=InheritanceRoleRef(
+                    id=d.id,
+                    name=d.name,
+                    display_name=d.display_name,
+                    role_type=d.role_type,
+                    is_super_admin=d.is_super_admin,
+                    is_builtin=d.is_builtin,
+                ),
+                direct_permissions=perms,
+                level=descendant_depths.get(d.id, 1),
+            )
+        )
     return tree
 
 
@@ -815,3 +882,32 @@ async def get_role_inheritance(
         ancestor_chain=ancestor_chain,
         descendant_tree=descendant_tree,
     )
+
+
+async def _notify_role_users(
+    role_id: str,
+    role_display_name: str,
+    title: str,
+    content: str,
+    notification_type: NotificationType,
+    db: AsyncSession,
+    current_user: User,
+) -> None:
+    result = await db.execute(
+        select(RBACUserRoleAssignment.user_id).where(RBACUserRoleAssignment.role_id == role_id)
+    )
+    user_ids = [row[0] for row in result.all()]
+    if not user_ids:
+        return
+
+    for uid in user_ids:
+        if uid == current_user.id:
+            continue
+        db.add(
+            Notification(
+                user_id=uid,
+                type=notification_type,
+                title=title,
+                content=content,
+            )
+        )

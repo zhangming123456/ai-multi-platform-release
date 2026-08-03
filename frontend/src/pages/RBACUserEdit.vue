@@ -67,7 +67,9 @@ const sortedRoles = computed(() => {
 })
 
 const roleOptions = computed(() =>
-  sortedRoles.value.map((r) => ({ value: r.id, label: r.display_name })),
+  sortedRoles.value
+    .filter((r) => !r.is_super_admin)
+    .map((r) => ({ value: r.id, label: r.display_name })),
 )
 
 const formDisabled = computed(() => {

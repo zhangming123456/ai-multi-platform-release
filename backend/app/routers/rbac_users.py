@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.deps import get_current_user, PermAPIRoute, RequiresPermissions
+from app.core.deps import PermAPIRoute, RequiresPermissions, get_current_user
 from app.core.security import hash_password, validate_password_format, verify_password
 from app.database import get_db
 from app.models.rbac_permission import RBACPermission
@@ -18,14 +18,14 @@ from app.models.rbac_role_permission import RBACRolePermission
 from app.models.rbac_user_permission_override import RBACUserPermissionOverride
 from app.models.rbac_user_role_assignment import RBACUserRoleAssignment
 from app.models.user import User, UserRole
-from app.models.user_creation_request import UserCreationRequest, UserCreationStatus
+from app.models.user_creation_request import UserCreationRequest
 from app.schemas.auth import UserInfo
 from app.services.rbac_constraint_service import validate_user_role_assignments
 from app.services.rbac_service import (
+    _closure_has_super_admin,
+    _role_closure_role_ids,
     get_user_effective_flat_permissions,
     has_permission_direct,
-    _role_closure_role_ids,
-    _closure_has_super_admin,
 )
 
 router = APIRouter(prefix="/api/v2", tags=["RBAC 用户管理"], route_class=PermAPIRoute)
@@ -109,7 +109,9 @@ async def _user_roles(user_id: str, db: AsyncSession) -> list[RoleAssignmentInfo
         .where(RBACUserRoleAssignment.user_id == user_id)
     )
     return [
-        RoleAssignmentInfo(id=role.id, name=role.name, display_name=role.display_name, role_type=role.role_type)
+        RoleAssignmentInfo(
+            id=role.id, name=role.name, display_name=role.display_name, role_type=role.role_type
+        )
         for role in result.scalars().all()
     ]
 
@@ -128,12 +130,34 @@ def _is_manager_or_admin(user: User) -> bool:
     return str(user.role) in {UserRole.admin.value, UserRole.manager.value}
 
 
+async def _get_super_admin_role_id(db: AsyncSession) -> str | None:
+    result = await db.execute(select(RBACRole.id).where(RBACRole.is_super_admin.is_(True)))
+    row = result.first()
+    return row[0] if row else None
+
+
+async def _assert_not_assigning_super_admin(
+    role_ids: set[str],
+    user_id: str,
+    db: AsyncSession,
+) -> None:
+    super_admin_role_id = await _get_super_admin_role_id(db)
+    if not super_admin_role_id or super_admin_role_id not in role_ids:
+        return
+    if user_id == "1":
+        return
+    raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail="超级管理员角色仅限系统唯一管理员，不可分配给其他用户",
+    )
+
+
 async def _get_user_role_names(user: User, db: AsyncSession) -> set[str]:
     """Get all role names assigned to a user."""
     result = await db.execute(
-        select(RBACRole.name).join(
-            RBACUserRoleAssignment, RBACRole.id == RBACUserRoleAssignment.role_id
-        ).where(RBACUserRoleAssignment.user_id == user.id)
+        select(RBACRole.name)
+        .join(RBACUserRoleAssignment, RBACRole.id == RBACUserRoleAssignment.role_id)
+        .where(RBACUserRoleAssignment.user_id == user.id)
     )
     return {row[0] for row in result.all()}
 
@@ -145,7 +169,7 @@ async def _can_access_user_target(
     allow_self: bool = True,
 ) -> bool:
     """Check if current_user can access/manage target_user.
-    
+
     Admin/manager roles can access all users.
     Non-admin roles (operator, reviewer) can only access users with the same role.
     """
@@ -267,29 +291,30 @@ async def create_user(
 
     role_ids = body.role_ids
     if not role_ids and body.role:
-        role_result = await db.execute(
-            select(RBACRole).where(RBACRole.name == body.role)
-        )
+        role_result = await db.execute(select(RBACRole).where(RBACRole.name == body.role))
         role_obj = role_result.scalar_one_or_none()
         if role_obj:
             role_ids = [role_obj.id]
 
     if role_ids:
-        violations = await validate_user_role_assignments(
-            user.id, set(role_ids), db
-        )
+        violations = await validate_user_role_assignments(user.id, set(role_ids), db)
         if violations:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="; ".join(violations),
             )
+
+        await _assert_not_assigning_super_admin(set(role_ids), user.id, db)
+
         for role_id in role_ids:
-            db.add(RBACUserRoleAssignment(
-                user_id=user.id,
-                role_id=role_id,
-                grant_type="direct",
-                created_at=datetime.utcnow(),
-            ))
+            db.add(
+                RBACUserRoleAssignment(
+                    user_id=user.id,
+                    role_id=role_id,
+                    grant_type="direct",
+                    created_at=datetime.utcnow(),
+                )
+            )
 
     await db.commit()
     await db.refresh(user)
@@ -352,12 +377,11 @@ async def update_user(
             detail="仅管理员可修改角色分配",
         )
 
-    if _is_admin(user):
-        if body.role_ids is not None:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="超级管理员角色不可修改",
-            )
+    if _is_admin(user) and body.role_ids is not None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="超级管理员角色不可修改",
+        )
 
     update_data = body.model_dump(exclude_unset=True)
 
@@ -377,27 +401,27 @@ async def update_user(
         setattr(user, field, value)
 
     if body.role_ids is not None:
-        violations = await validate_user_role_assignments(
-            user.id, set(body.role_ids), db
-        )
+        violations = await validate_user_role_assignments(user.id, set(body.role_ids), db)
         if violations:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="; ".join(violations),
             )
 
+        await _assert_not_assigning_super_admin(set(body.role_ids), user_id, db)
+
         await db.execute(
-            delete(RBACUserRoleAssignment).where(
-                RBACUserRoleAssignment.user_id == user_id
-            )
+            delete(RBACUserRoleAssignment).where(RBACUserRoleAssignment.user_id == user_id)
         )
         for role_id in body.role_ids:
-            db.add(RBACUserRoleAssignment(
-                user_id=user_id,
-                role_id=role_id,
-                grant_type="direct",
-                created_at=datetime.utcnow(),
-            ))
+            db.add(
+                RBACUserRoleAssignment(
+                    user_id=user_id,
+                    role_id=role_id,
+                    grant_type="direct",
+                    created_at=datetime.utcnow(),
+                )
+            )
 
     user.updated_at = datetime.utcnow()
     await db.flush()
@@ -437,27 +461,27 @@ async def update_user_roles(
             detail="仅管理员可修改用户角色分配",
         )
 
-    violations = await validate_user_role_assignments(
-        user.id, set(body.role_ids), db
-    )
+    violations = await validate_user_role_assignments(user.id, set(body.role_ids), db)
     if violations:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="; ".join(violations),
         )
 
+    await _assert_not_assigning_super_admin(set(body.role_ids), user_id, db)
+
     await db.execute(
-        delete(RBACUserRoleAssignment).where(
-            RBACUserRoleAssignment.user_id == user_id
-        )
+        delete(RBACUserRoleAssignment).where(RBACUserRoleAssignment.user_id == user_id)
     )
     for role_id in body.role_ids:
-        db.add(RBACUserRoleAssignment(
-            user_id=user_id,
-            role_id=role_id,
-            grant_type="direct",
-            created_at=datetime.utcnow(),
-        ))
+        db.add(
+            RBACUserRoleAssignment(
+                user_id=user_id,
+                role_id=role_id,
+                grant_type="direct",
+                created_at=datetime.utcnow(),
+            )
+        )
 
     await db.commit()
     await db.refresh(user)
@@ -543,7 +567,9 @@ async def get_user_permissions(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="无法访问该用户：非管理角色只能操作同角色用户",
             )
-        if not await has_permission_direct(current_user.id, "users:custom_permissions:read", "read", db):
+        if not await has_permission_direct(
+            current_user.id, "users:custom_permissions:read", "read", db
+        ):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="无权查看其他用户的自定义权限",
@@ -578,19 +604,21 @@ async def get_user_permissions(
     )
     available_permissions: list[AvailablePermission] = []
     for permission, resource in perm_result.all():
-        available_permissions.append(AvailablePermission(
-            id=permission.id,
-            key=permission.key,
-            operation=permission.operation,
-            is_active=permission.is_active,
-            created_at=permission.created_at,
-            resource=_PermResourceRef(
-                id=resource.id,
-                key=resource.key,
-                name=resource.name,
-                description=resource.description,
-            ),
-        ))
+        available_permissions.append(
+            AvailablePermission(
+                id=permission.id,
+                key=permission.key,
+                operation=permission.operation,
+                is_active=permission.is_active,
+                created_at=permission.created_at,
+                resource=_PermResourceRef(
+                    id=resource.id,
+                    key=resource.key,
+                    name=resource.name,
+                    description=resource.description,
+                ),
+            )
+        )
 
     return UserPermissionsResponse(
         effective_permissions=effective_permissions,
@@ -631,15 +659,19 @@ async def get_user_permission_overrides(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="无法访问该用户：非管理角色只能操作同角色用户",
             )
-        if not await has_permission_direct(current_user.id, "users:custom_permissions:read", "read", db):
+        if not await has_permission_direct(
+            current_user.id, "users:custom_permissions:read", "read", db
+        ):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="无权查看其他用户的自定义权限覆盖",
             )
     result = await db.execute(
-        select(RBACUserPermissionOverride).where(
+        select(RBACUserPermissionOverride)
+        .where(
             RBACUserPermissionOverride.user_id == user_id,
-        ).order_by(RBACUserPermissionOverride.permission_key)
+        )
+        .order_by(RBACUserPermissionOverride.permission_key)
     )
     overrides = result.scalars().all()
     return [
@@ -692,19 +724,23 @@ async def update_user_permission_overrides(
 
     # Insert new overrides.
     for entry in body.overrides:
-        db.add(RBACUserPermissionOverride(
-            user_id=user_id,
-            permission_key=entry.permission_key,
-            granted=entry.granted,
-        ))
+        db.add(
+            RBACUserPermissionOverride(
+                user_id=user_id,
+                permission_key=entry.permission_key,
+                granted=entry.granted,
+            )
+        )
 
     await db.commit()
 
     # Return the saved overrides.
     result = await db.execute(
-        select(RBACUserPermissionOverride).where(
+        select(RBACUserPermissionOverride)
+        .where(
             RBACUserPermissionOverride.user_id == user_id,
-        ).order_by(RBACUserPermissionOverride.permission_key)
+        )
+        .order_by(RBACUserPermissionOverride.permission_key)
     )
     overrides = result.scalars().all()
     return [
@@ -790,9 +826,7 @@ async def delete_user(
         )
 
     await db.execute(
-        delete(RBACUserRoleAssignment).where(
-            RBACUserRoleAssignment.user_id == user_id
-        )
+        delete(RBACUserRoleAssignment).where(RBACUserRoleAssignment.user_id == user_id)
     )
     await db.delete(user)
     await db.commit()

@@ -473,7 +473,13 @@ const viewMode = ref<'card' | 'table'>('card')
   <div class="page-main relative">
     <PageHeader title="角色管理" subtitle="管理系统角色、自定义角色与角色继承关系">
       <template #actions>
-        <a-button type="text" size="mini" class="!text-[#007AFF] !px-0 !h-auto" @click="openAdd">
+        <a-button
+          v-perm="'roles:manage:write'"
+          type="text"
+          size="mini"
+          class="!text-[#007AFF] !px-0 !h-auto"
+          @click="openAdd"
+        >
           <template #icon><IconPlus :size="13" /></template>
           创建角色
         </a-button>
@@ -525,6 +531,7 @@ const viewMode = ref<'card' | 'table'>('card')
                   </div>
                   <div class="flex items-center gap-1 shrink-0">
                     <a-button
+                      v-perm="'roles:manage:write'"
                       type="text"
                       size="mini"
                       :disabled="role.is_super_admin"
@@ -533,6 +540,7 @@ const viewMode = ref<'card' | 'table'>('card')
                       <template #icon><IconEdit :size="14" /></template>
                     </a-button>
                     <a-button
+                      v-perm="'roles:manage:write'"
                       type="text"
                       size="mini"
                       status="danger"
@@ -693,6 +701,7 @@ const viewMode = ref<'card' | 'table'>('card')
                 <div class="flex items-center gap-2">
                   <a-tooltip content="查看继承关系" mini>
                     <a-button
+                      v-perm="'roles:read'"
                       type="text"
                       size="small"
                       @click="isMobile ? openInheritanceDrawer(role) : openInheritance(role)"
@@ -702,6 +711,7 @@ const viewMode = ref<'card' | 'table'>('card')
                   </a-tooltip>
                   <a-tooltip content="配置继承" mini>
                     <a-button
+                      v-perm="'roles:manage:write'"
                       type="text"
                       size="small"
                       :disabled="role.is_super_admin"
@@ -712,6 +722,7 @@ const viewMode = ref<'card' | 'table'>('card')
                   </a-tooltip>
                   <a-tooltip content="权限配置" mini>
                     <a-button
+                      v-perm="'roles:manage:write'"
                       type="text"
                       size="small"
                       @click="$router.push(`/rbac/permissions?role=${role.id}`)"
@@ -820,6 +831,7 @@ const viewMode = ref<'card' | 'table'>('card')
                     <div class="flex items-center gap-1">
                       <a-tooltip content="查看继承关系" mini>
                         <a-button
+                          v-perm="'roles:read'"
                           type="text"
                           size="small"
                           @click="
@@ -831,6 +843,7 @@ const viewMode = ref<'card' | 'table'>('card')
                       </a-tooltip>
                       <a-tooltip content="配置继承" mini>
                         <a-button
+                          v-perm="'roles:manage:write'"
                           type="text"
                           size="small"
                           :disabled="record.is_super_admin"
@@ -841,6 +854,7 @@ const viewMode = ref<'card' | 'table'>('card')
                       </a-tooltip>
                       <a-tooltip content="权限配置" mini>
                         <a-button
+                          v-perm="'roles:manage:write'"
                           type="text"
                           size="small"
                           @click="$router.push(`/rbac/permissions?role=${record.id}`)"
@@ -850,6 +864,7 @@ const viewMode = ref<'card' | 'table'>('card')
                       </a-tooltip>
                       <a-tooltip content="编辑" mini>
                         <a-button
+                          v-perm="'roles:manage:write'"
                           type="text"
                           size="small"
                           :disabled="record.is_super_admin"
@@ -860,6 +875,7 @@ const viewMode = ref<'card' | 'table'>('card')
                       </a-tooltip>
                       <a-tooltip content="删除" mini>
                         <a-button
+                          v-perm="'roles:manage:write'"
                           type="text"
                           size="small"
                           status="danger"

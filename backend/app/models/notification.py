@@ -3,18 +3,20 @@ from __future__ import annotations
 import enum
 import uuid
 from datetime import datetime
+from typing import Optional
 
-from sqlalchemy import DateTime, ForeignKey, String, Text, Boolean
+from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
-from typing import Optional
 
 
 class NotificationType(str, enum.Enum):
     review_submit = "review_submit"
     review_approved = "review_approved"
     review_rejected = "review_rejected"
+    role_updated = "role_updated"
+    role_permissions_updated = "role_permissions_updated"
 
 
 class Notification(Base):
@@ -27,6 +29,4 @@ class Notification(Base):
     content: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     related_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
     is_read: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.now, nullable=False
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, nullable=False)

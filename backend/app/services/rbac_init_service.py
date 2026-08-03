@@ -5,14 +5,13 @@ from datetime import datetime
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.rbac_constraint import RBACConstraint, RBACConstraintRoleAssociation
 from app.models.rbac_permission import RBACPermission
-from app.models.rbac_resource import RBACResource, _infer_resource_type
+from app.models.rbac_resource import RBACResource
 from app.models.rbac_role import RBACRole
-from app.models.rbac_role_hierarchy import RBACRoleHierarchy
 from app.models.rbac_role_permission import RBACRolePermission
 from app.models.rbac_user_role_assignment import RBACUserRoleAssignment
 from app.models.user import User
-
 
 BUILTIN_ROLES = [
     {
@@ -64,13 +63,33 @@ RBAC_RESOURCES: list[dict] = [
     {"key": "roles:read", "name": "角色管理", "description": "管理角色定义和角色继承关系"},
     {"key": "constraints:read", "name": "约束管理", "description": "管理职责分离约束规则"},
     # ---------- 系统管理操作 ----------
-    {"key": "permissions:manage:read", "name": "查看权限字典", "description": "创建、编辑、删除权限资源定义"},
-    {"key": "permissions:manage:write", "name": "维护权限字典", "description": "创建、编辑、删除权限资源定义"},
-    {"key": "roles:manage:write", "name": "维护角色", "description": "创建、编辑、删除角色定义和层级关系"},
-    {"key": "constraints:manage:write", "name": "维护约束", "description": "创建、编辑、删除职责分离约束规则"},
+    {
+        "key": "permissions:manage:read",
+        "name": "查看权限字典",
+        "description": "创建、编辑、删除权限资源定义",
+    },
+    {
+        "key": "permissions:manage:write",
+        "name": "维护权限字典",
+        "description": "创建、编辑、删除权限资源定义",
+    },
+    {
+        "key": "roles:manage:write",
+        "name": "维护角色",
+        "description": "创建、编辑、删除角色定义和层级关系",
+    },
+    {
+        "key": "constraints:manage:write",
+        "name": "维护约束",
+        "description": "创建、编辑、删除职责分离约束规则",
+    },
     # ---------- 内容操作 ----------
     {"key": "content:create:write", "name": "创建内容", "description": "创建新的内容条目"},
-    {"key": "content:update:write", "name": "编辑内容", "description": "编辑已有内容条目的标题、正文等信息"},
+    {
+        "key": "content:update:write",
+        "name": "编辑内容",
+        "description": "编辑已有内容条目的标题、正文等信息",
+    },
     {"key": "content:delete:write", "name": "删除内容", "description": "删除已有内容条目"},
     {"key": "content:ai_generate:write", "name": "AI生成内容", "description": "使用AI辅助生成内容"},
     # ---------- 发布操作 ----------
@@ -89,10 +108,22 @@ RBAC_RESOURCES: list[dict] = [
     # ---------- 用户管理操作 ----------
     {"key": "users:create:write", "name": "创建用户", "description": "创建新的系统用户"},
     {"key": "users:update:read", "name": "查看用户", "description": "查看用户详细信息"},
-    {"key": "users:update:write", "name": "编辑用户", "description": "编辑用户的昵称、邮箱等基本信息"},
+    {
+        "key": "users:update:write",
+        "name": "编辑用户",
+        "description": "编辑用户的昵称、邮箱等基本信息",
+    },
     {"key": "users:delete:write", "name": "删除用户", "description": "删除系统用户"},
-    {"key": "users:change_password:write", "name": "修改用户密码", "description": "修改用户的登录密码"},
-    {"key": "users:custom_permissions:write", "name": "自定义用户权限", "description": "为个别用户配置自定义权限覆盖"},
+    {
+        "key": "users:change_password:write",
+        "name": "修改用户密码",
+        "description": "修改用户的登录密码",
+    },
+    {
+        "key": "users:custom_permissions:write",
+        "name": "自定义用户权限",
+        "description": "为个别用户配置自定义权限覆盖",
+    },
     # ---------- 平台账号操作 ----------
     {"key": "account:create:write", "name": "创建平台账号", "description": "创建新的平台登录账号"},
     {"key": "account:update:write", "name": "编辑平台账号", "description": "编辑平台账号信息"},
@@ -103,8 +134,16 @@ RBAC_RESOURCES: list[dict] = [
     {"key": "db_change:approve:write", "name": "通过SQL变更", "description": "批准SQL变更申请"},
     {"key": "db_change:reject:write", "name": "驳回SQL变更", "description": "驳回SQL变更申请"},
     # ---------- 模型配置操作 ----------
-    {"key": "model_config:create:write", "name": "创建模型配置", "description": "创建新的AI模型配置"},
-    {"key": "model_config:update:write", "name": "编辑模型配置", "description": "编辑AI模型配置参数"},
+    {
+        "key": "model_config:create:write",
+        "name": "创建模型配置",
+        "description": "创建新的AI模型配置",
+    },
+    {
+        "key": "model_config:update:write",
+        "name": "编辑模型配置",
+        "description": "编辑AI模型配置参数",
+    },
     {"key": "model_config:delete:write", "name": "删除模型配置", "description": "删除AI模型配置"},
     # ---------- SQL历史 ----------
     {"key": "db_history:view:read", "name": "查看SQL历史", "description": "查看SQL执行历史记录"},
@@ -116,39 +155,100 @@ ALL_PERMISSION_KEYS: list[str] = [r["key"] for r in RBAC_RESOURCES]
 DEFAULT_ROLE_PERMISSIONS: dict[str, list[str]] = {
     "admin": ALL_PERMISSION_KEYS,
     "manager": [
-        "dashboard:read", "platforms:read", "content:read", "publish:read",
-        "templates:read", "review:read", "sql_review:read", "accounts:read",
-        "token_plan:read", "api_docs:read",
-        "permissions:read", "roles:read", "constraints:read",
-        "permissions:manage:read", "permissions:manage:write", "roles:manage:write", "constraints:manage:write",
-        "users:read", "users:create:write", "users:update:read", "users:update:write",
-        "users:delete:write", "users:change_password:write", "users:custom_permissions:write",
-        "content:create:write", "content:update:write", "content:delete:write", "content:ai_generate:write",
-        "review:submit:write", "review:approve:write", "review:reject:write",
-        "db_change:submit:write", "db_change:approve:write", "db_change:reject:write",
-        "templates:create:write", "templates:update:write", "templates:delete:write",
-        "account:create:write", "account:update:write", "account:delete:write", "account:check:write",
-        "publish:create:write", "publish:retry:write",
-        "model_config:create:write", "model_config:update:write", "model_config:delete:write",
-        "db:execute:write", "db_history:view:read",
+        "dashboard:read",
+        "platforms:read",
+        "content:read",
+        "publish:read",
+        "templates:read",
+        "review:read",
+        "sql_review:read",
+        "accounts:read",
+        "token_plan:read",
+        "api_docs:read",
+        "permissions:read",
+        "roles:read",
+        "constraints:read",
+        "permissions:manage:read",
+        "permissions:manage:write",
+        "roles:manage:write",
+        "constraints:manage:write",
+        "users:read",
+        "users:create:write",
+        "users:update:read",
+        "users:update:write",
+        "users:delete:write",
+        "users:change_password:write",
+        "users:custom_permissions:write",
+        "content:create:write",
+        "content:update:write",
+        "content:delete:write",
+        "content:ai_generate:write",
+        "review:submit:write",
+        "review:approve:write",
+        "review:reject:write",
+        "db_change:submit:write",
+        "db_change:approve:write",
+        "db_change:reject:write",
+        "templates:create:write",
+        "templates:update:write",
+        "templates:delete:write",
+        "account:create:write",
+        "account:update:write",
+        "account:delete:write",
+        "account:check:write",
+        "publish:create:write",
+        "publish:retry:write",
+        "model_config:create:write",
+        "model_config:update:write",
+        "model_config:delete:write",
+        "db:execute:write",
+        "db_history:view:read",
     ],
     "operator": [
-        "dashboard:read", "platforms:read", "content:read", "publish:read",
-        "templates:read", "accounts:read", "token_plan:read", "api_docs:read",
-        "users:read", "users:create:write", "users:update:write", "users:change_password:write",
-        "users:custom_permissions:write", "roles:read",
-        "content:create:write", "content:update:write", "content:delete:write", "content:ai_generate:write",
-        "review:submit:write", "db_change:submit:write",
-        "templates:create:write", "templates:update:write", "templates:delete:write",
-        "account:create:write", "account:update:write", "account:delete:write", "account:check:write",
-        "publish:create:write", "publish:retry:write",
+        "dashboard:read",
+        "platforms:read",
+        "content:read",
+        "publish:read",
+        "templates:read",
+        "accounts:read",
+        "token_plan:read",
+        "api_docs:read",
+        "users:read",
+        "users:create:write",
+        "users:update:write",
+        "users:change_password:write",
+        "users:custom_permissions:write",
+        "roles:read",
+        "content:create:write",
+        "content:update:write",
+        "content:delete:write",
+        "content:ai_generate:write",
+        "review:submit:write",
+        "db_change:submit:write",
+        "templates:create:write",
+        "templates:update:write",
+        "templates:delete:write",
+        "account:create:write",
+        "account:update:write",
+        "account:delete:write",
+        "account:check:write",
+        "publish:create:write",
+        "publish:retry:write",
     ],
     "reviewer": [
-        "dashboard:read", "content:read", "review:read", "sql_review:read",
-        "platforms:read", "accounts:read",
-        "review:approve:write", "review:reject:write",
-        "db_change:approve:write", "db_change:reject:write",
-        "templates:create:write", "templates:update:write", "templates:delete:write",
+        "dashboard:read",
+        "content:read",
+        "review:read",
+        "sql_review:read",
+        "platforms:read",
+        "accounts:read",
+        "review:approve:write",
+        "review:reject:write",
+        "db_change:approve:write",
+        "db_change:reject:write",
+        "templates:create:write",
+        "templates:update:write",
+        "templates:delete:write",
     ],
 }
 
@@ -167,9 +267,20 @@ def _map_legacy_permission(legacy_key: str) -> str:
     if legacy_key.count(":") == 2:
         return legacy_key
 
-    write_ops = {"create", "update", "delete", "approve", "reject", "submit",
-                 "retry", "check", "execute", "ai_generate",
-                 "change_password", "custom_permissions"}
+    write_ops = {
+        "create",
+        "update",
+        "delete",
+        "approve",
+        "reject",
+        "submit",
+        "retry",
+        "check",
+        "execute",
+        "ai_generate",
+        "change_password",
+        "custom_permissions",
+    }
     read_ops = {"read"}
 
     if ":" in legacy_key:
@@ -197,23 +308,25 @@ def _map_legacy_permission(legacy_key: str) -> str:
 
 
 async def _ensure_builtin_roles(db: AsyncSession) -> None:
-    result = await db.execute(select(RBACRole).where(RBACRole.name.in_(
-        [r["name"] for r in BUILTIN_ROLES]
-    )))
+    result = await db.execute(
+        select(RBACRole).where(RBACRole.name.in_([r["name"] for r in BUILTIN_ROLES]))
+    )
     existing_by_name = {role.name: role for role in result.scalars().all()}
 
     for role_def in BUILTIN_ROLES:
         if role_def["name"] in existing_by_name:
             continue
-        db.add(RBACRole(
-            name=role_def["name"],
-            display_name=role_def["display_name"],
-            role_type=role_def["role_type"],
-            is_super_admin=role_def["is_super_admin"],
-            is_builtin=role_def["is_builtin"],
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow(),
-        ))
+        db.add(
+            RBACRole(
+                name=role_def["name"],
+                display_name=role_def["display_name"],
+                role_type=role_def["role_type"],
+                is_super_admin=role_def["is_super_admin"],
+                is_builtin=role_def["is_builtin"],
+                created_at=datetime.utcnow(),
+                updated_at=datetime.utcnow(),
+            )
+        )
 
     await db.commit()
 
@@ -230,7 +343,9 @@ async def _ensure_resources_and_permissions(db: AsyncSession) -> None:
     result = await db.execute(select(RBACResource).where(RBACResource.key.in_(resource_keys)))
     existing_resources = {r.key: r for r in result.scalars().all()}
 
-    result = await db.execute(select(RBACPermission).where(RBACPermission.key.in_(ALL_PERMISSION_KEYS)))
+    result = await db.execute(
+        select(RBACPermission).where(RBACPermission.key.in_(ALL_PERMISSION_KEYS))
+    )
     existing_permissions = {p.key: p for p in result.scalars().all()}
 
     resource_cache: dict[str, RBACResource] = {}
@@ -259,13 +374,15 @@ async def _ensure_resources_and_permissions(db: AsyncSession) -> None:
             await db.flush()
 
         operation = _extract_operation(resource_key)
-        db.add(RBACPermission(
-            resource_id=resource.id,
-            operation=operation,
-            key=resource_key,
-            is_active=True,
-            created_at=datetime.utcnow(),
-        ))
+        db.add(
+            RBACPermission(
+                resource_id=resource.id,
+                operation=operation,
+                key=resource_key,
+                is_active=True,
+                created_at=datetime.utcnow(),
+            )
+        )
 
     await db.commit()
 
@@ -285,12 +402,14 @@ def _extract_operation(key: str) -> str:
 
 
 async def _ensure_builtin_role_permissions(db: AsyncSession) -> None:
-    result = await db.execute(select(RBACRole).where(RBACRole.name.in_(
-        list(DEFAULT_ROLE_PERMISSIONS.keys())
-    )))
+    result = await db.execute(
+        select(RBACRole).where(RBACRole.name.in_(list(DEFAULT_ROLE_PERMISSIONS.keys())))
+    )
     roles_by_name = {role.name: role for role in result.scalars().all()}
 
-    result = await db.execute(select(RBACPermission).where(RBACPermission.key.in_(ALL_PERMISSION_KEYS)))
+    result = await db.execute(
+        select(RBACPermission).where(RBACPermission.key.in_(ALL_PERMISSION_KEYS))
+    )
     permissions_by_key = {perm.key: perm for perm in result.scalars().all()}
 
     role_permission_pairs = [
@@ -317,12 +436,14 @@ async def _ensure_builtin_role_permissions(db: AsyncSession) -> None:
     for role_id, permission_id in role_permission_pairs:
         if (role_id, permission_id) in existing_pairs:
             continue
-        db.add(RBACRolePermission(
-            role_id=role_id,
-            permission_id=permission_id,
-            grant_type="direct",
-            created_at=datetime.utcnow(),
-        ))
+        db.add(
+            RBACRolePermission(
+                role_id=role_id,
+                permission_id=permission_id,
+                grant_type="direct",
+                created_at=datetime.utcnow(),
+            )
+        )
 
     await db.commit()
 
@@ -339,9 +460,7 @@ async def sync_user_role_assignments(db: AsyncSession) -> None:
     roles_by_name = {role.name: role for role in result.scalars().all()}
 
     user_role_pairs = [
-        (user.id, roles_by_name[user.role].id)
-        for user in users
-        if user.role in roles_by_name
+        (user.id, roles_by_name[user.role].id) for user in users if user.role in roles_by_name
     ]
 
     if not user_role_pairs:
@@ -360,12 +479,14 @@ async def sync_user_role_assignments(db: AsyncSession) -> None:
     for user_id, role_id in user_role_pairs:
         if (user_id, role_id) in existing_pairs:
             continue
-        db.add(RBACUserRoleAssignment(
-            user_id=user_id,
-            role_id=role_id,
-            grant_type="direct",
-            created_at=datetime.utcnow(),
-        ))
+        db.add(
+            RBACUserRoleAssignment(
+                user_id=user_id,
+                role_id=role_id,
+                grant_type="direct",
+                created_at=datetime.utcnow(),
+            )
+        )
 
     await db.commit()
 
@@ -388,14 +509,16 @@ async def migrate_legacy_role_permissions(db: AsyncSession) -> None:
     roles_by_name = {role.name: role for role in result.scalars().all()}
 
     permission_keys = [
-        _map_legacy_permission(record["permission_key"])
-        for record in legacy_records
+        _map_legacy_permission(record["permission_key"]) for record in legacy_records
     ]
     result = await db.execute(select(RBACPermission).where(RBACPermission.key.in_(permission_keys)))
     permissions_by_key = {perm.key: perm for perm in result.scalars().all()}
 
     role_permission_pairs = [
-        (roles_by_name[record["role"]].id, permissions_by_key[_map_legacy_permission(record["permission_key"])].id)
+        (
+            roles_by_name[record["role"]].id,
+            permissions_by_key[_map_legacy_permission(record["permission_key"])].id,
+        )
         for record in legacy_records
         if (record["can_read"] or record["can_write"])
         and record["role"] in roles_by_name
@@ -418,12 +541,67 @@ async def migrate_legacy_role_permissions(db: AsyncSession) -> None:
     for role_id, permission_id in role_permission_pairs:
         if (role_id, permission_id) in existing_pairs:
             continue
-        db.add(RBACRolePermission(
-            role_id=role_id,
-            permission_id=permission_id,
-            grant_type="direct",
+        db.add(
+            RBACRolePermission(
+                role_id=role_id,
+                permission_id=permission_id,
+                grant_type="direct",
+                created_at=datetime.utcnow(),
+            )
+        )
+
+    await db.commit()
+
+
+DEFAULT_CONSTRAINTS = [
+    {
+        "name": "运营者与审核员互斥",
+        "description": "同一用户不能同时担任运营者和审核员角色，防止利益冲突",
+        "constraint_type": "mutual_exclusive",
+        "config": {"scope": "static"},
+        "subject_roles": ["operator", "reviewer"],
+    },
+]
+
+
+async def _ensure_default_constraints(db: AsyncSession) -> None:
+    result = await db.execute(
+        select(RBACConstraint).where(
+            RBACConstraint.name.in_([c["name"] for c in DEFAULT_CONSTRAINTS])
+        )
+    )
+    existing_by_name = {c.name: c for c in result.scalars().all()}
+
+    result = await db.execute(
+        select(RBACRole).where(RBACRole.name.in_([r["name"] for r in BUILTIN_ROLES]))
+    )
+    roles_by_name = {role.name: role for role in result.scalars().all()}
+
+    for constraint_def in DEFAULT_CONSTRAINTS:
+        if constraint_def["name"] in existing_by_name:
+            continue
+
+        constraint = RBACConstraint(
+            name=constraint_def["name"],
+            description=constraint_def["description"],
+            constraint_type=constraint_def["constraint_type"],
+            config=constraint_def["config"],
+            is_active=True,
             created_at=datetime.utcnow(),
-        ))
+        )
+        db.add(constraint)
+        await db.flush()
+
+        for role_name in constraint_def["subject_roles"]:
+            if role_name not in roles_by_name:
+                continue
+            db.add(
+                RBACConstraintRoleAssociation(
+                    constraint_id=constraint.id,
+                    role_id=roles_by_name[role_name].id,
+                    association_type="subject",
+                )
+            )
 
     await db.commit()
 
@@ -432,5 +610,6 @@ async def init_rbac_system(db: AsyncSession) -> None:
     await _ensure_builtin_roles(db)
     await _ensure_resources_and_permissions(db)
     await _ensure_builtin_role_permissions(db)
+    await _ensure_default_constraints(db)
     await sync_user_role_assignments(db)
     await migrate_legacy_role_permissions(db)
