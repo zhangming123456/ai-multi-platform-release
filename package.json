@@ -11,7 +11,8 @@
     "lint:fix": "cd frontend && npm run lint:fix",
     "format": "prettier --write \"*.{json,yml,yaml,md}\" \".trae/documents/*.md\" && cd frontend && npm run format && cd ../backend && python3 -m ruff format . && python3 -m ruff check --fix .",
     "format:check": "prettier --check \"*.{json,yml,yaml,md}\" \".trae/documents/*.md\" && cd frontend && npm run format:check && cd ../backend && python3 -m ruff format --check . && python3 -m ruff check .",
-    "prepare": "husky"
+    "prepare": "husky",
+    "reinstall": "lsof -ti:8000,5500 | xargs kill -9 2>/dev/null; rm -rf node_modules frontend/node_modules && cd frontend && npm install && cd .. && npm install && npm run dev"
   },
   "devDependencies": {
     "concurrently": "^9.1.0",

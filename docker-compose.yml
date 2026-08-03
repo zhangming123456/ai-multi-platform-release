@@ -65,7 +65,7 @@ services:
       context: .
       dockerfile: docker/frontend/Dockerfile
     ports:
-      - '5173:5173'
+      - '5500:5500'
     volumes:
       - ./frontend:/app
       - /app/node_modules

@@ -33,7 +33,7 @@ docker-compose up -d
 
 服务启动后：
 
-- 前端：http://localhost:5173
+- 前端：http://localhost:5500
 - 后端 API：http://localhost:8000
 - API 文档：http://localhost:8000/docs
 
@@ -54,21 +54,21 @@ npm run dev
 
 ## 默认账号
 
-| 账号 | 密码 | 角色 |
-|------|------|------|
+| 账号            | 密码     | 角色       |
+| --------------- | -------- | ---------- |
 | admin@admin.com | admin123 | 超级管理员 |
 
 ## 技术文档
 
-| 文档 | 说明 |
-|------|------|
-| [文档索引](./.trae/documents/README.md) | 全部技术文档导航 |
-| [架构设计与技术选型](./.trae/documents/Architecture-Overview.md) | 系统架构、技术栈、部署架构 |
-| [前端架构设计](./.trae/documents/Frontend-Architecture.md) | 目录结构、路由、数据流、组件通讯 |
-| [后端 API 接口文档](./.trae/documents/Backend-API.md) | 全部 RESTful API 接口定义 |
-| [数据模型与数据库设计](./.trae/documents/Database-Design.md) | ER 图、DDL、索引设计 |
+| 文档                                                                     | 说明                              |
+| ------------------------------------------------------------------------ | --------------------------------- |
+| [文档索引](./.trae/documents/README.md)                                  | 全部技术文档导航                  |
+| [架构设计与技术选型](./.trae/documents/Architecture-Overview.md)         | 系统架构、技术栈、部署架构        |
+| [前端架构设计](./.trae/documents/Frontend-Architecture.md)               | 目录结构、路由、数据流、组件通讯  |
+| [后端 API 接口文档](./.trae/documents/Backend-API.md)                    | 全部 RESTful API 接口定义         |
+| [数据模型与数据库设计](./.trae/documents/Database-Design.md)             | ER 图、DDL、索引设计              |
 | [账号管理与权限管理](./.trae/documents/Account-Permission-Management.md) | RBAC 权限体系、用户/角色/权限模型 |
-| [产品需求文档](./.trae/documents/PRD.md) | 产品功能需求与规划 |
+| [产品需求文档](./.trae/documents/PRD.md)                                 | 产品功能需求与规划                |
 
 ## License
 
