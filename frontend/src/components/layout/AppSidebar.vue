@@ -1,3 +1,99 @@
+<template>
+  <div class="flex flex-col h-full">
+    <div :class="['px-5 pt-7 pb-6', { 'px-3': collapsed }]">
+      <div class="flex items-center gap-3">
+        <div
+          class="w-10 h-10 rounded-[12px] flex items-center justify-center shrink-0"
+          style="
+            background: linear-gradient(135deg, #007aff 0%, #0055d4 100%);
+            box-shadow:
+              0 4px 14px rgba(0, 122, 255, 0.35),
+              0 1px 3px rgba(0, 122, 255, 0.2);
+          "
+        >
+          <span class="text-white font-bold text-[16px] tracking-tight">M</span>
+        </div>
+        <div v-if="!collapsed" class="flex-1 min-w-0">
+          <p class="text-[16px] font-bold text-[#1D1D1F] tracking-[-0.01em] leading-tight">
+            Matrix
+          </p>
+          <p class="text-[11px] text-[#86868B] leading-tight mt-0.5">Studio</p>
+        </div>
+      </div>
+    </div>
+
+    <a-menu
+      :selected-keys="[selectedKey]"
+      v-model:open-keys="openKeys"
+      :collapsed="collapsed"
+      class="!bg-transparent !px-2 flex-1 overflow-y-auto"
+      @menu-item-click="onMenuItemClick"
+    >
+      <template v-for="item in menuItems" :key="item.key">
+        <a-sub-menu v-if="isGroup(item)" :key="item.key">
+          <template #icon>
+            <component :is="item.icon" />
+          </template>
+          <template #title>{{ item.name }}</template>
+          <a-menu-item
+            v-for="child in item.children"
+            :key="child.key"
+            class="!rounded-[10px] !mb-1"
+          >
+            <template #icon>
+              <component :is="child.icon" />
+            </template>
+            {{ child.name }}
+          </a-menu-item>
+        </a-sub-menu>
+        <a-menu-item v-else :key="item.key" class="!rounded-[10px] !mb-1">
+          <template #icon>
+            <component :is="item.icon" />
+          </template>
+          {{ item.name }}
+        </a-menu-item>
+      </template>
+    </a-menu>
+
+    <div v-if="!collapsed" class="p-3 border-t border-black/[0.04]">
+      <div
+        class="flex items-center gap-3 px-3 py-2.5 rounded-[12px] hover:bg-black/[0.03] cursor-pointer transition-all duration-250 group"
+        @click="router.push('/profile')"
+      >
+        <a-avatar
+          :size="36"
+          class="shrink-0"
+          :image-url="userStore.userInfo?.avatar_url || undefined"
+          :style="
+            !userStore.userInfo?.avatar_url
+              ? { background: 'linear-gradient(135deg, #30d158 0%, #007aff 100%)' }
+              : {}
+          "
+        >
+          {{
+            (!userStore.userInfo?.avatar_url &&
+              userStore.userInfo?.nickname?.charAt(0).toUpperCase()) ||
+            'U'
+          }}
+        </a-avatar>
+        <div class="flex-1 min-w-0">
+          <p class="text-[14px] font-semibold text-[#1D1D1F] truncate leading-tight">
+            {{ userStore.userInfo?.nickname || '用户' }}
+          </p>
+          <p class="text-[11px] text-[#86868B] truncate leading-tight mt-0.5">
+            {{ userStore.userInfo?.username || '' }}
+          </p>
+        </div>
+        <div
+          class="p-1.5 rounded-[8px] hover:bg-[#FF3B30]/10 text-[#86868B] hover:text-[#FF3B30] transition-all duration-250 shrink-0 opacity-0 group-hover:opacity-100"
+        >
+          <IconExport :size="15" />
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
 <script setup lang="ts">
 import { computed, ref, watch, nextTick } from 'vue'
 import type { Component } from 'vue'
@@ -206,103 +302,7 @@ function onMenuItemClick(key: string) {
 }
 </script>
 
-<template>
-  <div class="flex flex-col h-full">
-    <div :class="['px-5 pt-7 pb-6', { 'px-3': collapsed }]">
-      <div class="flex items-center gap-3">
-        <div
-          class="w-10 h-10 rounded-[12px] flex items-center justify-center shrink-0"
-          style="
-            background: linear-gradient(135deg, #007aff 0%, #0055d4 100%);
-            box-shadow:
-              0 4px 14px rgba(0, 122, 255, 0.35),
-              0 1px 3px rgba(0, 122, 255, 0.2);
-          "
-        >
-          <span class="text-white font-bold text-[16px] tracking-tight">M</span>
-        </div>
-        <div v-if="!collapsed" class="flex-1 min-w-0">
-          <p class="text-[16px] font-bold text-[#1D1D1F] tracking-[-0.01em] leading-tight">
-            Matrix
-          </p>
-          <p class="text-[11px] text-[#86868B] leading-tight mt-0.5">Studio</p>
-        </div>
-      </div>
-    </div>
-
-    <a-menu
-      :selected-keys="[selectedKey]"
-      v-model:open-keys="openKeys"
-      :collapsed="collapsed"
-      class="!bg-transparent !px-2 flex-1 overflow-y-auto"
-      @menu-item-click="onMenuItemClick"
-    >
-      <template v-for="item in menuItems" :key="item.key">
-        <a-sub-menu v-if="isGroup(item)" :key="item.key">
-          <template #icon>
-            <component :is="item.icon" />
-          </template>
-          <template #title>{{ item.name }}</template>
-          <a-menu-item
-            v-for="child in item.children"
-            :key="child.key"
-            class="!rounded-[10px] !mb-1"
-          >
-            <template #icon>
-              <component :is="child.icon" />
-            </template>
-            {{ child.name }}
-          </a-menu-item>
-        </a-sub-menu>
-        <a-menu-item v-else :key="item.key" class="!rounded-[10px] !mb-1">
-          <template #icon>
-            <component :is="item.icon" />
-          </template>
-          {{ item.name }}
-        </a-menu-item>
-      </template>
-    </a-menu>
-
-    <div v-if="!collapsed" class="p-3 border-t border-black/[0.04]">
-      <div
-        class="flex items-center gap-3 px-3 py-2.5 rounded-[12px] hover:bg-black/[0.03] cursor-pointer transition-all duration-250 group"
-        @click="router.push('/profile')"
-      >
-        <a-avatar
-          :size="36"
-          class="shrink-0"
-          :image-url="userStore.userInfo?.avatar_url || undefined"
-          :style="
-            !userStore.userInfo?.avatar_url
-              ? { background: 'linear-gradient(135deg, #30d158 0%, #007aff 100%)' }
-              : {}
-          "
-        >
-          {{
-            (!userStore.userInfo?.avatar_url &&
-              userStore.userInfo?.nickname?.charAt(0).toUpperCase()) ||
-            'U'
-          }}
-        </a-avatar>
-        <div class="flex-1 min-w-0">
-          <p class="text-[14px] font-semibold text-[#1D1D1F] truncate leading-tight">
-            {{ userStore.userInfo?.nickname || '用户' }}
-          </p>
-          <p class="text-[11px] text-[#86868B] truncate leading-tight mt-0.5">
-            {{ userStore.userInfo?.username || '' }}
-          </p>
-        </div>
-        <div
-          class="p-1.5 rounded-[8px] hover:bg-[#FF3B30]/10 text-[#86868B] hover:text-[#FF3B30] transition-all duration-250 shrink-0 opacity-0 group-hover:opacity-100"
-        >
-          <IconExport :size="15" />
-        </div>
-      </div>
-    </div>
-  </div>
-</template>
-
-<style scoped>
+<style scoped lang="scss">
 @media (max-width: 248px) {
   :deep(.arco-menu-item) {
     height: 32px !important;

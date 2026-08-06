@@ -62,6 +62,11 @@ RBAC_RESOURCES: list[dict] = [
     {"key": "permissions:read", "name": "权限管理", "description": "管理角色权限分配"},
     {"key": "roles:read", "name": "角色管理", "description": "管理角色定义和角色继承关系"},
     {"key": "constraints:read", "name": "约束管理", "description": "管理职责分离约束规则"},
+    {
+        "key": "notification:enum:read",
+        "name": "通知消息字典",
+        "description": "管理通知消息中的字段和枚举显示名称",
+    },
     # ---------- 系统管理操作 ----------
     {
         "key": "permissions:manage:read",
@@ -82,6 +87,11 @@ RBAC_RESOURCES: list[dict] = [
         "key": "constraints:manage:write",
         "name": "维护约束",
         "description": "创建、编辑、删除职责分离约束规则",
+    },
+    {
+        "key": "notification:enum:write",
+        "name": "维护通知消息字典",
+        "description": "创建、编辑、删除通知消息字典条目",
     },
     # ---------- 内容操作 ----------
     {"key": "content:create:write", "name": "创建内容", "description": "创建新的内容条目"},
@@ -172,6 +182,8 @@ DEFAULT_ROLE_PERMISSIONS: dict[str, list[str]] = {
         "permissions:manage:write",
         "roles:manage:write",
         "constraints:manage:write",
+        "notification:enum:read",
+        "notification:enum:write",
         "users:read",
         "users:create:write",
         "users:update:read",

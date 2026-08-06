@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.deps import PermAPIRoute, RequiresPermissions, get_current_user
 from app.core.security import hash_password, validate_password_format, verify_password
 from app.database import get_db
+from app.models.notification import Notification, NotificationType
 from app.models.rbac_permission import RBACPermission
 from app.models.rbac_resource import RBACResource
 from app.models.rbac_role import RBACRole
@@ -20,6 +21,7 @@ from app.models.rbac_user_role_assignment import RBACUserRoleAssignment
 from app.models.user import User, UserRole
 from app.models.user_creation_request import UserCreationRequest
 from app.schemas.auth import UserInfo
+from app.services.notification_broadcaster import broadcaster
 from app.services.rbac_constraint_service import validate_user_role_assignments
 from app.services.rbac_service import (
     _closure_has_super_admin,
@@ -149,6 +151,168 @@ async def _assert_not_assigning_super_admin(
     raise HTTPException(
         status_code=status.HTTP_400_BAD_REQUEST,
         detail="超级管理员角色仅限系统唯一管理员，不可分配给其他用户",
+    )
+
+
+async def _notify_user_role_change(
+    user_id: str,
+    user_nickname: str,
+    role_ids: list[str],
+    prev_role_ids: set[str],
+    db: AsyncSession,
+    current_user: User,
+) -> None:
+    if not role_ids:
+        return
+    if user_id == current_user.id:
+        return
+
+    new_role_set = set(role_ids)
+    if new_role_set == prev_role_ids:
+        return
+
+    result = await db.execute(select(RBACRole.display_name).where(RBACRole.id.in_(role_ids)))
+    role_names = [row[0] for row in result.all()]
+    role_list = "、".join(role_names) if role_names else "无"
+    prev_result = await db.execute(
+        select(RBACRole.display_name).where(RBACRole.id.in_(prev_role_ids))
+    )
+    prev_role_names = [row[0] for row in prev_result.all()]
+    prev_role_list = "、".join(prev_role_names) if prev_role_names else "无"
+
+    if not prev_role_names and role_names:
+        content = f"你的角色已被 {current_user.nickname} 添加「{role_list}」"
+    elif prev_role_names and not role_names:
+        content = f"你的角色已被 {current_user.nickname} 移除「{prev_role_list}」"
+    else:
+        content = (
+            f"你的角色已被 {current_user.nickname} 从「{prev_role_list}」更新为「{role_list}」"
+        )
+
+    notification = Notification(
+        user_id=user_id,
+        type=NotificationType.role_permissions_updated,
+        title="角色分配已变更",
+        content=content,
+    )
+    db.add(notification)
+    await db.flush()
+
+    await broadcaster.broadcast(
+        user_id,
+        {
+            "id": notification.id,
+            "type": notification.type.value
+            if hasattr(notification.type, "value")
+            else notification.type,
+            "title": notification.title,
+            "content": notification.content,
+            "related_id": notification.related_id,
+            "is_read": notification.is_read,
+            "created_at": notification.created_at.isoformat() if notification.created_at else None,
+        },
+    )
+
+
+async def _notify_user_info_change(
+    user_id: str,
+    changed_fields: list[dict],
+    db: AsyncSession,
+    current_user: User,
+) -> None:
+    if not changed_fields or user_id == current_user.id:
+        return
+
+    from app.services.notification_dict_service import is_field_private, resolve_field
+
+    def _mask(val: str) -> str:
+        if not val:
+            return ""
+        length = len(val)
+        if length == 1:
+            return val
+        if length == 2:
+            return val[0] + "*"
+        if length == 3:
+            return val[0] + "*" + val[-1]
+        if length >= 9:
+            return val[:3] + "***" + val[-2:]
+        return val[:2] + "***" + val[-1:]
+
+    if len(changed_fields) == 1:
+        item = changed_fields[0]
+        field = item["field"]
+        field_label = await resolve_field("user_fields", field)
+        is_private = await is_field_private("user_fields", field)
+        old_val = (item.get("old") or "").strip()
+        new_val = (item.get("new") or "").strip()
+
+        if is_private:
+            old_display = _mask(old_val)
+            new_display = _mask(new_val)
+        else:
+            old_display = old_val
+            new_display = new_val
+
+        if old_val and new_val:
+            detail = f"从「{old_display}」更新为「{new_display}」"
+        elif new_val:
+            detail = f"添加「{new_display}」"
+        elif old_val:
+            detail = f"移除「{old_display}」"
+        else:
+            detail = ""
+        content = (
+            f"你的{field_label}已被 {current_user.nickname} 修改：{detail}"
+            if detail
+            else f"你的{field_label}已被 {current_user.nickname} 修改"
+        )
+    else:
+        parts = []
+        for item in changed_fields:
+            field = item["field"]
+            field_label = await resolve_field("user_fields", field)
+            is_private = await is_field_private("user_fields", field)
+            old_val = (item.get("old") or "").strip()
+            new_val = (item.get("new") or "").strip()
+
+            if is_private:
+                old_display = _mask(old_val)
+                new_display = _mask(new_val)
+            else:
+                old_display = old_val
+                new_display = new_val
+
+            if old_val and new_val:
+                parts.append(f"{field_label} 从「{old_display}」更新为「{new_display}」")
+            elif new_val:
+                parts.append(f"{field_label} 添加「{new_display}」")
+            elif old_val:
+                parts.append(f"{field_label} 移除「{old_display}」")
+        content = f"你的个人信息已被 {current_user.nickname} 修改：{'；'.join(parts)}"
+
+    notification = Notification(
+        user_id=user_id,
+        type=NotificationType.role_updated,
+        title="个人信息已变更",
+        content=content,
+    )
+    db.add(notification)
+    await db.flush()
+
+    await broadcaster.broadcast(
+        user_id,
+        {
+            "id": notification.id,
+            "type": notification.type.value
+            if hasattr(notification.type, "value")
+            else notification.type,
+            "title": notification.title,
+            "content": notification.content,
+            "related_id": notification.related_id,
+            "is_read": notification.is_read,
+            "created_at": notification.created_at.isoformat() if notification.created_at else None,
+        },
     )
 
 
@@ -385,6 +549,23 @@ async def update_user(
 
     update_data = body.model_dump(exclude_unset=True)
 
+    changed_info_fields: list[dict] = []
+    for field, value in list(update_data.items()):
+        if field == "role_ids":
+            continue
+        old_value = getattr(user, field, None)
+        if old_value != value:
+            setattr(user, field, value)
+            changed_info_fields.append(
+                {
+                    "field": field,
+                    "old": str(old_value) if old_value else "",
+                    "new": str(value) if value else "",
+                }
+            )
+        else:
+            update_data.pop(field, None)
+
     if "email" in update_data and update_data["email"] and update_data["email"] != user.email:
         existing = await db.execute(
             select(User).where(User.email == update_data["email"], User.id != user_id)
@@ -395,11 +576,6 @@ async def update_user(
                 detail="该邮箱已被其他用户使用",
             )
 
-    for field, value in update_data.items():
-        if field == "role_ids":
-            continue
-        setattr(user, field, value)
-
     if body.role_ids is not None:
         violations = await validate_user_role_assignments(user.id, set(body.role_ids), db)
         if violations:
@@ -409,6 +585,11 @@ async def update_user(
             )
 
         await _assert_not_assigning_super_admin(set(body.role_ids), user_id, db)
+
+        prev_role_result = await db.execute(
+            select(RBACUserRoleAssignment.role_id).where(RBACUserRoleAssignment.user_id == user_id)
+        )
+        prev_role_ids = {row[0] for row in prev_role_result.all()}
 
         await db.execute(
             delete(RBACUserRoleAssignment).where(RBACUserRoleAssignment.user_id == user_id)
@@ -422,6 +603,23 @@ async def update_user(
                     created_at=datetime.utcnow(),
                 )
             )
+
+        await _notify_user_role_change(
+            user_id=user.id,
+            user_nickname=user.nickname,
+            role_ids=body.role_ids,
+            prev_role_ids=prev_role_ids,
+            db=db,
+            current_user=current_user,
+        )
+
+    if changed_info_fields:
+        await _notify_user_info_change(
+            user_id=user.id,
+            changed_fields=changed_info_fields,
+            db=db,
+            current_user=current_user,
+        )
 
     user.updated_at = datetime.utcnow()
     await db.flush()
@@ -470,6 +668,11 @@ async def update_user_roles(
 
     await _assert_not_assigning_super_admin(set(body.role_ids), user_id, db)
 
+    prev_role_result = await db.execute(
+        select(RBACUserRoleAssignment.role_id).where(RBACUserRoleAssignment.user_id == user_id)
+    )
+    prev_role_ids = {row[0] for row in prev_role_result.all()}
+
     await db.execute(
         delete(RBACUserRoleAssignment).where(RBACUserRoleAssignment.user_id == user_id)
     )
@@ -482,6 +685,15 @@ async def update_user_roles(
                 created_at=datetime.utcnow(),
             )
         )
+
+    await _notify_user_role_change(
+        user_id=user.id,
+        user_nickname=user.nickname,
+        role_ids=body.role_ids,
+        prev_role_ids=prev_role_ids,
+        db=db,
+        current_user=current_user,
+    )
 
     await db.commit()
     await db.refresh(user)

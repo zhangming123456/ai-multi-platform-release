@@ -1,3 +1,15 @@
+<template>
+  <div class="flex flex-col h-full">
+    <PageHeader title="API文档" subtitle="在线接口调试与文档" />
+    <div class="flex-1 overflow-auto p-6">
+      <div
+        id="swagger-ui-container"
+        class="bg-white rounded-[16px] border border-black/[0.06] shadow-sm"
+      />
+    </div>
+  </div>
+</template>
+
 <script setup lang="ts">
 import { onMounted } from 'vue'
 import PageHeader from '@/components/layout/PageHeader.vue'
@@ -16,22 +28,9 @@ onMounted(async () => {
 })
 </script>
 
-<template>
-  <div class="flex flex-col h-full">
-    <PageHeader title="API文档" subtitle="在线接口调试与文档" />
-    <div class="flex-1 overflow-auto p-6">
-      <div
-        id="swagger-ui-container"
-        class="bg-white rounded-[16px] border border-black/[0.06] shadow-sm"
-      />
-    </div>
-  </div>
-</template>
-
-<style>
+<style lang="scss">
 #swagger-ui-container .swagger-ui {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial,
-    sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
 }
 #swagger-ui-container .swagger-ui .topbar {
   display: none;

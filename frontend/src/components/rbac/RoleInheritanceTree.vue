@@ -1,3 +1,246 @@
+<template>
+  <div class="inheritance-view">
+    <div class="inheritance-header">
+      <div class="flex items-center gap-2">
+        <span class="text-[15px] font-semibold text-[#1d1d1f]">继承关系预览</span>
+        <span class="text-[12px] text-[#86868B]">{{ roleDisplayName }}</span>
+      </div>
+      <a-button type="text" size="small" @click="emit('close')">
+        <template #icon><IconClose :size="16" /></template>
+      </a-button>
+    </div>
+
+    <a-spin :loading="loading" class="inheritance-body">
+      <div v-if="!data" class="empty-hint">
+        <span class="text-[13px] text-[#86868B]">暂无数据</span>
+      </div>
+
+      <div v-else class="tree-container">
+        <div class="tree-legend">
+          <div class="legend-item">
+            <div class="legend-dot inherited"></div>
+            <span>继承自祖先</span>
+          </div>
+          <div class="legend-item">
+            <div class="legend-dot current"></div>
+            <span>当前角色</span>
+          </div>
+          <div class="legend-item">
+            <div class="legend-dot descendant"></div>
+            <span>被后代继承</span>
+          </div>
+        </div>
+
+        <div class="tree-content">
+          <div
+            v-if="data.ancestor_chain.length > 0 || data.descendant_tree.length > 0"
+            class="tree-scroll"
+          >
+            <div class="tree-chain">
+              <div
+                v-for="(node, idx) in data.ancestor_chain"
+                :key="node.role.id"
+                class="tree-node-group"
+              >
+                <div class="tree-node inherited" @click="toggleNode(node.role.id)">
+                  <div class="node-header">
+                    <a-tag :color="nodeColor(node.role)" size="small" class="!m-0">
+                      {{ node.role.display_name }}
+                    </a-tag>
+                    <a-tag
+                      v-if="node.role.role_type === 'admin'"
+                      size="small"
+                      color="orangered"
+                      class="!m-0"
+                      >管理</a-tag
+                    >
+                    <a-tag v-else size="small" color="gray" class="!m-0">普通</a-tag>
+                  </div>
+                  <div class="node-meta">
+                    <span class="meta-text"
+                      >{{ Object.keys(node.direct_permissions).length }} 项权限</span
+                    >
+                    <span class="meta-icon">
+                      <IconDown v-if="isExpanded(node.role.id)" :size="10" />
+                      <IconRightSmall v-else :size="10" />
+                    </span>
+                  </div>
+                </div>
+
+                <div v-if="isExpanded(node.role.id)" class="node-detail">
+                  <div
+                    v-if="groupedPermissions(node.direct_permissions).length > 0"
+                    class="detail-perms"
+                  >
+                    <div
+                      v-for="group in groupedPermissions(node.direct_permissions)"
+                      :key="group.resource"
+                      class="detail-group"
+                    >
+                      <span class="detail-resource">{{
+                        group.keys[0]?.name || group.resource
+                      }}</span>
+                      <div class="detail-keys">
+                        <code v-for="item in group.keys" :key="item.key" class="detail-key">{{
+                          item.key
+                        }}</code>
+                      </div>
+                    </div>
+                  </div>
+                  <div v-else class="detail-empty">无直接权限</div>
+                </div>
+
+                <div class="tree-connector">
+                  <div class="connector-line"></div>
+                  <IconRight :size="12" class="connector-arrow" />
+                </div>
+              </div>
+
+              <div class="tree-node current" @click="toggleNode(data.role.id)">
+                <div class="node-header">
+                  <a-tag :color="nodeColor(data.role)" size="small" class="!m-0">
+                    {{ data.role.display_name }}
+                  </a-tag>
+                  <IconSafe v-if="data.role.is_super_admin" :size="14" class="text-[#ff9500]" />
+                  <a-tag
+                    v-if="data.role.role_type === 'admin'"
+                    size="small"
+                    color="orangered"
+                    class="!m-0"
+                    >管理</a-tag
+                  >
+                  <a-tag v-else size="small" color="gray" class="!m-0">普通</a-tag>
+                </div>
+                <div class="node-meta">
+                  <span class="meta-text"
+                    >{{ Object.keys(data.direct_permissions).length }} 项权限</span
+                  >
+                  <span class="meta-icon">
+                    <IconDown v-if="isExpanded(data.role.id)" :size="10" />
+                    <IconRightSmall v-else :size="10" />
+                  </span>
+                </div>
+
+                <div v-if="isExpanded(data.role.id)" class="node-detail">
+                  <div
+                    v-if="groupedPermissions(data.direct_permissions).length > 0"
+                    class="detail-perms"
+                  >
+                    <div
+                      v-for="group in groupedPermissions(data.direct_permissions)"
+                      :key="group.resource"
+                      class="detail-group"
+                    >
+                      <span class="detail-resource">{{
+                        group.keys[0]?.name || group.resource
+                      }}</span>
+                      <div class="detail-keys">
+                        <code v-for="item in group.keys" :key="item.key" class="detail-key">{{
+                          item.key
+                        }}</code>
+                      </div>
+                    </div>
+                  </div>
+                  <div v-else class="detail-empty">无直接权限</div>
+                </div>
+              </div>
+
+              <div
+                v-for="(node, idx) in data.descendant_tree"
+                :key="node.role.id"
+                class="tree-node-group"
+              >
+                <div class="tree-connector">
+                  <div class="connector-line"></div>
+                  <IconRight :size="12" class="connector-arrow" />
+                </div>
+
+                <div class="tree-node descendant" @click="toggleNode(node.role.id)">
+                  <div class="node-header">
+                    <a-tag :color="nodeColor(node.role)" size="small" class="!m-0">
+                      {{ node.role.display_name }}
+                    </a-tag>
+                    <a-tag
+                      v-if="node.role.role_type === 'admin'"
+                      size="small"
+                      color="orangered"
+                      class="!m-0"
+                      >管理</a-tag
+                    >
+                    <a-tag v-else size="small" color="gray" class="!m-0">普通</a-tag>
+                  </div>
+                  <div class="node-meta">
+                    <span class="meta-text"
+                      >{{ Object.keys(node.direct_permissions).length }} 项权限</span
+                    >
+                    <span class="meta-icon">
+                      <IconDown v-if="isExpanded(node.role.id)" :size="10" />
+                      <IconRightSmall v-else :size="10" />
+                    </span>
+                  </div>
+                </div>
+
+                <div v-if="isExpanded(node.role.id)" class="node-detail">
+                  <div
+                    v-if="groupedPermissions(node.direct_permissions).length > 0"
+                    class="detail-perms"
+                  >
+                    <div
+                      v-for="group in groupedPermissions(node.direct_permissions)"
+                      :key="group.resource"
+                      class="detail-group"
+                    >
+                      <span class="detail-resource">{{
+                        group.keys[0]?.name || group.resource
+                      }}</span>
+                      <div class="detail-keys">
+                        <code v-for="item in group.keys" :key="item.key" class="detail-key">{{
+                          item.key
+                        }}</code>
+                      </div>
+                    </div>
+                  </div>
+                  <div v-else class="detail-empty">无直接权限</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div v-else class="tree-empty">
+            <div class="tree-node current standalone">
+              <div class="node-header">
+                <a-tag :color="nodeColor(data.role)" size="small" class="!m-0">
+                  {{ data.role.display_name }}
+                </a-tag>
+                <a-tag
+                  v-if="data.role.role_type === 'admin'"
+                  size="small"
+                  color="orangered"
+                  class="!m-0"
+                  >管理</a-tag
+                >
+                <a-tag v-else size="small" color="gray" class="!m-0">普通</a-tag>
+              </div>
+              <div class="node-meta">
+                <span class="meta-text"
+                  >{{ Object.keys(data.direct_permissions).length }} 项权限</span
+                >
+              </div>
+            </div>
+            <div class="empty-label">
+              <IconLeft :size="14" class="text-[#aeaeaf]" />
+              <span class="text-[12px] text-[#aeaeaf]">无祖先继承</span>
+              <span class="mx-2 text-[#aeaeaf]">·</span>
+              <span class="text-[12px] text-[#aeaeaf]">无后代继承</span>
+              <IconRight :size="14" class="text-[#aeaeaf]" />
+            </div>
+          </div>
+        </div>
+      </div>
+    </a-spin>
+  </div>
+</template>
+
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue'
 import { Message } from '@arco-design/web-vue'
@@ -82,7 +325,9 @@ function isExpanded(nodeId: string): boolean {
   return expandedNodes.value.has(nodeId)
 }
 
-function groupedPermissions(perms: Record<string, string>): { resource: string; keys: { key: string; name: string }[] }[] {
+function groupedPermissions(
+  perms: Record<string, string>,
+): { resource: string; keys: { key: string; name: string }[] }[] {
   const groups: Record<string, { key: string; name: string }[]> = {}
   for (const [key, name] of Object.entries(perms)) {
     const resource = key.split(':')[0]
@@ -104,234 +349,18 @@ async function fetchData() {
   }
 }
 
-watch(() => props.roleId, () => {
-  if (props.roleId) {
-    fetchData()
-  }
-}, { immediate: true })
+watch(
+  () => props.roleId,
+  () => {
+    if (props.roleId) {
+      fetchData()
+    }
+  },
+  { immediate: true },
+)
 </script>
 
-<template>
-  <div class="inheritance-view">
-    <div class="inheritance-header">
-      <div class="flex items-center gap-2">
-        <span class="text-[15px] font-semibold text-[#1d1d1f]">继承关系预览</span>
-        <span class="text-[12px] text-[#86868B]">{{ roleDisplayName }}</span>
-      </div>
-      <a-button type="text" size="small" @click="emit('close')">
-        <template #icon><IconClose :size="16" /></template>
-      </a-button>
-    </div>
-
-    <a-spin :loading="loading" class="inheritance-body">
-      <div v-if="!data" class="empty-hint">
-        <span class="text-[13px] text-[#86868B]">暂无数据</span>
-      </div>
-
-      <div v-else class="tree-container">
-        <div class="tree-legend">
-          <div class="legend-item">
-            <div class="legend-dot inherited"></div>
-            <span>继承自祖先</span>
-          </div>
-          <div class="legend-item">
-            <div class="legend-dot current"></div>
-            <span>当前角色</span>
-          </div>
-          <div class="legend-item">
-            <div class="legend-dot descendant"></div>
-            <span>被后代继承</span>
-          </div>
-        </div>
-
-        <div class="tree-content">
-          <div
-            v-if="data.ancestor_chain.length > 0 || data.descendant_tree.length > 0"
-            class="tree-scroll"
-          >
-            <div class="tree-chain">
-              <div
-                v-for="(node, idx) in data.ancestor_chain"
-                :key="node.role.id"
-                class="tree-node-group"
-              >
-                <div
-                  class="tree-node inherited"
-                  @click="toggleNode(node.role.id)"
-                >
-                  <div class="node-header">
-                    <a-tag :color="nodeColor(node.role)" size="small" class="!m-0">
-                      {{ node.role.display_name }}
-                    </a-tag>
-                    <a-tag v-if="node.role.role_type === 'admin'" size="small" color="orangered" class="!m-0">管理</a-tag>
-                    <a-tag v-else size="small" color="gray" class="!m-0">普通</a-tag>
-                  </div>
-                  <div class="node-meta">
-                    <span class="meta-text">{{ Object.keys(node.direct_permissions).length }} 项权限</span>
-                    <span class="meta-icon">
-                      <IconDown v-if="isExpanded(node.role.id)" :size="10" />
-                      <IconRightSmall v-else :size="10" />
-                    </span>
-                  </div>
-                </div>
-
-                <div
-                  v-if="isExpanded(node.role.id)"
-                  class="node-detail"
-                >
-                  <div v-if="groupedPermissions(node.direct_permissions).length > 0" class="detail-perms">
-                    <div
-                      v-for="group in groupedPermissions(node.direct_permissions)"
-                      :key="group.resource"
-                      class="detail-group"
-                    >
-                      <span class="detail-resource">{{ group.keys[0]?.name || group.resource }}</span>
-                      <div class="detail-keys">
-                        <code
-                          v-for="item in group.keys"
-                          :key="item.key"
-                          class="detail-key"
-                        >{{ item.key }}</code>
-                      </div>
-                    </div>
-                  </div>
-                  <div v-else class="detail-empty">无直接权限</div>
-                </div>
-
-                <div class="tree-connector">
-                  <div class="connector-line"></div>
-                  <IconRight :size="12" class="connector-arrow" />
-                </div>
-              </div>
-
-              <div
-                class="tree-node current"
-                @click="toggleNode(data.role.id)"
-              >
-                <div class="node-header">
-                  <a-tag :color="nodeColor(data.role)" size="small" class="!m-0">
-                    {{ data.role.display_name }}
-                  </a-tag>
-                  <IconSafe v-if="data.role.is_super_admin" :size="14" class="text-[#ff9500]" />
-                  <a-tag v-if="data.role.role_type === 'admin'" size="small" color="orangered" class="!m-0">管理</a-tag>
-                  <a-tag v-else size="small" color="gray" class="!m-0">普通</a-tag>
-                </div>
-                <div class="node-meta">
-                  <span class="meta-text">{{ Object.keys(data.direct_permissions).length }} 项权限</span>
-                  <span class="meta-icon">
-                    <IconDown v-if="isExpanded(data.role.id)" :size="10" />
-                    <IconRightSmall v-else :size="10" />
-                  </span>
-                </div>
-
-                <div
-                  v-if="isExpanded(data.role.id)"
-                  class="node-detail"
-                >
-                  <div v-if="groupedPermissions(data.direct_permissions).length > 0" class="detail-perms">
-                    <div
-                      v-for="group in groupedPermissions(data.direct_permissions)"
-                      :key="group.resource"
-                      class="detail-group"
-                    >
-                      <span class="detail-resource">{{ group.keys[0]?.name || group.resource }}</span>
-                      <div class="detail-keys">
-                        <code
-                          v-for="item in group.keys"
-                          :key="item.key"
-                          class="detail-key"
-                        >{{ item.key }}</code>
-                      </div>
-                    </div>
-                  </div>
-                  <div v-else class="detail-empty">无直接权限</div>
-                </div>
-              </div>
-
-              <div
-                v-for="(node, idx) in data.descendant_tree"
-                :key="node.role.id"
-                class="tree-node-group"
-              >
-                <div class="tree-connector">
-                  <div class="connector-line"></div>
-                  <IconRight :size="12" class="connector-arrow" />
-                </div>
-
-                <div
-                  class="tree-node descendant"
-                  @click="toggleNode(node.role.id)"
-                >
-                  <div class="node-header">
-                    <a-tag :color="nodeColor(node.role)" size="small" class="!m-0">
-                      {{ node.role.display_name }}
-                    </a-tag>
-                    <a-tag v-if="node.role.role_type === 'admin'" size="small" color="orangered" class="!m-0">管理</a-tag>
-                    <a-tag v-else size="small" color="gray" class="!m-0">普通</a-tag>
-                  </div>
-                  <div class="node-meta">
-                    <span class="meta-text">{{ Object.keys(node.direct_permissions).length }} 项权限</span>
-                    <span class="meta-icon">
-                      <IconDown v-if="isExpanded(node.role.id)" :size="10" />
-                      <IconRightSmall v-else :size="10" />
-                    </span>
-                  </div>
-                </div>
-
-                <div
-                  v-if="isExpanded(node.role.id)"
-                  class="node-detail"
-                >
-                  <div v-if="groupedPermissions(node.direct_permissions).length > 0" class="detail-perms">
-                    <div
-                      v-for="group in groupedPermissions(node.direct_permissions)"
-                      :key="group.resource"
-                      class="detail-group"
-                    >
-                      <span class="detail-resource">{{ group.keys[0]?.name || group.resource }}</span>
-                      <div class="detail-keys">
-                        <code
-                          v-for="item in group.keys"
-                          :key="item.key"
-                          class="detail-key"
-                        >{{ item.key }}</code>
-                      </div>
-                    </div>
-                  </div>
-                  <div v-else class="detail-empty">无直接权限</div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div v-else class="tree-empty">
-            <div class="tree-node current standalone">
-              <div class="node-header">
-                <a-tag :color="nodeColor(data.role)" size="small" class="!m-0">
-                  {{ data.role.display_name }}
-                </a-tag>
-                <a-tag v-if="data.role.role_type === 'admin'" size="small" color="orangered" class="!m-0">管理</a-tag>
-                <a-tag v-else size="small" color="gray" class="!m-0">普通</a-tag>
-              </div>
-              <div class="node-meta">
-                <span class="meta-text">{{ Object.keys(data.direct_permissions).length }} 项权限</span>
-              </div>
-            </div>
-            <div class="empty-label">
-              <IconLeft :size="14" class="text-[#aeaeaf]" />
-              <span class="text-[12px] text-[#aeaeaf]">无祖先继承</span>
-              <span class="mx-2 text-[#aeaeaf]">·</span>
-              <span class="text-[12px] text-[#aeaeaf]">无后代继承</span>
-              <IconRight :size="14" class="text-[#aeaeaf]" />
-            </div>
-          </div>
-        </div>
-      </div>
-    </a-spin>
-  </div>
-</template>
-
-<style scoped>
+<style scoped lang="scss">
 .inheritance-view {
   display: flex;
   flex-direction: column;
@@ -393,7 +422,7 @@ watch(() => props.roleId, () => {
 }
 
 .legend-dot.current {
-  background: #007AFF;
+  background: #007aff;
   box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.2);
 }
 
@@ -446,7 +475,7 @@ watch(() => props.roleId, () => {
 }
 
 .tree-node.current {
-  border: 2px solid #007AFF;
+  border: 2px solid #007aff;
   background: rgba(0, 122, 255, 0.04);
 }
 
@@ -520,7 +549,7 @@ watch(() => props.roleId, () => {
   padding: 1px 5px;
   border-radius: 4px;
   background: rgba(0, 122, 255, 0.08);
-  color: #007AFF;
+  color: #007aff;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 

@@ -18,6 +18,7 @@ from app.models.rbac_role_hierarchy import RBACRoleHierarchy
 from app.models.rbac_role_permission import RBACRolePermission
 from app.models.rbac_user_role_assignment import RBACUserRoleAssignment
 from app.models.user import User
+from app.services.notification_broadcaster import broadcaster
 from app.services.rbac_constraint_service import validate_role_hierarchy
 from app.services.rbac_service import get_role_ancestors, get_role_descendants
 
@@ -903,11 +904,27 @@ async def _notify_role_users(
     for uid in user_ids:
         if uid == current_user.id:
             continue
-        db.add(
-            Notification(
-                user_id=uid,
-                type=notification_type,
-                title=title,
-                content=content,
-            )
+        notification = Notification(
+            user_id=uid,
+            type=notification_type,
+            title=title,
+            content=content,
+        )
+        db.add(notification)
+        await db.flush()
+        await broadcaster.broadcast(
+            uid,
+            {
+                "id": notification.id,
+                "type": notification.type.value
+                if hasattr(notification.type, "value")
+                else notification.type,
+                "title": notification.title,
+                "content": notification.content,
+                "related_id": None,
+                "is_read": notification.is_read,
+                "created_at": notification.created_at.isoformat()
+                if notification.created_at
+                else None,
+            },
         )

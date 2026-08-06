@@ -1,127 +1,3 @@
-<script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
-import { Message, Modal } from '@arco-design/web-vue'
-import {
-  IconSafe,
-  IconEdit,
-  IconDelete,
-  IconPlus,
-  IconEye,
-  IconEyeInvisible,
-} from '@arco-design/web-vue/es/icon'
-import { orderBy } from 'lodash-es'
-import PageHeader from '@/components/layout/PageHeader.vue'
-import api from '@/utils/api'
-
-interface ResourceRef {
-  id: string
-  key: string
-  name: string
-  description?: string | null
-}
-
-interface PermissionItem {
-  id: string
-  key: string
-  operation: string
-  is_active: boolean
-  resource: ResourceRef
-}
-
-type PermMode = 'read' | 'write'
-
-function _isPageKey(key: string): boolean {
-  const parts = key.split(':')
-  return parts.length === 2 && (parts[1] === 'read' || parts[1] === 'write')
-}
-
-function _parseKey(key: string): { keyName: string; operation: string; mode: PermMode } {
-  const parts = key.split(':')
-  if (_isPageKey(key)) {
-    return { keyName: parts[0], operation: parts[1], mode: parts[1] as PermMode }
-  }
-  return { keyName: parts[0], operation: parts[1] || '', mode: (parts[2] || 'write') as PermMode }
-}
-
-const router = useRouter()
-
-const loading = ref(false)
-const saving = ref(false)
-const permissions = ref<PermissionItem[]>([])
-
-const pagePermissions = computed(() =>
-  orderBy(
-    permissions.value.filter((p) => _isPageKey(p.key)),
-    ['key'],
-    ['asc'],
-  ),
-)
-
-const actionPermissions = computed(() =>
-  orderBy(
-    permissions.value.filter((p) => !_isPageKey(p.key)),
-    ['key'],
-    ['asc'],
-  ),
-)
-
-async function fetchPermissions() {
-  loading.value = true
-  try {
-    const res = await api.get<PermissionItem[]>('/v2/permissions')
-    permissions.value = Array.isArray(res.data) ? res.data : []
-  } catch (e: any) {
-    Message.error(e.response?.data?.detail || '加载权限列表失败')
-  } finally {
-    loading.value = false
-  }
-}
-
-function goEdit(item: PermissionItem) {
-  router.push({ name: 'RBACPermissionEnumEdit', params: { resourceId: item.resource.id } })
-}
-
-function goCreate() {
-  router.push({ name: 'RBACPermissionEnumCreate' })
-}
-
-async function toggleActive(permissionId: string, currentActive: boolean) {
-  saving.value = true
-  try {
-    await api.put(`/v2/permissions/${permissionId}`, { is_active: !currentActive })
-    Message.success(currentActive ? '权限已禁用' : '权限已启用')
-    await fetchPermissions()
-  } catch (e: any) {
-    Message.error(e.response?.data?.detail || '操作失败')
-  } finally {
-    saving.value = false
-  }
-}
-
-async function deletePermission(item: PermissionItem) {
-  Modal.warning({
-    title: '确认删除',
-    content: `确定要删除权限 "${item.resource.name}" (${item.key}) 吗？此操作不可恢复。`,
-    hideCancel: false,
-    onOk: async () => {
-      saving.value = true
-      try {
-        await api.delete(`/v2/resources/${item.resource.id}`)
-        Message.success('权限已删除')
-        await fetchPermissions()
-      } catch (e: any) {
-        Message.error(e.response?.data?.detail || '删除失败')
-      } finally {
-        saving.value = false
-      }
-    },
-  })
-}
-
-onMounted(fetchPermissions)
-</script>
-
 <template>
   <div class="page-main">
     <PageHeader
@@ -299,3 +175,127 @@ onMounted(fetchPermissions)
     </a-spin>
   </div>
 </template>
+
+<script setup lang="ts">
+import { ref, computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
+import { Message, Modal } from '@arco-design/web-vue'
+import {
+  IconSafe,
+  IconEdit,
+  IconDelete,
+  IconPlus,
+  IconEye,
+  IconEyeInvisible,
+} from '@arco-design/web-vue/es/icon'
+import { orderBy } from 'lodash-es'
+import PageHeader from '@/components/layout/PageHeader.vue'
+import api from '@/utils/api'
+
+interface ResourceRef {
+  id: string
+  key: string
+  name: string
+  description?: string | null
+}
+
+interface PermissionItem {
+  id: string
+  key: string
+  operation: string
+  is_active: boolean
+  resource: ResourceRef
+}
+
+type PermMode = 'read' | 'write'
+
+function _isPageKey(key: string): boolean {
+  const parts = key.split(':')
+  return parts.length === 2 && (parts[1] === 'read' || parts[1] === 'write')
+}
+
+function _parseKey(key: string): { keyName: string; operation: string; mode: PermMode } {
+  const parts = key.split(':')
+  if (_isPageKey(key)) {
+    return { keyName: parts[0], operation: parts[1], mode: parts[1] as PermMode }
+  }
+  return { keyName: parts[0], operation: parts[1] || '', mode: (parts[2] || 'write') as PermMode }
+}
+
+const router = useRouter()
+
+const loading = ref(false)
+const saving = ref(false)
+const permissions = ref<PermissionItem[]>([])
+
+const pagePermissions = computed(() =>
+  orderBy(
+    permissions.value.filter((p) => _isPageKey(p.key)),
+    ['key'],
+    ['asc'],
+  ),
+)
+
+const actionPermissions = computed(() =>
+  orderBy(
+    permissions.value.filter((p) => !_isPageKey(p.key)),
+    ['key'],
+    ['asc'],
+  ),
+)
+
+async function fetchPermissions() {
+  loading.value = true
+  try {
+    const res = await api.get<PermissionItem[]>('/v2/permissions')
+    permissions.value = Array.isArray(res.data) ? res.data : []
+  } catch (e: any) {
+    Message.error(e.response?.data?.detail || '加载权限列表失败')
+  } finally {
+    loading.value = false
+  }
+}
+
+function goEdit(item: PermissionItem) {
+  router.push({ name: 'RBACPermissionEnumEdit', params: { resourceId: item.resource.id } })
+}
+
+function goCreate() {
+  router.push({ name: 'RBACPermissionEnumCreate' })
+}
+
+async function toggleActive(permissionId: string, currentActive: boolean) {
+  saving.value = true
+  try {
+    await api.put(`/v2/permissions/${permissionId}`, { is_active: !currentActive })
+    Message.success(currentActive ? '权限已禁用' : '权限已启用')
+    await fetchPermissions()
+  } catch (e: any) {
+    Message.error(e.response?.data?.detail || '操作失败')
+  } finally {
+    saving.value = false
+  }
+}
+
+async function deletePermission(item: PermissionItem) {
+  Modal.warning({
+    title: '确认删除',
+    content: `确定要删除权限 "${item.resource.name}" (${item.key}) 吗？此操作不可恢复。`,
+    hideCancel: false,
+    onOk: async () => {
+      saving.value = true
+      try {
+        await api.delete(`/v2/resources/${item.resource.id}`)
+        Message.success('权限已删除')
+        await fetchPermissions()
+      } catch (e: any) {
+        Message.error(e.response?.data?.detail || '删除失败')
+      } finally {
+        saving.value = false
+      }
+    },
+  })
+}
+
+onMounted(fetchPermissions)
+</script>

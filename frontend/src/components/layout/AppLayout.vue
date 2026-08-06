@@ -1,45 +1,3 @@
-<script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
-import AppSidebar from './AppSidebar.vue'
-import AppHeader from './AppHeader.vue'
-import { useUserStore } from '@/stores/user'
-
-const isSidebarCollapsed = ref(false)
-const isMobileSidebarOpen = ref(false)
-const isMobile = ref(false)
-const userStore = useUserStore()
-
-const siderWidth = computed(() => (isSidebarCollapsed.value ? 64 : 248))
-
-function checkMobile() {
-  isMobile.value = window.innerWidth < 768
-}
-
-function toggleSidebar() {
-  if (isMobile.value) {
-    isMobileSidebarOpen.value = !isMobileSidebarOpen.value
-  } else {
-    isSidebarCollapsed.value = !isSidebarCollapsed.value
-  }
-}
-
-function closeMobileSidebar() {
-  isMobileSidebarOpen.value = false
-}
-
-onMounted(() => {
-  checkMobile()
-  window.addEventListener('resize', checkMobile)
-  if (!userStore.userInfo) {
-    userStore.fetchUserInfo().catch(() => {})
-  }
-})
-
-onUnmounted(() => {
-  window.removeEventListener('resize', checkMobile)
-})
-</script>
-
 <template>
   <div class="min-h-screen bg-[#F5F5F7] overflow-x-hidden">
     <div class="fixed inset-0 -z-10 pointer-events-none overflow-hidden">
@@ -100,7 +58,64 @@ onUnmounted(() => {
   </div>
 </template>
 
-<style scoped>
+<script setup lang="ts">
+import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { useRouter } from 'vue-router'
+import AppSidebar from './AppSidebar.vue'
+import AppHeader from './AppHeader.vue'
+import { useUserStore } from '@/stores/user'
+import { useNotificationRealtime } from '@/composables/useNotificationRealtime'
+
+const isSidebarCollapsed = ref(false)
+const isMobileSidebarOpen = ref(false)
+const isMobile = ref(false)
+const userStore = useUserStore()
+const router = useRouter()
+const realtime = useNotificationRealtime()
+
+const siderWidth = computed(() => (isSidebarCollapsed.value ? 64 : 248))
+
+function checkMobile() {
+  isMobile.value = window.innerWidth < 768
+}
+
+function toggleSidebar() {
+  if (isMobile.value) {
+    isMobileSidebarOpen.value = !isMobileSidebarOpen.value
+  } else {
+    isSidebarCollapsed.value = !isSidebarCollapsed.value
+  }
+}
+
+function closeMobileSidebar() {
+  isMobileSidebarOpen.value = false
+}
+
+function onNotificationClicked(e: Event) {
+  const detail = (e as CustomEvent).detail
+  if (detail) {
+    router.push('/notifications')
+  }
+}
+
+onMounted(() => {
+  checkMobile()
+  window.addEventListener('resize', checkMobile)
+  window.addEventListener('notification-clicked', onNotificationClicked)
+  if (!userStore.userInfo) {
+    userStore.fetchUserInfo().catch(() => {})
+  }
+  realtime.start()
+})
+
+onUnmounted(() => {
+  window.removeEventListener('resize', checkMobile)
+  window.removeEventListener('notification-clicked', onNotificationClicked)
+  realtime.destroy()
+})
+</script>
+
+<style scoped lang="scss">
 @media (max-width: 248px) {
   main {
     padding: 8px 10px !important;

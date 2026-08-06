@@ -1,3 +1,16 @@
+<template>
+  <a-space :size="4" align="center">
+    <a-badge
+      :status="status === 'publishing' ? 'processing' : undefined"
+      :color="statusColorMap[status]"
+      dot
+    />
+    <a-tag :color="statusColorMap[status]" size="small">
+      {{ statusLabelMap[status] || status }}
+    </a-tag>
+  </a-space>
+</template>
+
 <script setup lang="ts">
 defineProps<{
   status:
@@ -46,16 +59,3 @@ const statusLabelMap: Record<string, string> = {
   rejected: '已驳回',
 }
 </script>
-
-<template>
-  <a-space :size="4" align="center">
-    <a-badge
-      :status="status === 'publishing' ? 'processing' : undefined"
-      :color="statusColorMap[status]"
-      dot
-    />
-    <a-tag :color="statusColorMap[status]" size="small">
-      {{ statusLabelMap[status] || status }}
-    </a-tag>
-  </a-space>
-</template>

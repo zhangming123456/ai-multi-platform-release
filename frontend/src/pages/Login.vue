@@ -1,36 +1,3 @@
-<script setup lang="ts">
-import { ref } from 'vue'
-import { useRouter } from 'vue-router'
-import { Message } from '@arco-design/web-vue'
-import { IconLock, IconUser } from '@arco-design/web-vue/es/icon'
-import { useUserStore } from '@/stores/user'
-
-const router = useRouter()
-const userStore = useUserStore()
-
-const username = ref('admin')
-const password = ref('admin123')
-const loading = ref(false)
-
-async function handleLogin() {
-  if (!username.value || !password.value) {
-    Message.warning('请输入用户名和密码')
-    return
-  }
-  loading.value = true
-  try {
-    await userStore.login(username.value, password.value)
-    Message.success('登录成功')
-    router.push('/')
-  } catch (e: any) {
-    const msg = e.response?.data?.detail || '登录失败，请检查用户名和密码'
-    Message.error(msg)
-  } finally {
-    loading.value = false
-  }
-}
-</script>
-
 <template>
   <div class="login-page">
     <div class="bg-orbs">
@@ -86,14 +53,45 @@ async function handleLogin() {
         </a-button>
       </a-form>
 
-      <div class="login-tip">
-        默认账号：admin / admin123
-      </div>
+      <div class="login-tip">默认账号：admin / admin123</div>
     </div>
   </div>
 </template>
 
-<style scoped>
+<script setup lang="ts">
+import { ref } from 'vue'
+import { useRouter } from 'vue-router'
+import { Message } from '@arco-design/web-vue'
+import { IconLock, IconUser } from '@arco-design/web-vue/es/icon'
+import { useUserStore } from '@/stores/user'
+
+const router = useRouter()
+const userStore = useUserStore()
+
+const username = ref('admin')
+const password = ref('admin123')
+const loading = ref(false)
+
+async function handleLogin() {
+  if (!username.value || !password.value) {
+    Message.warning('请输入用户名和密码')
+    return
+  }
+  loading.value = true
+  try {
+    await userStore.login(username.value, password.value)
+    Message.success('登录成功')
+    router.push('/')
+  } catch (e: any) {
+    const msg = e.response?.data?.detail || '登录失败，请检查用户名和密码'
+    Message.error(msg)
+  } finally {
+    loading.value = false
+  }
+}
+</script>
+
+<style scoped lang="scss">
 .login-page {
   min-height: 100vh;
   display: flex;

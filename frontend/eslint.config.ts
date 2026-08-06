@@ -31,7 +31,7 @@ export default tseslint.config(
       'vue/multi-word-component-names': 'off',
       'vue/attributes-order': 'off',
       'vue/no-deprecated-filter': 'warn',
-      'vue/component-tags-order': [
+      'vue/block-order': [
         'error',
         {
           order: ['template', ['script', 'script setup'], 'style'],

@@ -1,116 +1,3 @@
-<script setup lang="ts">
-import { computed } from 'vue'
-
-interface ModuleItem {
-  id: string
-  title: string
-  subtitle: string
-  readKey?: string
-  writeKeys: string[]
-}
-
-interface Props {
-  title: string
-  count: number
-  items: ModuleItem[]
-  effectiveKeys: Set<string>
-  inheritedKeys: Set<string>
-  readonly?: boolean
-}
-
-const props = defineProps<Props>()
-const emit = defineEmits<{
-  (e: 'toggle-read', key: string): void
-  (e: 'toggle-write', keys: string[]): void
-  (e: 'select-all-read'): void
-  (e: 'deselect-all-read', keys: string[]): void
-  (e: 'select-all-write'): void
-  (e: 'deselect-all-write', keys: string[]): void
-}>()
-
-function hasRead(item: ModuleItem): boolean {
-  if (!item.readKey) return false
-  return props.effectiveKeys.has(item.readKey)
-}
-
-function hasWrite(item: ModuleItem): boolean {
-  if (item.writeKeys.length === 0) return false
-  return item.writeKeys.some((key) => props.effectiveKeys.has(key))
-}
-
-function isReadDisabled(item: ModuleItem): boolean {
-  return props.readonly || !item.readKey || props.inheritedKeys.has(item.readKey)
-}
-
-function isWriteDisabled(item: ModuleItem): boolean {
-  if (props.readonly) return true
-  if (item.writeKeys.length === 0) return true
-  return item.writeKeys.some((key) => props.inheritedKeys.has(key))
-}
-
-function onReadChange(item: ModuleItem, checked: boolean | string | number) {
-  if (!item.readKey || isReadDisabled(item)) return
-  if (checked !== hasRead(item)) {
-    emit('toggle-read', item.readKey)
-  }
-}
-
-function onWriteChange(item: ModuleItem, checked: boolean | string | number) {
-  if (item.writeKeys.length === 0 || isWriteDisabled(item)) return
-  if (checked !== hasWrite(item)) {
-    emit('toggle-write', item.writeKeys)
-  }
-}
-
-const readableItems = computed(() => props.items.filter((i) => i.readKey && !props.inheritedKeys.has(i.readKey)))
-const writableItems = computed(() => props.items.filter((i) => i.writeKeys.length > 0 && !i.writeKeys.some((k) => props.inheritedKeys.has(k))))
-
-const allReadChecked = computed(() => {
-  if (readableItems.value.length === 0) return false
-  return readableItems.value.every((i) => hasRead(i))
-})
-
-const allReadIndeterminate = computed(() => {
-  if (readableItems.value.length === 0) return false
-  const checkedCount = readableItems.value.filter((i) => hasRead(i)).length
-  return checkedCount > 0 && checkedCount < readableItems.value.length
-})
-
-const allWriteChecked = computed(() => {
-  if (writableItems.value.length === 0) return false
-  return writableItems.value.every((i) => hasWrite(i))
-})
-
-const allWriteIndeterminate = computed(() => {
-  if (writableItems.value.length === 0) return false
-  const checkedCount = writableItems.value.filter((i) => hasWrite(i)).length
-  return checkedCount > 0 && checkedCount < writableItems.value.length
-})
-
-function onSelectAllRead(checked: boolean | (string | number | boolean)[]) {
-  if (props.readonly) return
-  if (checked === true) {
-    emit('select-all-read')
-  } else if (checked === false) {
-    const keys = readableItems.value
-      .map((i) => i.readKey as string)
-      .filter(Boolean)
-    emit('deselect-all-read', keys)
-  }
-}
-
-function onSelectAllWrite(checked: boolean | (string | number | boolean)[]) {
-  if (props.readonly) return
-  if (checked === true) {
-    emit('select-all-write')
-  } else if (checked === false) {
-    const keys = writableItems.value
-      .flatMap((i) => i.writeKeys)
-    emit('deselect-all-write', keys)
-  }
-}
-</script>
-
 <template>
   <div class="bg-white/80 backdrop-blur-xl rounded-2xl border border-black/[0.05] p-5">
     <div class="flex items-center justify-between mb-4">
@@ -176,3 +63,119 @@ function onSelectAllWrite(checked: boolean | (string | number | boolean)[]) {
     </div>
   </div>
 </template>
+
+<script setup lang="ts">
+import { computed } from 'vue'
+
+interface ModuleItem {
+  id: string
+  title: string
+  subtitle: string
+  readKey?: string
+  writeKeys: string[]
+}
+
+interface Props {
+  title: string
+  count: number
+  items: ModuleItem[]
+  effectiveKeys: Set<string>
+  inheritedKeys: Set<string>
+  readonly?: boolean
+}
+
+const props = defineProps<Props>()
+const emit = defineEmits<{
+  (e: 'toggle-read', key: string): void
+  (e: 'toggle-write', keys: string[]): void
+  (e: 'select-all-read'): void
+  (e: 'deselect-all-read', keys: string[]): void
+  (e: 'select-all-write'): void
+  (e: 'deselect-all-write', keys: string[]): void
+}>()
+
+function hasRead(item: ModuleItem): boolean {
+  if (!item.readKey) return false
+  return props.effectiveKeys.has(item.readKey)
+}
+
+function hasWrite(item: ModuleItem): boolean {
+  if (item.writeKeys.length === 0) return false
+  return item.writeKeys.some((key) => props.effectiveKeys.has(key))
+}
+
+function isReadDisabled(item: ModuleItem): boolean {
+  return props.readonly || !item.readKey || props.inheritedKeys.has(item.readKey)
+}
+
+function isWriteDisabled(item: ModuleItem): boolean {
+  if (props.readonly) return true
+  if (item.writeKeys.length === 0) return true
+  return item.writeKeys.some((key) => props.inheritedKeys.has(key))
+}
+
+function onReadChange(item: ModuleItem, checked: boolean | string | number) {
+  if (!item.readKey || isReadDisabled(item)) return
+  if (checked !== hasRead(item)) {
+    emit('toggle-read', item.readKey)
+  }
+}
+
+function onWriteChange(item: ModuleItem, checked: boolean | string | number) {
+  if (item.writeKeys.length === 0 || isWriteDisabled(item)) return
+  if (checked !== hasWrite(item)) {
+    emit('toggle-write', item.writeKeys)
+  }
+}
+
+const readableItems = computed(() =>
+  props.items.filter((i) => i.readKey && !props.inheritedKeys.has(i.readKey)),
+)
+const writableItems = computed(() =>
+  props.items.filter(
+    (i) => i.writeKeys.length > 0 && !i.writeKeys.some((k) => props.inheritedKeys.has(k)),
+  ),
+)
+
+const allReadChecked = computed(() => {
+  if (readableItems.value.length === 0) return false
+  return readableItems.value.every((i) => hasRead(i))
+})
+
+const allReadIndeterminate = computed(() => {
+  if (readableItems.value.length === 0) return false
+  const checkedCount = readableItems.value.filter((i) => hasRead(i)).length
+  return checkedCount > 0 && checkedCount < readableItems.value.length
+})
+
+const allWriteChecked = computed(() => {
+  if (writableItems.value.length === 0) return false
+  return writableItems.value.every((i) => hasWrite(i))
+})
+
+const allWriteIndeterminate = computed(() => {
+  if (writableItems.value.length === 0) return false
+  const checkedCount = writableItems.value.filter((i) => hasWrite(i)).length
+  return checkedCount > 0 && checkedCount < writableItems.value.length
+})
+
+function onSelectAllRead(checked: boolean | (string | number | boolean)[]) {
+  if (props.readonly) return
+  if (checked === true) {
+    emit('select-all-read')
+  } else if (checked === false) {
+    const keys = readableItems.value.map((i) => i.readKey as string).filter(Boolean)
+    emit('deselect-all-read', keys)
+  }
+}
+
+function onSelectAllWrite(checked: boolean | (string | number | boolean)[]) {
+  if (props.readonly) return
+  if (checked === true) {
+    emit('select-all-write')
+  } else if (checked === false) {
+    const keys = writableItems.value.flatMap((i) => i.writeKeys)
+    emit('deselect-all-write', keys)
+  }
+}
+</script>

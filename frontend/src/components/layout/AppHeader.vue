@@ -1,52 +1,3 @@
-<script setup lang="ts">
-import { ref, computed } from 'vue'
-import { useRoute } from 'vue-router'
-import { IconMenuFold, IconMenuUnfold, IconMenu, IconLanguage } from '@arco-design/web-vue/es/icon'
-import { useRegionStore } from '@/stores/region'
-import NotificationBell from '@/components/NotificationBell.vue'
-
-const props = defineProps<{
-  collapsed: boolean
-}>()
-
-const emit = defineEmits<{
-  toggleSidebar: []
-}>()
-
-const route = useRoute()
-const { selectedTz, regions, switchRegion } = useRegionStore()
-
-// 面包屑标题直接同步路由 meta.title，避免静态映射与路由配置不一致
-const breadcrumbs = computed(() => {
-  const items: { label: string; path: string }[] = [{ label: 'Matrix', path: '/' }]
-  if (route.path !== '/') {
-    const title = (route.meta.title as string | undefined) || '页面'
-    items.push({ label: title, path: route.path })
-  }
-  return items
-})
-
-const mobileDrawerVisible = ref(false)
-
-function regionShortLabel(value: string): string {
-  const r = regions.find((r) => r.value === value)
-  if (!r) return 'CN'
-  const label = r.label
-  if (label.includes('大陆')) return 'CN'
-  if (label.includes('台湾')) return 'TW'
-  if (label.includes('香港')) return 'HK'
-  if (label.includes('澳门')) return 'MO'
-  if (label.includes('日本')) return 'JP'
-  if (label.includes('韩国')) return 'KR'
-  if (label.includes('新加坡')) return 'SG'
-  if (label.includes('美国东部')) return 'US-E'
-  if (label.includes('美国西部')) return 'US-W'
-  if (label.includes('英国')) return 'UK'
-  if (label.includes('法国')) return 'FR'
-  return label.slice(0, 2)
-}
-</script>
-
 <template>
   <header
     class="h-[56px] bg-white/60 backdrop-blur-xl border-b border-black/[0.04] flex items-center justify-between px-4 md:px-8 sticky top-0 z-20 whitespace-nowrap shrink-0"
@@ -172,7 +123,56 @@ function regionShortLabel(value: string): string {
   </header>
 </template>
 
-<style scoped>
+<script setup lang="ts">
+import { ref, computed } from 'vue'
+import { useRoute } from 'vue-router'
+import { IconMenuFold, IconMenuUnfold, IconMenu, IconLanguage } from '@arco-design/web-vue/es/icon'
+import { useRegionStore } from '@/stores/region'
+import NotificationBell from '@/components/NotificationBell.vue'
+
+const props = defineProps<{
+  collapsed: boolean
+}>()
+
+const emit = defineEmits<{
+  toggleSidebar: []
+}>()
+
+const route = useRoute()
+const { selectedTz, regions, switchRegion } = useRegionStore()
+
+// 面包屑标题直接同步路由 meta.title，避免静态映射与路由配置不一致
+const breadcrumbs = computed(() => {
+  const items: { label: string; path: string }[] = [{ label: 'Matrix', path: '/' }]
+  if (route.path !== '/') {
+    const title = (route.meta.title as string | undefined) || '页面'
+    items.push({ label: title, path: route.path })
+  }
+  return items
+})
+
+const mobileDrawerVisible = ref(false)
+
+function regionShortLabel(value: string): string {
+  const r = regions.find((r) => r.value === value)
+  if (!r) return 'CN'
+  const label = r.label
+  if (label.includes('大陆')) return 'CN'
+  if (label.includes('台湾')) return 'TW'
+  if (label.includes('香港')) return 'HK'
+  if (label.includes('澳门')) return 'MO'
+  if (label.includes('日本')) return 'JP'
+  if (label.includes('韩国')) return 'KR'
+  if (label.includes('新加坡')) return 'SG'
+  if (label.includes('美国东部')) return 'US-E'
+  if (label.includes('美国西部')) return 'US-W'
+  if (label.includes('英国')) return 'UK'
+  if (label.includes('法国')) return 'FR'
+  return label.slice(0, 2)
+}
+</script>
+
+<style scoped lang="scss">
 .region-list {
   display: flex;
   flex-direction: column;

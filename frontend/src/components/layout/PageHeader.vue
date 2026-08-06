@@ -1,10 +1,3 @@
-<script setup lang="ts">
-defineProps<{
-  title: string
-  subtitle?: string
-}>()
-</script>
-
 <template>
   <a-space
     direction="horizontal"
@@ -32,7 +25,14 @@ defineProps<{
   </a-space>
 </template>
 
-<style scoped>
+<script setup lang="ts">
+defineProps<{
+  title: string
+  subtitle?: string
+}>()
+</script>
+
+<style scoped lang="scss">
 @media (max-width: 768px) {
   .page-header {
     margin-bottom: 20px !important;

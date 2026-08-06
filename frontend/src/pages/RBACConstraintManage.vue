@@ -1,3 +1,216 @@
+<template>
+  <div class="page-main">
+    <PageHeader title="约束管理" subtitle="管理角色互斥、先决条件与成员基数约束">
+      <template #actions>
+        <a-button
+          v-perm="'constraints:manage:write'"
+          type="text"
+          size="mini"
+          class="!text-[#007AFF] !px-0 !h-auto"
+          @click="openAdd"
+        >
+          <template #icon><IconPlus :size="13" /></template>
+          创建约束
+        </a-button>
+      </template>
+    </PageHeader>
+
+    <a-spin :loading="loading" tip="加载中..." class="w-full">
+      <div
+        v-if="constraints.length > 0"
+        class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
+      >
+        <div
+          v-for="constraint in constraints"
+          :key="constraint.id"
+          class="constraint-card"
+          :class="{ 'opacity-70': !constraint.is_active }"
+        >
+          <div class="p-5">
+            <div class="flex items-start justify-between mb-3">
+              <div class="flex items-center gap-2.5 min-w-0">
+                <a-tag
+                  :color="typeColor(constraint.constraint_type)"
+                  size="small"
+                  class="!m-0 shrink-0"
+                >
+                  {{ typeLabel(constraint.constraint_type) }}
+                </a-tag>
+                <span class="text-[14px] font-semibold text-[#1D1D1F] truncate">
+                  {{ constraint.name }}
+                </span>
+              </div>
+              <div class="flex items-center gap-1 shrink-0">
+                <a-button
+                  v-perm="'constraints:manage:write'"
+                  type="text"
+                  size="mini"
+                  @click="openEdit(constraint)"
+                >
+                  <template #icon><IconEdit :size="14" /></template>
+                </a-button>
+                <a-button
+                  v-perm="'constraints:manage:write'"
+                  type="text"
+                  size="mini"
+                  status="danger"
+                  @click="removeConstraint(constraint)"
+                >
+                  <template #icon><IconDelete :size="14" /></template>
+                </a-button>
+              </div>
+            </div>
+
+            <p class="text-[13px] text-[#86868B] leading-relaxed mb-4 min-h-[20px]">
+              {{ constraint.description || '暂无描述' }}
+            </p>
+
+            <div class="space-y-3">
+              <div class="flex items-start gap-2">
+                <IconExclamationCircle :size="14" class="text-[#86868B] mt-0.5 shrink-0" />
+                <span class="text-[12px] text-[#86868B]">{{ formatConfig(constraint) }}</span>
+              </div>
+
+              <div class="flex items-start gap-2">
+                <IconLink :size="14" class="text-[#86868B] mt-0.5 shrink-0" />
+                <div class="flex flex-wrap gap-1.5">
+                  <a-tag
+                    v-for="assoc in subjectRoles(constraint)"
+                    :key="assoc.id"
+                    :color="roleColor(assoc.role_id)"
+                    size="small"
+                    class="!m-0"
+                  >
+                    {{ assoc.role_display_name || assoc.role_name }}
+                  </a-tag>
+                </div>
+              </div>
+
+              <div v-if="prerequisiteRoles(constraint).length > 0" class="flex items-start gap-2">
+                <IconUser :size="14" class="text-[#86868B] mt-0.5 shrink-0" />
+                <div class="flex flex-wrap gap-1.5">
+                  <a-tag
+                    v-for="assoc in prerequisiteRoles(constraint)"
+                    :key="assoc.id"
+                    :color="roleColor(assoc.role_id)"
+                    size="small"
+                    class="!m-0"
+                  >
+                    先决：{{ assoc.role_display_name || assoc.role_name }}
+                  </a-tag>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="constraint-footer">
+            <div class="flex items-center justify-between">
+              <span class="text-[12px] text-[#86868B]">
+                创建于 {{ formatDateTime(constraint.created_at) }}
+              </span>
+              <a-switch
+                v-perm="'constraints:manage:write'"
+                :model-value="constraint.is_active"
+                size="small"
+                @change="(v: boolean | string | number) => toggleActive(constraint, Boolean(v))"
+              />
+              <a-tag size="small" :color="constraint.is_active ? 'green' : 'gray'" class="!m-0">
+                {{ constraint.is_active ? '启用' : '停用' }}
+              </a-tag>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <a-empty v-else description="暂无约束配置" class="mt-20" />
+    </a-spin>
+
+    <a-modal
+      v-model:visible="modalVisible"
+      :title="isEdit ? '编辑约束' : '创建约束'"
+      :width="520"
+      :ok-loading="modalSaving"
+      :ok-text="isEdit ? '保存' : '创建'"
+      @ok="saveConstraint"
+    >
+      <a-form :model="form" layout="vertical">
+        <a-form-item label="约束名称" required>
+          <a-input v-model="form.name" placeholder="如：运营与审核互斥" />
+        </a-form-item>
+        <a-form-item label="描述（选填）">
+          <a-textarea
+            v-model="form.description"
+            placeholder="约束说明"
+            :auto-size="{ minRows: 2, maxRows: 4 }"
+          />
+        </a-form-item>
+        <a-form-item label="约束类型" required>
+          <a-select
+            v-model="form.constraint_type"
+            :disabled="isEdit"
+            :options="[
+              { value: 'mutual_exclusive', label: '互斥角色' },
+              { value: 'prerequisite', label: '先决角色' },
+              { value: 'cardinality', label: '基数约束' },
+            ]"
+          />
+        </a-form-item>
+
+        <a-form-item v-if="form.constraint_type === 'mutual_exclusive'" label="作用域">
+          <a-radio-group v-model="form.scope">
+            <a-radio value="static">静态（同一用户不能同时拥有）</a-radio>
+            <a-radio value="dynamic">动态（同一会话不能同时激活）</a-radio>
+          </a-radio-group>
+        </a-form-item>
+
+        <a-form-item v-if="form.constraint_type === 'prerequisite'" label="先决要求">
+          <a-radio-group v-model="form.require_all">
+            <a-radio :value="true">必须拥有全部先决角色</a-radio>
+            <a-radio :value="false">至少拥有一个先决角色</a-radio>
+          </a-radio-group>
+        </a-form-item>
+
+        <a-form-item v-if="form.constraint_type === 'cardinality'" label="最大用户数">
+          <a-input-number v-model="form.max_users" :min="1" placeholder="最多可分配的用户数" />
+        </a-form-item>
+
+        <a-form-item label="作用角色" required>
+          <a-select
+            :model-value="form.subject_role_ids"
+            placeholder="选择受此约束影响的角色"
+            multiple
+            :options="roleOptions"
+            @change="onSubjectRoleIdsChange"
+          />
+          <template #extra>
+            <span class="text-[11px] text-[#86868b]">
+              {{
+                form.constraint_type === 'mutual_exclusive'
+                  ? '至少选择两个角色'
+                  : '至少选择一个角色'
+              }}
+            </span>
+          </template>
+        </a-form-item>
+
+        <a-form-item v-if="form.constraint_type === 'prerequisite'" label="先决角色" required>
+          <a-select
+            :model-value="form.prerequisite_role_ids"
+            placeholder="选择必须先拥有的角色"
+            multiple
+            :options="roleOptions"
+            @change="onPrerequisiteRoleIdsChange"
+          />
+        </a-form-item>
+
+        <a-form-item label="启用状态">
+          <a-switch v-model="form.is_active" />
+        </a-form-item>
+      </a-form>
+    </a-modal>
+  </div>
+</template>
+
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import {
@@ -302,220 +515,7 @@ function onPrerequisiteRoleIdsChange(value: unknown) {
 }
 </script>
 
-<template>
-  <div class="page-main">
-    <PageHeader title="约束管理" subtitle="管理角色互斥、先决条件与成员基数约束">
-      <template #actions>
-        <a-button
-          v-perm="'constraints:manage:write'"
-          type="text"
-          size="mini"
-          class="!text-[#007AFF] !px-0 !h-auto"
-          @click="openAdd"
-        >
-          <template #icon><IconPlus :size="13" /></template>
-          创建约束
-        </a-button>
-      </template>
-    </PageHeader>
-
-    <a-spin :loading="loading" tip="加载中..." class="w-full">
-      <div
-        v-if="constraints.length > 0"
-        class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
-      >
-        <div
-          v-for="constraint in constraints"
-          :key="constraint.id"
-          class="constraint-card"
-          :class="{ 'opacity-70': !constraint.is_active }"
-        >
-          <div class="p-5">
-            <div class="flex items-start justify-between mb-3">
-              <div class="flex items-center gap-2.5 min-w-0">
-                <a-tag
-                  :color="typeColor(constraint.constraint_type)"
-                  size="small"
-                  class="!m-0 shrink-0"
-                >
-                  {{ typeLabel(constraint.constraint_type) }}
-                </a-tag>
-                <span class="text-[14px] font-semibold text-[#1D1D1F] truncate">
-                  {{ constraint.name }}
-                </span>
-              </div>
-              <div class="flex items-center gap-1 shrink-0">
-                <a-button
-                  v-perm="'constraints:manage:write'"
-                  type="text"
-                  size="mini"
-                  @click="openEdit(constraint)"
-                >
-                  <template #icon><IconEdit :size="14" /></template>
-                </a-button>
-                <a-button
-                  v-perm="'constraints:manage:write'"
-                  type="text"
-                  size="mini"
-                  status="danger"
-                  @click="removeConstraint(constraint)"
-                >
-                  <template #icon><IconDelete :size="14" /></template>
-                </a-button>
-              </div>
-            </div>
-
-            <p class="text-[13px] text-[#86868B] leading-relaxed mb-4 min-h-[20px]">
-              {{ constraint.description || '暂无描述' }}
-            </p>
-
-            <div class="space-y-3">
-              <div class="flex items-start gap-2">
-                <IconExclamationCircle :size="14" class="text-[#86868B] mt-0.5 shrink-0" />
-                <span class="text-[12px] text-[#86868B]">{{ formatConfig(constraint) }}</span>
-              </div>
-
-              <div class="flex items-start gap-2">
-                <IconLink :size="14" class="text-[#86868B] mt-0.5 shrink-0" />
-                <div class="flex flex-wrap gap-1.5">
-                  <a-tag
-                    v-for="assoc in subjectRoles(constraint)"
-                    :key="assoc.id"
-                    :color="roleColor(assoc.role_id)"
-                    size="small"
-                    class="!m-0"
-                  >
-                    {{ assoc.role_display_name || assoc.role_name }}
-                  </a-tag>
-                </div>
-              </div>
-
-              <div v-if="prerequisiteRoles(constraint).length > 0" class="flex items-start gap-2">
-                <IconUser :size="14" class="text-[#86868B] mt-0.5 shrink-0" />
-                <div class="flex flex-wrap gap-1.5">
-                  <a-tag
-                    v-for="assoc in prerequisiteRoles(constraint)"
-                    :key="assoc.id"
-                    :color="roleColor(assoc.role_id)"
-                    size="small"
-                    class="!m-0"
-                  >
-                    先决：{{ assoc.role_display_name || assoc.role_name }}
-                  </a-tag>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div class="constraint-footer">
-            <div class="flex items-center justify-between">
-              <span class="text-[12px] text-[#86868B]">
-                创建于 {{ formatDateTime(constraint.created_at) }}
-              </span>
-              <a-switch
-                v-perm="'constraints:manage:write'"
-                :model-value="constraint.is_active"
-                size="small"
-                @change="(v: boolean | string | number) => toggleActive(constraint, Boolean(v))"
-              />
-              <a-tag size="small" :color="constraint.is_active ? 'green' : 'gray'" class="!m-0">
-                {{ constraint.is_active ? '启用' : '停用' }}
-              </a-tag>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <a-empty v-else description="暂无约束配置" class="mt-20" />
-    </a-spin>
-
-    <a-modal
-      v-model:visible="modalVisible"
-      :title="isEdit ? '编辑约束' : '创建约束'"
-      :width="520"
-      :ok-loading="modalSaving"
-      :ok-text="isEdit ? '保存' : '创建'"
-      @ok="saveConstraint"
-    >
-      <a-form :model="form" layout="vertical">
-        <a-form-item label="约束名称" required>
-          <a-input v-model="form.name" placeholder="如：运营与审核互斥" />
-        </a-form-item>
-        <a-form-item label="描述（选填）">
-          <a-textarea
-            v-model="form.description"
-            placeholder="约束说明"
-            :auto-size="{ minRows: 2, maxRows: 4 }"
-          />
-        </a-form-item>
-        <a-form-item label="约束类型" required>
-          <a-select
-            v-model="form.constraint_type"
-            :disabled="isEdit"
-            :options="[
-              { value: 'mutual_exclusive', label: '互斥角色' },
-              { value: 'prerequisite', label: '先决角色' },
-              { value: 'cardinality', label: '基数约束' },
-            ]"
-          />
-        </a-form-item>
-
-        <a-form-item v-if="form.constraint_type === 'mutual_exclusive'" label="作用域">
-          <a-radio-group v-model="form.scope">
-            <a-radio value="static">静态（同一用户不能同时拥有）</a-radio>
-            <a-radio value="dynamic">动态（同一会话不能同时激活）</a-radio>
-          </a-radio-group>
-        </a-form-item>
-
-        <a-form-item v-if="form.constraint_type === 'prerequisite'" label="先决要求">
-          <a-radio-group v-model="form.require_all">
-            <a-radio :value="true">必须拥有全部先决角色</a-radio>
-            <a-radio :value="false">至少拥有一个先决角色</a-radio>
-          </a-radio-group>
-        </a-form-item>
-
-        <a-form-item v-if="form.constraint_type === 'cardinality'" label="最大用户数">
-          <a-input-number v-model="form.max_users" :min="1" placeholder="最多可分配的用户数" />
-        </a-form-item>
-
-        <a-form-item label="作用角色" required>
-          <a-select
-            :model-value="form.subject_role_ids"
-            placeholder="选择受此约束影响的角色"
-            multiple
-            :options="roleOptions"
-            @change="onSubjectRoleIdsChange"
-          />
-          <template #extra>
-            <span class="text-[11px] text-[#86868b]">
-              {{
-                form.constraint_type === 'mutual_exclusive'
-                  ? '至少选择两个角色'
-                  : '至少选择一个角色'
-              }}
-            </span>
-          </template>
-        </a-form-item>
-
-        <a-form-item v-if="form.constraint_type === 'prerequisite'" label="先决角色" required>
-          <a-select
-            :model-value="form.prerequisite_role_ids"
-            placeholder="选择必须先拥有的角色"
-            multiple
-            :options="roleOptions"
-            @change="onPrerequisiteRoleIdsChange"
-          />
-        </a-form-item>
-
-        <a-form-item label="启用状态">
-          <a-switch v-model="form.is_active" />
-        </a-form-item>
-      </a-form>
-    </a-modal>
-  </div>
-</template>
-
-<style scoped>
+<style scoped lang="scss">
 .constraint-card {
   background: rgba(255, 255, 255, 0.8);
   backdrop-filter: blur(20px);

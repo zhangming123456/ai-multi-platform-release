@@ -1,5 +1,88 @@
+<template>
+  <div class="page-main">
+    <PageHeader
+      :title="`编辑用户 - ${user?.nickname || '...'}`"
+      :subtitle="canWrite ? '修改用户基本信息和角色分配' : '查看用户基本信息（只读模式）'"
+    >
+      <template #actions>
+        <a-button type="text" size="mini" class="!text-[#007AFF] !px-0 !h-auto" @click="goBack">
+          <template #icon><IconLeft :size="13" /></template>
+          返回列表
+        </a-button>
+      </template>
+    </PageHeader>
+
+    <a-spin :loading="loading" class="w-full">
+      <div class="max-w-[560px]">
+        <a-card :bordered="false" class="!rounded-xl">
+          <a-form :model="form" layout="vertical" class="!max-w-[480px]">
+            <a-form-item label="用户名">
+              <a-input :model-value="user?.username" disabled />
+              <template #extra>
+                <span class="text-[11px] text-[#86868b]">用户名不可修改</span>
+              </template>
+            </a-form-item>
+            <a-form-item label="昵称" required>
+              <a-input v-model="form.nickname" placeholder="用户昵称" :disabled="formDisabled" />
+            </a-form-item>
+            <a-form-item label="邮箱（选填）">
+              <a-input
+                v-model="form.email"
+                type="text"
+                placeholder="user@example.com"
+                :disabled="formDisabled"
+              />
+            </a-form-item>
+            <a-form-item label="头像链接（选填）">
+              <a-input
+                v-model="form.avatar_url"
+                placeholder="https://example.com/avatar.png"
+                :disabled="formDisabled"
+              />
+            </a-form-item>
+            <a-form-item label="RBAC3 角色分配">
+              <a-select
+                :model-value="form.role_ids"
+                placeholder="选择角色"
+                multiple
+                value-key="id"
+                :disabled="formDisabled || user?.id === '1' || !canManageUsers"
+                :options="roleOptions"
+                @change="onRoleIdsChange"
+              >
+                <a-option
+                  v-for="item of roleOptions"
+                  :key="item.id"
+                  :value="item.id"
+                  :label="item.display_name"
+                />
+              </a-select>
+              <template v-if="formHint" #extra>
+                <span
+                  class="text-[11px]"
+                  :class="user?.id === '1' ? 'text-[#ff3b30]' : 'text-[#86868b]'"
+                  >{{ formHint }}</span
+                >
+              </template>
+            </a-form-item>
+            <a-form-item v-if="canWrite">
+              <a-space>
+                <a-button type="primary" :loading="saving" @click="saveEdit">
+                  <template #icon><IconCheck /></template>
+                  保存
+                </a-button>
+                <a-button @click="goBack">取消</a-button>
+              </a-space>
+            </a-form-item>
+          </a-form>
+        </a-card>
+      </div>
+    </a-spin>
+  </div>
+</template>
+
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, unref } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { IconLeft, IconCheck } from '@arco-design/web-vue/es/icon'
 import { Message } from '@arco-design/web-vue'
@@ -31,7 +114,6 @@ interface UserDetail {
 
 const router = useRouter()
 const route = useRoute()
-const userStore = useUserStore()
 const permStore = usePermissionStore()
 
 const userId = route.params.id as string
@@ -42,7 +124,7 @@ const user = ref<UserDetail | null>(null)
 const roles = ref<Role[]>([])
 const canManageUsers = computed(() => permStore.hasPermission('users:update:write&isAdmin()'))
 const canWrite = computed(() =>
-  permStore.hasPermission('users:update:write||isSelf(user_id)', { user_id: userId }),
+  permStore.hasPermission('users:update:write || isSelf(user_id)', { user_id: userId }),
 )
 
 const form = ref({
@@ -66,15 +148,16 @@ const sortedRoles = computed(() => {
   })
 })
 
-const roleOptions = computed(() =>
-  sortedRoles.value
-    .filter((r) => !r.is_super_admin)
-    .map((r) => ({ value: r.id, label: r.display_name })),
-)
+const roleOptions = computed(() => {
+  if (user.value?.id === '1') {
+    return unref(sortedRoles)
+  }
+  return sortedRoles.value.filter((r) => !r.is_super_admin)
+})
 
 const formDisabled = computed(() => {
   if (!user.value) return true
-  if (user.value.id === '1') return true
+  if (user.value.id === '1') return false
   return !canWrite.value
 })
 
@@ -140,78 +223,3 @@ function goBack() {
   router.push({ name: 'RBACUserManage' })
 }
 </script>
-
-<template>
-  <div class="page-main">
-    <PageHeader
-      :title="`编辑用户 - ${user?.nickname || '...'}`"
-      :subtitle="canWrite ? '修改用户基本信息和角色分配' : '查看用户基本信息（只读模式）'"
-    >
-      <template #actions>
-        <a-button type="text" size="mini" class="!text-[#007AFF] !px-0 !h-auto" @click="goBack">
-          <template #icon><IconLeft :size="13" /></template>
-          返回列表
-        </a-button>
-      </template>
-    </PageHeader>
-
-    <a-spin :loading="loading" class="w-full">
-      <div class="max-w-[560px]">
-        <a-card :bordered="false" class="!rounded-xl">
-          <a-form :model="form" layout="vertical" class="!max-w-[480px]">
-            <a-form-item label="用户名">
-              <a-input :model-value="user?.username" disabled />
-              <template #extra>
-                <span class="text-[11px] text-[#86868b]">用户名不可修改</span>
-              </template>
-            </a-form-item>
-            <a-form-item label="昵称" required>
-              <a-input v-model="form.nickname" placeholder="用户昵称" :disabled="formDisabled" />
-            </a-form-item>
-            <a-form-item label="邮箱（选填）">
-              <a-input
-                v-model="form.email"
-                type="text"
-                placeholder="user@example.com"
-                :disabled="formDisabled"
-              />
-            </a-form-item>
-            <a-form-item label="头像链接（选填）">
-              <a-input
-                v-model="form.avatar_url"
-                placeholder="https://example.com/avatar.png"
-                :disabled="formDisabled"
-              />
-            </a-form-item>
-            <a-form-item label="RBAC3 角色分配">
-              <a-select
-                :model-value="form.role_ids"
-                placeholder="选择角色"
-                multiple
-                :disabled="formDisabled || (user?.id !== '1' && !canManageUsers)"
-                :options="roleOptions"
-                @change="onRoleIdsChange"
-              />
-              <template v-if="formHint" #extra>
-                <span
-                  class="text-[11px]"
-                  :class="user?.id === '1' ? 'text-[#ff3b30]' : 'text-[#86868b]'"
-                  >{{ formHint }}</span
-                >
-              </template>
-            </a-form-item>
-            <a-form-item v-if="canWrite">
-              <a-space>
-                <a-button type="primary" :loading="saving" @click="saveEdit">
-                  <template #icon><IconCheck /></template>
-                  保存
-                </a-button>
-                <a-button @click="goBack">取消</a-button>
-              </a-space>
-            </a-form-item>
-          </a-form>
-        </a-card>
-      </div>
-    </a-spin>
-  </div>
-</template>

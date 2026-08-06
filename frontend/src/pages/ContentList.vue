@@ -1,162 +1,3 @@
-<script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
-import {
-  IconPlus,
-  IconEdit,
-  IconDelete,
-  IconStar,
-  IconCopy,
-  IconEye,
-  IconSend,
-} from '@arco-design/web-vue/es/icon'
-import { Message, Modal } from '@arco-design/web-vue'
-import PageHeader from '@/components/layout/PageHeader.vue'
-import StatusBadge from '@/components/shared/StatusBadge.vue'
-import PlatformIcon from '@/components/shared/PlatformIcon.vue'
-import api from '@/utils/api'
-import { formatDateTime as formatDate } from '@/utils/time'
-
-const router = useRouter()
-
-const searchQuery = ref('')
-const platformFilter = ref('all')
-const statusFilter = ref('all')
-const loading = ref(false)
-
-interface Content {
-  id: string
-  user_id: string
-  title: string
-  body: string
-  platform: 'wechat_mp' | 'xiaohongshu' | 'douyin' | 'wechat_video'
-  status: 'draft' | 'ready' | 'published' | 'pending_review' | 'rejected'
-  media_urls: string[]
-  ai_generated: boolean
-  original_content_id: string | null
-  created_at: string
-  updated_at: string
-}
-
-const contents = ref<Content[]>([])
-
-const filteredContents = computed(() => {
-  return contents.value.filter((c) => {
-    const matchSearch = !searchQuery.value || c.title.includes(searchQuery.value)
-    const matchPlatform = platformFilter.value === 'all' || c.platform === platformFilter.value
-    const matchStatus = statusFilter.value === 'all' || c.status === statusFilter.value
-    return matchSearch && matchPlatform && matchStatus
-  })
-})
-
-const columns = [
-  { title: '标题', dataIndex: 'title', slotName: 'title' },
-  { title: '平台', dataIndex: 'platform', slotName: 'platform' },
-  { title: '状态', dataIndex: 'status', slotName: 'status' },
-  { title: '创建时间', dataIndex: 'created_at', slotName: 'createdAt' },
-  { title: '操作', slotName: 'actions', align: 'right' as const },
-]
-
-onMounted(async () => {
-  loading.value = true
-  try {
-    const res = await api.get('/contents/')
-    contents.value = res.data
-  } catch (e) {
-    Message.error('加载内容失败')
-  } finally {
-    loading.value = false
-  }
-})
-
-const editVisible = ref(false)
-const editSaving = ref(false)
-const editingContent = ref<Content | null>(null)
-const editForm = ref({
-  title: '',
-  body: '',
-  platform: 'xiaohongshu' as Content['platform'],
-  status: 'draft' as Content['status'],
-})
-
-function openEdit(content: Content) {
-  editingContent.value = content
-  editForm.value = {
-    title: content.title,
-    body: content.body,
-    platform: content.platform,
-    status: content.status,
-  }
-  editVisible.value = true
-}
-
-async function saveEdit() {
-  if (!editingContent.value) return
-  editSaving.value = true
-  try {
-    const res = await api.put(`/contents/${editingContent.value.id}`, editForm.value)
-    const idx = contents.value.findIndex((c) => c.id === editingContent.value!.id)
-    if (idx !== -1) {
-      contents.value[idx] = { ...contents.value[idx], ...res.data }
-    }
-    Message.success('内容已更新')
-    editVisible.value = false
-  } catch (e) {
-    Message.error('更新失败')
-  } finally {
-    editSaving.value = false
-  }
-}
-
-const detailVisible = ref(false)
-const detailContent = ref<Content | null>(null)
-
-function openDetail(content: Content) {
-  detailContent.value = content
-  detailVisible.value = true
-}
-
-async function copyContent(content: Content) {
-  const text = `${content.title}\n\n${content.body}`
-  try {
-    await navigator.clipboard.writeText(text)
-    Message.success('内容已复制到剪贴板')
-  } catch {
-    Message.error('复制失败，请手动选择文本复制')
-  }
-}
-
-async function removeContent(id: string) {
-  Modal.warning({
-    title: '确认删除',
-    content: '删除后不可恢复，确定要删除这条内容吗？',
-    hideCancel: false,
-    onOk: async () => {
-      try {
-        await api.delete(`/contents/${id}`)
-        contents.value = contents.value.filter((c) => c.id !== id)
-        Message.success('删除成功')
-      } catch (e) {
-        Message.error('删除失败')
-      }
-    },
-  })
-}
-
-async function submitForReview(id: string) {
-  try {
-    await api.post(`/reviews/${id}/submit`)
-    const idx = contents.value.findIndex((c) => c.id === id)
-    if (idx !== -1) {
-      contents.value[idx].status = 'pending_review'
-    }
-    Message.success('已提交审核')
-  } catch (e) {
-    Message.error('提交审核失败')
-  }
-}
-</script>
-
 <template>
   <div class="content-list">
     <PageHeader title="内容列表" subtitle="创作并管理适配各平台的内容">
@@ -331,6 +172,165 @@ async function submitForReview(id: string) {
     </a-modal>
   </div>
 </template>
+
+<script setup lang="ts">
+import { ref, computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
+import {
+  IconPlus,
+  IconEdit,
+  IconDelete,
+  IconStar,
+  IconCopy,
+  IconEye,
+  IconSend,
+} from '@arco-design/web-vue/es/icon'
+import { Message, Modal } from '@arco-design/web-vue'
+import PageHeader from '@/components/layout/PageHeader.vue'
+import StatusBadge from '@/components/shared/StatusBadge.vue'
+import PlatformIcon from '@/components/shared/PlatformIcon.vue'
+import api from '@/utils/api'
+import { formatDateTime as formatDate } from '@/utils/time'
+
+const router = useRouter()
+
+const searchQuery = ref('')
+const platformFilter = ref('all')
+const statusFilter = ref('all')
+const loading = ref(false)
+
+interface Content {
+  id: string
+  user_id: string
+  title: string
+  body: string
+  platform: 'wechat_mp' | 'xiaohongshu' | 'douyin' | 'wechat_video'
+  status: 'draft' | 'ready' | 'published' | 'pending_review' | 'rejected'
+  media_urls: string[]
+  ai_generated: boolean
+  original_content_id: string | null
+  created_at: string
+  updated_at: string
+}
+
+const contents = ref<Content[]>([])
+
+const filteredContents = computed(() => {
+  return contents.value.filter((c) => {
+    const matchSearch = !searchQuery.value || c.title.includes(searchQuery.value)
+    const matchPlatform = platformFilter.value === 'all' || c.platform === platformFilter.value
+    const matchStatus = statusFilter.value === 'all' || c.status === statusFilter.value
+    return matchSearch && matchPlatform && matchStatus
+  })
+})
+
+const columns = [
+  { title: '标题', dataIndex: 'title', slotName: 'title' },
+  { title: '平台', dataIndex: 'platform', slotName: 'platform' },
+  { title: '状态', dataIndex: 'status', slotName: 'status' },
+  { title: '创建时间', dataIndex: 'created_at', slotName: 'createdAt' },
+  { title: '操作', slotName: 'actions', align: 'right' as const },
+]
+
+onMounted(async () => {
+  loading.value = true
+  try {
+    const res = await api.get('/contents/')
+    contents.value = res.data
+  } catch (e) {
+    Message.error('加载内容失败')
+  } finally {
+    loading.value = false
+  }
+})
+
+const editVisible = ref(false)
+const editSaving = ref(false)
+const editingContent = ref<Content | null>(null)
+const editForm = ref({
+  title: '',
+  body: '',
+  platform: 'xiaohongshu' as Content['platform'],
+  status: 'draft' as Content['status'],
+})
+
+function openEdit(content: Content) {
+  editingContent.value = content
+  editForm.value = {
+    title: content.title,
+    body: content.body,
+    platform: content.platform,
+    status: content.status,
+  }
+  editVisible.value = true
+}
+
+async function saveEdit() {
+  if (!editingContent.value) return
+  editSaving.value = true
+  try {
+    const res = await api.put(`/contents/${editingContent.value.id}`, editForm.value)
+    const idx = contents.value.findIndex((c) => c.id === editingContent.value!.id)
+    if (idx !== -1) {
+      contents.value[idx] = { ...contents.value[idx], ...res.data }
+    }
+    Message.success('内容已更新')
+    editVisible.value = false
+  } catch (e) {
+    Message.error('更新失败')
+  } finally {
+    editSaving.value = false
+  }
+}
+
+const detailVisible = ref(false)
+const detailContent = ref<Content | null>(null)
+
+function openDetail(content: Content) {
+  detailContent.value = content
+  detailVisible.value = true
+}
+
+async function copyContent(content: Content) {
+  const text = `${content.title}\n\n${content.body}`
+  try {
+    await navigator.clipboard.writeText(text)
+    Message.success('内容已复制到剪贴板')
+  } catch {
+    Message.error('复制失败，请手动选择文本复制')
+  }
+}
+
+async function removeContent(id: string) {
+  Modal.warning({
+    title: '确认删除',
+    content: '删除后不可恢复，确定要删除这条内容吗？',
+    hideCancel: false,
+    onOk: async () => {
+      try {
+        await api.delete(`/contents/${id}`)
+        contents.value = contents.value.filter((c) => c.id !== id)
+        Message.success('删除成功')
+      } catch (e) {
+        Message.error('删除失败')
+      }
+    },
+  })
+}
+
+async function submitForReview(id: string) {
+  try {
+    await api.post(`/reviews/${id}/submit`)
+    const idx = contents.value.findIndex((c) => c.id === id)
+    if (idx !== -1) {
+      contents.value[idx].status = 'pending_review'
+    }
+    Message.success('已提交审核')
+  } catch (e) {
+    Message.error('提交审核失败')
+  }
+}
+</script>
 
 <style scoped lang="scss">
 .content-list {

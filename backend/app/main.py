@@ -18,6 +18,7 @@ from app.routers import (
     db_changes,
     model_configs,
     models,
+    notification_dict,
     notifications,
     publish,
     rbac_constraints,
@@ -75,6 +76,7 @@ async def lifespan(app: FastAPI):
 
     async with async_session_factory() as session:
         await init_rbac_system(session)
+        await _seed_notification_dict(session)
         await session.commit()
 
     yield
@@ -114,6 +116,40 @@ app.include_router(rbac_users.router)
 app.include_router(rbac_roles.router)
 app.include_router(rbac_permissions.router)
 app.include_router(rbac_constraints.router)
+app.include_router(notification_dict.router)
+
+
+async def _seed_notification_dict(session):
+    from app.models.notification_dict import DictCategory, NotificationDict
+
+    result = await session.execute(select(NotificationDict.id))
+    if result.first():
+        return
+
+    seed_entries = [
+        ("field", "user_fields", "nickname", "昵称", 1),
+        ("field", "user_fields", "email", "邮箱", 2),
+        ("field", "user_fields", "username", "用户名", 3),
+        ("field", "user_fields", "phone", "手机号", 4),
+        ("field", "user_fields", "status", "状态", 5),
+        ("enum", "notification_type", "review_submit", "审核提交", 1),
+        ("enum", "notification_type", "review_approved", "审核通过", 2),
+        ("enum", "notification_type", "review_rejected", "审核驳回", 3),
+        ("enum", "notification_type", "role_updated", "角色更新", 4),
+        ("enum", "notification_type", "role_permissions_updated", "权限变更", 5),
+        ("enum", "user_status", "active", "启用", 1),
+        ("enum", "user_status", "inactive", "禁用", 2),
+    ]
+    for category, group_key, dict_key, dict_value, sort_order in seed_entries:
+        session.add(
+            NotificationDict(
+                category=DictCategory(category),
+                group_key=group_key,
+                dict_key=dict_key,
+                dict_value=dict_value,
+                sort_order=sort_order,
+            )
+        )
 
 
 @app.get("/")

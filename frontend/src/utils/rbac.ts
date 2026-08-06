@@ -5,6 +5,7 @@ const ADMIN_ONLY_RESOURCE_KEYS: ReadonlySet<string> = new Set([
   'permissions',
   'roles',
   'constraints',
+  'notification',
 ])
 
 function isAdminTypePermission(permKey: string): boolean {

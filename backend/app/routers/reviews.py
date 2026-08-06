@@ -2,7 +2,7 @@ from fastapi import APIRouter, Body, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.deps import get_current_user, PermAPIRoute, RequiresPermissions
+from app.core.deps import PermAPIRoute, RequiresPermissions, get_current_user
 from app.database import get_db
 from app.models.content import Content, ContentStatus
 from app.models.notification import Notification, NotificationType
@@ -12,6 +12,20 @@ from app.models.rbac_role_permission import RBACRolePermission
 from app.models.rbac_user_role_assignment import RBACUserRoleAssignment
 from app.models.user import User
 from app.schemas.review import ReviewResponse
+from app.services.notification_broadcaster import broadcaster
+
+
+def _notification_dict(n: Notification) -> dict:
+    return {
+        "id": n.id,
+        "type": n.type.value if hasattr(n.type, "value") else n.type,
+        "title": n.title,
+        "content": n.content,
+        "related_id": n.related_id,
+        "is_read": n.is_read,
+        "created_at": n.created_at.isoformat() if n.created_at else None,
+    }
+
 
 router = APIRouter(prefix="/api/reviews", tags=["审核管理"], route_class=PermAPIRoute)
 
@@ -32,9 +46,7 @@ async def _user_ids_with_permission(
         return set()
 
     rp_result = await db.execute(
-        select(RBACRolePermission.role_id).where(
-            RBACRolePermission.permission_id == perm.id
-        )
+        select(RBACRolePermission.role_id).where(RBACRolePermission.permission_id == perm.id)
     )
     role_ids = {row for row in rp_result.scalars().all()}
     if not role_ids:
@@ -143,6 +155,8 @@ async def submit_for_review(
             related_id=content.id,
         )
         db.add(notification)
+        await db.flush()
+        await broadcaster.broadcast(reviewer.id, _notification_dict(notification))
 
     await db.commit()
 
@@ -193,6 +207,8 @@ async def approve_content(
         related_id=content.id,
     )
     db.add(notification)
+    await db.flush()
+    await broadcaster.broadcast(content.user_id, _notification_dict(notification))
     await db.commit()
 
     return ReviewResponse(
@@ -243,6 +259,8 @@ async def reject_content(
         related_id=content.id,
     )
     db.add(notification)
+    await db.flush()
+    await broadcaster.broadcast(content.user_id, _notification_dict(notification))
     await db.commit()
 
     return ReviewResponse(

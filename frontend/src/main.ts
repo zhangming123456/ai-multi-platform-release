@@ -4,7 +4,8 @@ import ArcoVue from '@arco-design/web-vue'
 import '@arco-design/web-vue/dist/arco.css'
 import router from './router'
 import App from './App.vue'
-import './style.css'
+import './tailwind.css'
+import './style.scss'
 import vPerm from './directives/permission'
 
 const app = createApp(App)

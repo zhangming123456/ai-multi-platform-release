@@ -1,10 +1,91 @@
+<template>
+  <div class="sql-review-page">
+    <PageHeader title="SQL审核" subtitle="审核数据库删除/修改操作，至少 2 人通过后自动执行">
+      <template #actions>
+        <a-select v-model="statusFilter" style="width: 140px" @change="fetchChanges">
+          <a-option value="pending">待审核</a-option>
+          <a-option value="executed">已执行</a-option>
+          <a-option value="rejected">已驳回</a-option>
+          <a-option value="execute_failed">执行失败</a-option>
+        </a-select>
+      </template>
+    </PageHeader>
+
+    <a-card :bordered="false">
+      <a-spin :loading="loading">
+        <a-table :data="changes" :pagination="false" :bordered="false" row-key="id">
+          <template #columns>
+            <a-table-column title="类型" :width="90">
+              <template #cell="{ record }">
+                <a-tag size="small" :color="getTypeColor(record.change_type)">
+                  {{ getTypeLabel(record.change_type) }}
+                </a-tag>
+              </template>
+            </a-table-column>
+
+            <a-table-column title="SQL 语句" :width="360">
+              <template #cell="{ record }">
+                <code class="sql-text">{{ record.sql_text }}</code>
+                <div v-if="record.description" class="sql-desc">{{ record.description }}</div>
+              </template>
+            </a-table-column>
+
+            <a-table-column title="提交人" data-index="requester_name" :width="100" />
+
+            <a-table-column title="审核进度" :width="110">
+              <template #cell="{ record }">
+                <a-tag size="small" color="arcoblue">
+                  {{ record.approvals }}/{{ record.required_approvals }}
+                </a-tag>
+              </template>
+            </a-table-column>
+
+            <a-table-column title="状态" :width="100">
+              <template #cell="{ record }">
+                <a-tag size="small" :color="getStatusColor(record.status)">
+                  {{ getStatusLabel(record.status) }}
+                </a-tag>
+              </template>
+            </a-table-column>
+
+            <a-table-column title="提交时间" :width="150">
+              <template #cell="{ record }">
+                {{ formatDateTime(record.created_at) }}
+              </template>
+            </a-table-column>
+
+            <a-table-column title="操作" :width="150" fixed="right">
+              <template #cell="{ record }">
+                <a-space v-if="record.status === 'pending'">
+                  <a-button type="primary" size="mini" @click="handleApprove(record)">
+                    <template #icon><IconCheckCircle /></template>
+                    通过
+                  </a-button>
+                  <a-button status="danger" size="mini" @click="handleReject(record)">
+                    <template #icon><IconCloseCircle /></template>
+                    驳回
+                  </a-button>
+                </a-space>
+                <span v-else class="text-[12px] text-[#aeaeb2]">
+                  {{ record.execute_message || record.reject_reason || '—' }}
+                </span>
+              </template>
+            </a-table-column>
+          </template>
+
+          <template #empty>
+            <a-empty description="暂无待审核的 SQL 变更" />
+          </template>
+        </a-table>
+      </a-spin>
+    </a-card>
+  </div>
+</template>
+
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { Message, Modal } from '@arco-design/web-vue'
-import {
-  IconCheckCircle,
-  IconCloseCircle,
-} from '@arco-design/web-vue/es/icon'
+import { IconCheckCircle, IconCloseCircle } from '@arco-design/web-vue/es/icon'
 import PageHeader from '@/components/layout/PageHeader.vue'
 import api from '@/utils/api'
 import { formatDateTime } from '@/utils/time'
@@ -152,98 +233,6 @@ onMounted(() => {
   fetchChanges()
 })
 </script>
-
-<template>
-  <div class="sql-review-page">
-    <PageHeader title="SQL审核" subtitle="审核数据库删除/修改操作，至少 2 人通过后自动执行">
-      <template #actions>
-        <a-select v-model="statusFilter" style="width: 140px" @change="fetchChanges">
-          <a-option value="pending">待审核</a-option>
-          <a-option value="executed">已执行</a-option>
-          <a-option value="rejected">已驳回</a-option>
-          <a-option value="execute_failed">执行失败</a-option>
-        </a-select>
-      </template>
-    </PageHeader>
-
-    <a-card :bordered="false">
-      <a-spin :loading="loading">
-        <a-table :data="changes" :pagination="false" :bordered="false" row-key="id">
-          <template #columns>
-            <a-table-column title="类型" :width="90">
-              <template #cell="{ record }">
-                <a-tag size="small" :color="getTypeColor(record.change_type)">
-                  {{ getTypeLabel(record.change_type) }}
-                </a-tag>
-              </template>
-            </a-table-column>
-
-            <a-table-column title="SQL 语句" :width="360">
-              <template #cell="{ record }">
-                <code class="sql-text">{{ record.sql_text }}</code>
-                <div v-if="record.description" class="sql-desc">{{ record.description }}</div>
-              </template>
-            </a-table-column>
-
-            <a-table-column title="提交人" data-index="requester_name" :width="100" />
-
-            <a-table-column title="审核进度" :width="110">
-              <template #cell="{ record }">
-                <a-tag size="small" color="arcoblue">
-                  {{ record.approvals }}/{{ record.required_approvals }}
-                </a-tag>
-              </template>
-            </a-table-column>
-
-            <a-table-column title="状态" :width="100">
-              <template #cell="{ record }">
-                <a-tag size="small" :color="getStatusColor(record.status)">
-                  {{ getStatusLabel(record.status) }}
-                </a-tag>
-              </template>
-            </a-table-column>
-
-            <a-table-column title="提交时间" :width="150">
-              <template #cell="{ record }">
-                {{ formatDateTime(record.created_at) }}
-              </template>
-            </a-table-column>
-
-            <a-table-column title="操作" :width="150" fixed="right">
-              <template #cell="{ record }">
-                <a-space v-if="record.status === 'pending'">
-                  <a-button
-                    type="primary"
-                    size="mini"
-                    @click="handleApprove(record)"
-                  >
-                    <template #icon><IconCheckCircle /></template>
-                    通过
-                  </a-button>
-                  <a-button
-                    status="danger"
-                    size="mini"
-                    @click="handleReject(record)"
-                  >
-                    <template #icon><IconCloseCircle /></template>
-                    驳回
-                  </a-button>
-                </a-space>
-                <span v-else class="text-[12px] text-[#aeaeb2]">
-                  {{ record.execute_message || record.reject_reason || '—' }}
-                </span>
-              </template>
-            </a-table-column>
-          </template>
-
-          <template #empty>
-            <a-empty description="暂无待审核的 SQL 变更" />
-          </template>
-        </a-table>
-      </a-spin>
-    </a-card>
-  </div>
-</template>
 
 <style scoped lang="scss">
 .sql-review-page {

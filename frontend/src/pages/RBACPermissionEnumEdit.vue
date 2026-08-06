@@ -1,3 +1,86 @@
+<template>
+  <div class="page-main">
+    <PageHeader
+      :title="pageTitle"
+      :subtitle="isEdit ? '修改权限字典的名称、Key 和描述' : '添加新的权限字典'"
+    >
+      <template #actions>
+        <a-button type="text" size="mini" class="!text-[#007AFF] !px-0 !h-auto" @click="goBack">
+          <template #icon><IconLeft :size="13" /></template>
+          返回列表
+        </a-button>
+      </template>
+    </PageHeader>
+
+    <a-spin :loading="loading" tip="加载中..." class="w-full">
+      <div class="max-w-[560px]">
+        <a-card :bordered="false" class="!rounded-xl">
+          <a-form layout="vertical" class="!max-w-[480px]">
+            <a-form-item label="权限类型">
+              <a-radio-group v-model="form.type" type="button" :disabled="isEdit">
+                <a-radio value="page">页面权限</a-radio>
+                <a-radio value="action">操作权限</a-radio>
+              </a-radio-group>
+            </a-form-item>
+
+            <a-form-item label="name（Key 第1段）" required>
+              <a-input v-model="form.keyName" placeholder="模块名，如 dashboard、content" />
+            </a-form-item>
+
+            <a-form-item v-if="form.type === 'action'" label="operation（Key 第2段）" required>
+              <a-input v-model="form.operation" placeholder="操作名，如 create、update、delete" />
+            </a-form-item>
+
+            <a-form-item v-if="form.type === 'action'" label="后缀模式（Key 第3段）">
+              <a-select v-model="form.mode">
+                <a-option value="read">read</a-option>
+                <a-option value="write">write</a-option>
+              </a-select>
+            </a-form-item>
+
+            <a-form-item label="最终合成 Key">
+              <div class="flex items-center gap-2">
+                <a-tag
+                  size="medium"
+                  :color="form.type === 'page' ? 'blue' : 'arcoblue'"
+                  class="!m-0 font-mono text-[13px]"
+                >
+                  {{ computedKey || '填写 name 后自动生成' }}
+                </a-tag>
+                <span class="text-[11px] text-[#86868B]">自动生成</span>
+              </div>
+            </a-form-item>
+
+            <a-form-item label="显示名称" required>
+              <a-input
+                v-model="form.displayName"
+                placeholder="权限的中文显示名称，如 仪表盘、创建内容"
+              />
+            </a-form-item>
+
+            <a-form-item label="描述">
+              <a-textarea
+                v-model="form.description"
+                placeholder="权限的描述说明"
+                :auto-size="{ minRows: 2, maxRows: 4 }"
+              />
+            </a-form-item>
+
+            <a-form-item>
+              <a-space>
+                <a-button type="primary" :loading="saving" @click="handleSave">
+                  {{ isEdit ? '保存' : '创建' }}
+                </a-button>
+                <a-button @click="goBack">取消</a-button>
+              </a-space>
+            </a-form-item>
+          </a-form>
+        </a-card>
+      </div>
+    </a-spin>
+  </div>
+</template>
+
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
@@ -159,86 +242,3 @@ function goBack() {
 
 onMounted(loadPermission)
 </script>
-
-<template>
-  <div class="page-main">
-    <PageHeader
-      :title="pageTitle"
-      :subtitle="isEdit ? '修改权限字典的名称、Key 和描述' : '添加新的权限字典'"
-    >
-      <template #actions>
-        <a-button type="text" size="mini" class="!text-[#007AFF] !px-0 !h-auto" @click="goBack">
-          <template #icon><IconLeft :size="13" /></template>
-          返回列表
-        </a-button>
-      </template>
-    </PageHeader>
-
-    <a-spin :loading="loading" tip="加载中..." class="w-full">
-      <div class="max-w-[560px]">
-        <a-card :bordered="false" class="!rounded-xl">
-          <a-form layout="vertical" class="!max-w-[480px]">
-            <a-form-item label="权限类型">
-              <a-radio-group v-model="form.type" type="button" :disabled="isEdit">
-                <a-radio value="page">页面权限</a-radio>
-                <a-radio value="action">操作权限</a-radio>
-              </a-radio-group>
-            </a-form-item>
-
-            <a-form-item label="name（Key 第1段）" required>
-              <a-input v-model="form.keyName" placeholder="模块名，如 dashboard、content" />
-            </a-form-item>
-
-            <a-form-item v-if="form.type === 'action'" label="operation（Key 第2段）" required>
-              <a-input v-model="form.operation" placeholder="操作名，如 create、update、delete" />
-            </a-form-item>
-
-            <a-form-item v-if="form.type === 'action'" label="后缀模式（Key 第3段）">
-              <a-select v-model="form.mode">
-                <a-option value="read">read</a-option>
-                <a-option value="write">write</a-option>
-              </a-select>
-            </a-form-item>
-
-            <a-form-item label="最终合成 Key">
-              <div class="flex items-center gap-2">
-                <a-tag
-                  size="medium"
-                  :color="form.type === 'page' ? 'blue' : 'arcoblue'"
-                  class="!m-0 font-mono text-[13px]"
-                >
-                  {{ computedKey || '填写 name 后自动生成' }}
-                </a-tag>
-                <span class="text-[11px] text-[#86868B]">自动生成</span>
-              </div>
-            </a-form-item>
-
-            <a-form-item label="显示名称" required>
-              <a-input
-                v-model="form.displayName"
-                placeholder="权限的中文显示名称，如 仪表盘、创建内容"
-              />
-            </a-form-item>
-
-            <a-form-item label="描述">
-              <a-textarea
-                v-model="form.description"
-                placeholder="权限的描述说明"
-                :auto-size="{ minRows: 2, maxRows: 4 }"
-              />
-            </a-form-item>
-
-            <a-form-item>
-              <a-space>
-                <a-button type="primary" :loading="saving" @click="handleSave">
-                  {{ isEdit ? '保存' : '创建' }}
-                </a-button>
-                <a-button @click="goBack">取消</a-button>
-              </a-space>
-            </a-form-item>
-          </a-form>
-        </a-card>
-      </div>
-    </a-spin>
-  </div>
-</template>

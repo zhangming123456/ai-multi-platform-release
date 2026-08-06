@@ -1,3 +1,278 @@
+<template>
+  <div class="space-y-6">
+    <PageHeader title="创作内容" subtitle="输入主题，一键生成适配各平台风格的内容变体">
+      <template #actions>
+        <a-tag
+          :color="store.activePlan ? 'green' : 'orange'"
+          size="small"
+          @click="router.push('/settings/token-plan')"
+          style="cursor: pointer"
+        >
+          <template #icon>
+            <IconSettings :size="12" />
+          </template>
+          {{
+            store.activePlan
+              ? `${store.activePlan.name} - 剩余 ${store.getRemainingQuota().toLocaleString()} tokens`
+              : '未配置 Token'
+          }}
+        </a-tag>
+      </template>
+    </PageHeader>
+
+    <div class="content-layout">
+      <a-card :bordered="false" title="生成预览" class="content-create-card content-preview-card">
+        <template v-if="hasGenerated" #extra>
+          <a-tabs
+            :active-key="activePreview"
+            @change="(key: string | number) => (activePreview = String(key))"
+            type="rounded"
+            size="mini"
+          >
+            <a-tab-pane v-for="p in previewPlatforms" :key="p.value" :title="p.label" />
+          </a-tabs>
+        </template>
+
+        <a-empty v-if="!hasGenerated && !isGenerating">
+          <template #image>
+            <div class="w-14 h-14 rounded-[14px] bg-[#5856D6]/10 flex items-center justify-center">
+              <IconStar :size="26" :style="{ color: '#5856D6' }" />
+            </div>
+          </template>
+          <span class="text-[14px] font-medium">准备好开始创作了</span>
+          <template #description>
+            <span class="text-[12px]">填写下方主题与平台，点击生成按钮</span>
+          </template>
+        </a-empty>
+
+        <div v-else-if="isGenerating && streamingText" class="streaming-view">
+          <div class="streaming-view__header">
+            <PlatformIcon
+              :platform="
+                streamingPlatform as 'wechat_mp' | 'xiaohongshu' | 'douyin' | 'wechat_video'
+              "
+              size="sm"
+            />
+            <span class="text-[13px] font-medium">{{ platformLabel(streamingPlatform) }}</span>
+            <span class="streaming-view__badge">AI 生成中</span>
+          </div>
+          <div ref="streamingTextRef" class="streaming-view__text">
+            {{ streamingText }}<span class="streaming-cursor"></span>
+          </div>
+        </div>
+
+        <a-spin v-else-if="isGenerating" :loading="true" class="w-full py-10">
+          <template #icon><IconStar :size="30" :style="{ color: '#007AFF' }" spin /></template>
+          <div class="text-center">
+            <p class="text-[13px] text-[#86868B]">
+              正在为 {{ selectedPlatforms.length }} 个平台生成适配文案…
+            </p>
+          </div>
+        </a-spin>
+
+        <div v-else-if="generatedVariants[activePreview]" class="space-y-4">
+          <div>
+            <a-typography-text
+              type="secondary"
+              class="text-[11px] font-semibold uppercase tracking-[0.06em] block mb-1.5"
+              >标题</a-typography-text
+            >
+            <a-input
+              :model-value="generatedVariants[activePreview].title"
+              read-only
+              class="font-semibold"
+            />
+          </div>
+          <div>
+            <a-typography-text
+              type="secondary"
+              class="text-[11px] font-semibold uppercase tracking-[0.06em] block mb-1.5"
+              >正文</a-typography-text
+            >
+            <a-textarea
+              :model-value="generatedVariants[activePreview].body"
+              read-only
+              :auto-size="{ minRows: 4, maxRows: 10 }"
+            />
+          </div>
+          <div>
+            <a-typography-text
+              type="secondary"
+              class="text-[11px] font-semibold uppercase tracking-[0.06em] block mb-2"
+              >推荐话题标签</a-typography-text
+            >
+            <a-space :size="6" wrap>
+              <a-tag
+                v-for="tag in generatedVariants[activePreview].hashtags"
+                :key="tag"
+                color="arcoblue"
+              >
+                {{ tag }}
+              </a-tag>
+            </a-space>
+          </div>
+          <div class="flex items-center justify-end gap-2 pt-1">
+            <a-button @click="copyContent">
+              <template #icon><IconCopy /></template>
+              复制文案
+            </a-button>
+            <a-button type="primary" :loading="isSaving" @click="saveContent">
+              <template #icon><IconSave /></template>
+              保存为内容
+            </a-button>
+          </div>
+        </div>
+      </a-card>
+
+      <div class="content-bottom">
+        <div class="content-bottom__left">
+          <div class="log-terminal animate-fade-up">
+            <div
+              class="log-terminal__bar"
+              :class="{ 'log-terminal__bar--collapsed': !logExpanded }"
+              @click="logExpanded = !logExpanded"
+            >
+              <div class="flex items-center gap-2">
+                <span class="log-dot log-dot--r"></span>
+                <span class="log-dot log-dot--y"></span>
+                <span class="log-dot log-dot--g"></span>
+                <IconCode :size="14" class="ml-2" style="color: #8e8e93" />
+                <span class="log-terminal__title">API 调用日志</span>
+                <span v-if="isGenerating" class="log-live">
+                  <span class="log-live__pulse"></span>
+                  实时监听中
+                </span>
+                <span v-else-if="logs.length > 0" class="log-idle">空闲</span>
+              </div>
+              <div class="flex items-center gap-1" @click.stop>
+                <span class="log-terminal__count">{{ logs.length }} 条</span>
+                <button class="log-terminal__btn" title="清空日志" @click="clearLogs">
+                  <IconDelete :size="13" />
+                </button>
+                <button
+                  class="log-terminal__btn"
+                  :title="logExpanded ? '收起' : '展开'"
+                  @click="logExpanded = !logExpanded"
+                >
+                  <IconUp v-if="logExpanded" :size="13" />
+                  <IconDown v-else :size="13" />
+                </button>
+              </div>
+            </div>
+
+            <transition name="log-collapse">
+              <div v-show="logExpanded" class="log-terminal__body-wrap">
+                <div ref="logPanelRef" class="log-terminal__body">
+                  <div v-if="logs.length === 0" class="log-terminal__empty">
+                    <span class="log-terminal__prompt">➜</span>
+                    暂无调用记录，点击「AI 生成内容」后这里将实时输出接口日志
+                  </div>
+                  <div
+                    v-for="entry in logs"
+                    :key="entry.id"
+                    class="log-line"
+                    :class="`log-line--${entry.level}`"
+                  >
+                    <span class="log-line__time">{{ entry.time }}</span>
+                    <span class="log-line__level">{{ levelText(entry.level) }}</span>
+                    <span class="log-line__msg">{{ entry.message }}</span>
+                  </div>
+                  <div v-if="isGenerating" class="log-line log-line--cursor">
+                    <span class="log-terminal__prompt">➜</span>
+                    <span class="log-cursor"></span>
+                  </div>
+                </div>
+              </div>
+            </transition>
+          </div>
+        </div>
+
+        <div class="content-bottom__right">
+          <a-card :bordered="false" title="创作输入" class="content-create-card">
+            <a-form :model="{}" layout="vertical">
+              <a-form-item label="内容主题">
+                <a-input v-model="topic" placeholder="例如：春季护肤、职场成长、美食探店" />
+              </a-form-item>
+              <a-form-item label="关键词（可选）">
+                <a-input v-model="keywords" placeholder="用逗号分隔，例如：保湿,防晒,敏感肌" />
+              </a-form-item>
+              <a-form-item label="目标平台">
+                <a-checkbox-group v-model="selectedPlatforms">
+                  <a-row :gutter="[8, 8]">
+                    <a-col :span="12" v-for="choice in platformChoices" :key="choice.value">
+                      <a-checkbox :value="choice.value">
+                        <a-space :size="6" align="center">
+                          <PlatformIcon
+                            :platform="
+                              choice.value as
+                                'wechat_mp' | 'xiaohongshu' | 'douyin' | 'wechat_video'
+                            "
+                            size="sm"
+                          />
+                          {{ choice.label }}
+                        </a-space>
+                      </a-checkbox>
+                    </a-col>
+                  </a-row>
+                </a-checkbox-group>
+              </a-form-item>
+              <a-form-item v-if="store.activeModelList.length > 1" label="模型 ID">
+                <a-select
+                  v-model="store.selectedModelId"
+                  placeholder="选择要使用的模型"
+                  allow-search
+                >
+                  <a-option v-for="m in store.activeModelList" :key="m.id" :value="m.id">
+                    <span class="model-opt">
+                      <span class="model-opt__icons">
+                        <component
+                          v-for="t in m.types || ['text']"
+                          :key="t"
+                          :is="modelTypeIcon(t)"
+                          :size="12"
+                          :style="{ color: modelTypeColor(t) }"
+                        />
+                      </span>
+                      {{ m.id }}
+                    </span>
+                  </a-option>
+                </a-select>
+              </a-form-item>
+              <a-form-item v-if="store.selectedModelSupportsFiles" label="上传文件">
+                <a-upload
+                  :file-list="uploadedFiles"
+                  @change="handleFileChange"
+                  :auto-upload="false"
+                  multiple
+                  :limit="10"
+                  draggable
+                  :tip="fileUploadTip"
+                  accept="image/*,video/*"
+                />
+              </a-form-item>
+              <a-form-item>
+                <a-button
+                  type="primary"
+                  long
+                  :loading="isGenerating"
+                  :disabled="!topic || isGenerating"
+                  @click="generate"
+                >
+                  <template #icon><IconStar /></template>
+                  {{ isGenerating ? 'AI 正在创作…' : 'AI 生成内容' }}
+                </a-button>
+              </a-form-item>
+            </a-form>
+            <a-typography-text type="secondary" class="text-[11px] block text-center">
+              AI 将根据各平台的推荐算法与用户偏好调整文案风格
+            </a-typography-text>
+          </a-card>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
 <script setup lang="ts">
 import { ref, computed, onMounted, nextTick, watch } from 'vue'
 import { useRouter } from 'vue-router'
@@ -479,281 +754,6 @@ async function copyContent() {
   }
 }
 </script>
-
-<template>
-  <div class="space-y-6">
-    <PageHeader title="创作内容" subtitle="输入主题，一键生成适配各平台风格的内容变体">
-      <template #actions>
-        <a-tag
-          :color="store.activePlan ? 'green' : 'orange'"
-          size="small"
-          @click="router.push('/settings/token-plan')"
-          style="cursor: pointer"
-        >
-          <template #icon>
-            <IconSettings :size="12" />
-          </template>
-          {{
-            store.activePlan
-              ? `${store.activePlan.name} - 剩余 ${store.getRemainingQuota().toLocaleString()} tokens`
-              : '未配置 Token'
-          }}
-        </a-tag>
-      </template>
-    </PageHeader>
-
-    <div class="content-layout">
-      <a-card :bordered="false" title="生成预览" class="content-create-card content-preview-card">
-        <template v-if="hasGenerated" #extra>
-          <a-tabs
-            :active-key="activePreview"
-            @change="(key: string | number) => (activePreview = String(key))"
-            type="rounded"
-            size="mini"
-          >
-            <a-tab-pane v-for="p in previewPlatforms" :key="p.value" :title="p.label" />
-          </a-tabs>
-        </template>
-
-        <a-empty v-if="!hasGenerated && !isGenerating">
-          <template #image>
-            <div class="w-14 h-14 rounded-[14px] bg-[#5856D6]/10 flex items-center justify-center">
-              <IconStar :size="26" :style="{ color: '#5856D6' }" />
-            </div>
-          </template>
-          <span class="text-[14px] font-medium">准备好开始创作了</span>
-          <template #description>
-            <span class="text-[12px]">填写下方主题与平台，点击生成按钮</span>
-          </template>
-        </a-empty>
-
-        <div v-else-if="isGenerating && streamingText" class="streaming-view">
-          <div class="streaming-view__header">
-            <PlatformIcon
-              :platform="
-                streamingPlatform as 'wechat_mp' | 'xiaohongshu' | 'douyin' | 'wechat_video'
-              "
-              size="sm"
-            />
-            <span class="text-[13px] font-medium">{{ platformLabel(streamingPlatform) }}</span>
-            <span class="streaming-view__badge">AI 生成中</span>
-          </div>
-          <div ref="streamingTextRef" class="streaming-view__text">
-            {{ streamingText }}<span class="streaming-cursor"></span>
-          </div>
-        </div>
-
-        <a-spin v-else-if="isGenerating" :loading="true" class="w-full py-10">
-          <template #icon><IconStar :size="30" :style="{ color: '#007AFF' }" spin /></template>
-          <div class="text-center">
-            <p class="text-[13px] text-[#86868B]">
-              正在为 {{ selectedPlatforms.length }} 个平台生成适配文案…
-            </p>
-          </div>
-        </a-spin>
-
-        <div v-else-if="generatedVariants[activePreview]" class="space-y-4">
-          <div>
-            <a-typography-text
-              type="secondary"
-              class="text-[11px] font-semibold uppercase tracking-[0.06em] block mb-1.5"
-              >标题</a-typography-text
-            >
-            <a-input
-              :model-value="generatedVariants[activePreview].title"
-              read-only
-              class="font-semibold"
-            />
-          </div>
-          <div>
-            <a-typography-text
-              type="secondary"
-              class="text-[11px] font-semibold uppercase tracking-[0.06em] block mb-1.5"
-              >正文</a-typography-text
-            >
-            <a-textarea
-              :model-value="generatedVariants[activePreview].body"
-              read-only
-              :auto-size="{ minRows: 4, maxRows: 10 }"
-            />
-          </div>
-          <div>
-            <a-typography-text
-              type="secondary"
-              class="text-[11px] font-semibold uppercase tracking-[0.06em] block mb-2"
-              >推荐话题标签</a-typography-text
-            >
-            <a-space :size="6" wrap>
-              <a-tag
-                v-for="tag in generatedVariants[activePreview].hashtags"
-                :key="tag"
-                color="arcoblue"
-              >
-                {{ tag }}
-              </a-tag>
-            </a-space>
-          </div>
-          <div class="flex items-center justify-end gap-2 pt-1">
-            <a-button @click="copyContent">
-              <template #icon><IconCopy /></template>
-              复制文案
-            </a-button>
-            <a-button type="primary" :loading="isSaving" @click="saveContent">
-              <template #icon><IconSave /></template>
-              保存为内容
-            </a-button>
-          </div>
-        </div>
-      </a-card>
-
-      <div class="content-bottom">
-        <div class="content-bottom__left">
-          <div class="log-terminal animate-fade-up">
-            <div
-              class="log-terminal__bar"
-              :class="{ 'log-terminal__bar--collapsed': !logExpanded }"
-              @click="logExpanded = !logExpanded"
-            >
-              <div class="flex items-center gap-2">
-                <span class="log-dot log-dot--r"></span>
-                <span class="log-dot log-dot--y"></span>
-                <span class="log-dot log-dot--g"></span>
-                <IconCode :size="14" class="ml-2" style="color: #8e8e93" />
-                <span class="log-terminal__title">API 调用日志</span>
-                <span v-if="isGenerating" class="log-live">
-                  <span class="log-live__pulse"></span>
-                  实时监听中
-                </span>
-                <span v-else-if="logs.length > 0" class="log-idle">空闲</span>
-              </div>
-              <div class="flex items-center gap-1" @click.stop>
-                <span class="log-terminal__count">{{ logs.length }} 条</span>
-                <button class="log-terminal__btn" title="清空日志" @click="clearLogs">
-                  <IconDelete :size="13" />
-                </button>
-                <button
-                  class="log-terminal__btn"
-                  :title="logExpanded ? '收起' : '展开'"
-                  @click="logExpanded = !logExpanded"
-                >
-                  <IconUp v-if="logExpanded" :size="13" />
-                  <IconDown v-else :size="13" />
-                </button>
-              </div>
-            </div>
-
-            <transition name="log-collapse">
-              <div v-show="logExpanded" class="log-terminal__body-wrap">
-                <div ref="logPanelRef" class="log-terminal__body">
-                  <div v-if="logs.length === 0" class="log-terminal__empty">
-                    <span class="log-terminal__prompt">➜</span>
-                    暂无调用记录，点击「AI 生成内容」后这里将实时输出接口日志
-                  </div>
-                  <div
-                    v-for="entry in logs"
-                    :key="entry.id"
-                    class="log-line"
-                    :class="`log-line--${entry.level}`"
-                  >
-                    <span class="log-line__time">{{ entry.time }}</span>
-                    <span class="log-line__level">{{ levelText(entry.level) }}</span>
-                    <span class="log-line__msg">{{ entry.message }}</span>
-                  </div>
-                  <div v-if="isGenerating" class="log-line log-line--cursor">
-                    <span class="log-terminal__prompt">➜</span>
-                    <span class="log-cursor"></span>
-                  </div>
-                </div>
-              </div>
-            </transition>
-          </div>
-        </div>
-
-        <div class="content-bottom__right">
-          <a-card :bordered="false" title="创作输入" class="content-create-card">
-            <a-form :model="{}" layout="vertical">
-              <a-form-item label="内容主题">
-                <a-input v-model="topic" placeholder="例如：春季护肤、职场成长、美食探店" />
-              </a-form-item>
-              <a-form-item label="关键词（可选）">
-                <a-input v-model="keywords" placeholder="用逗号分隔，例如：保湿,防晒,敏感肌" />
-              </a-form-item>
-              <a-form-item label="目标平台">
-                <a-checkbox-group v-model="selectedPlatforms">
-                  <a-row :gutter="[8, 8]">
-                    <a-col :span="12" v-for="choice in platformChoices" :key="choice.value">
-                      <a-checkbox :value="choice.value">
-                        <a-space :size="6" align="center">
-                          <PlatformIcon
-                            :platform="
-                              choice.value as
-                                'wechat_mp' | 'xiaohongshu' | 'douyin' | 'wechat_video'
-                            "
-                            size="sm"
-                          />
-                          {{ choice.label }}
-                        </a-space>
-                      </a-checkbox>
-                    </a-col>
-                  </a-row>
-                </a-checkbox-group>
-              </a-form-item>
-              <a-form-item v-if="store.activeModelList.length > 1" label="模型 ID">
-                <a-select
-                  v-model="store.selectedModelId"
-                  placeholder="选择要使用的模型"
-                  allow-search
-                >
-                  <a-option v-for="m in store.activeModelList" :key="m.id" :value="m.id">
-                    <span class="model-opt">
-                      <span class="model-opt__icons">
-                        <component
-                          v-for="t in m.types || ['text']"
-                          :key="t"
-                          :is="modelTypeIcon(t)"
-                          :size="12"
-                          :style="{ color: modelTypeColor(t) }"
-                        />
-                      </span>
-                      {{ m.id }}
-                    </span>
-                  </a-option>
-                </a-select>
-              </a-form-item>
-              <a-form-item v-if="store.selectedModelSupportsFiles" label="上传文件">
-                <a-upload
-                  :file-list="uploadedFiles"
-                  @change="handleFileChange"
-                  :auto-upload="false"
-                  multiple
-                  :limit="10"
-                  draggable
-                  :tip="fileUploadTip"
-                  accept="image/*,video/*"
-                />
-              </a-form-item>
-              <a-form-item>
-                <a-button
-                  type="primary"
-                  long
-                  :loading="isGenerating"
-                  :disabled="!topic || isGenerating"
-                  @click="generate"
-                >
-                  <template #icon><IconStar /></template>
-                  {{ isGenerating ? 'AI 正在创作…' : 'AI 生成内容' }}
-                </a-button>
-              </a-form-item>
-            </a-form>
-            <a-typography-text type="secondary" class="text-[11px] block text-center">
-              AI 将根据各平台的推荐算法与用户偏好调整文案风格
-            </a-typography-text>
-          </a-card>
-        </div>
-      </div>
-    </div>
-  </div>
-</template>
 
 <style scoped lang="scss">
 .model-opt {

@@ -1,3 +1,63 @@
+<template>
+  <div class="user-creation-review-page">
+    <PageHeader title="用户注册审核" subtitle="审核非管理员提交的账号创建申请" />
+
+    <a-spin :loading="loading" tip="加载中...">
+      <a-table
+        :columns="columns"
+        :data="requests"
+        :bordered="false"
+        :hoverable="true"
+        :pagination="false"
+      >
+        <template #email="{ record }">
+          <span class="text-[13px] text-[#86868b]">{{ record.email || '--' }}</span>
+        </template>
+        <template #role="{ record }">
+          <a-tag size="small" color="arcoblue">
+            {{ roleLabel(record.role) }}
+          </a-tag>
+        </template>
+        <template #createdAt="{ record }">
+          <span class="text-[13px] text-[#86868b]">{{ formatDate(record.created_at) }}</span>
+        </template>
+        <template #actions="{ record }">
+          <a-space :size="6">
+            <a-button type="primary" size="small" @click="approveRequest(record.id)">
+              通过
+            </a-button>
+            <a-button status="danger" size="small" @click="openReject(record.id)"> 驳回 </a-button>
+          </a-space>
+        </template>
+        <template #empty>
+          <a-empty description="暂无待审核的账号创建申请" />
+        </template>
+      </a-table>
+    </a-spin>
+
+    <a-modal
+      v-model:visible="rejectVisible"
+      title="驳回申请"
+      :width="440"
+      :ok-loading="rejectSaving"
+      @ok="confirmReject"
+      ok-text="确认驳回"
+    >
+      <a-form :model="{}" layout="vertical">
+        <a-form-item label="驳回原因" required>
+          <a-textarea
+            v-model="rejectReason"
+            placeholder="请输入驳回原因"
+            :max-length="500"
+            show-word-limit
+            :auto-size="{ minRows: 3, maxRows: 6 }"
+          />
+        </a-form-item>
+      </a-form>
+    </a-modal>
+  </div>
+</template>
+
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { Message } from '@arco-design/web-vue'
@@ -116,68 +176,6 @@ onMounted(async () => {
   await fetchRequests()
 })
 </script>
-
-<template>
-  <div class="user-creation-review-page">
-    <PageHeader title="用户注册审核" subtitle="审核非管理员提交的账号创建申请" />
-
-    <a-spin :loading="loading" tip="加载中...">
-      <a-table
-        :columns="columns"
-        :data="requests"
-        :bordered="false"
-        :hoverable="true"
-        :pagination="false"
-      >
-        <template #email="{ record }">
-          <span class="text-[13px] text-[#86868b]">{{ record.email || '--' }}</span>
-        </template>
-        <template #role="{ record }">
-          <a-tag size="small" color="arcoblue">
-            {{ roleLabel(record.role) }}
-          </a-tag>
-        </template>
-        <template #createdAt="{ record }">
-          <span class="text-[13px] text-[#86868b]">{{ formatDate(record.created_at) }}</span>
-        </template>
-        <template #actions="{ record }">
-          <a-space :size="6">
-            <a-button type="primary" size="small" @click="approveRequest(record.id)">
-              通过
-            </a-button>
-            <a-button status="danger" size="small" @click="openReject(record.id)">
-              驳回
-            </a-button>
-          </a-space>
-        </template>
-        <template #empty>
-          <a-empty description="暂无待审核的账号创建申请" />
-        </template>
-      </a-table>
-    </a-spin>
-
-    <a-modal
-      v-model:visible="rejectVisible"
-      title="驳回申请"
-      :width="440"
-      :ok-loading="rejectSaving"
-      @ok="confirmReject"
-      ok-text="确认驳回"
-    >
-      <a-form :model="{}" layout="vertical">
-        <a-form-item label="驳回原因" required>
-          <a-textarea
-            v-model="rejectReason"
-            placeholder="请输入驳回原因"
-            :max-length="500"
-            show-word-limit
-            :auto-size="{ minRows: 3, maxRows: 6 }"
-          />
-        </a-form-item>
-      </a-form>
-    </a-modal>
-  </div>
-</template>
 
 <style scoped lang="scss">
 .user-creation-review-page {

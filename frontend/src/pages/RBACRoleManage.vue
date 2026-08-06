@@ -1,474 +1,3 @@
-<script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
-import { Message, Modal } from '@arco-design/web-vue'
-import {
-  IconPlus,
-  IconEdit,
-  IconDelete,
-  IconSafe,
-  IconSettings,
-  IconLink,
-  IconExclamationCircle,
-  IconDown,
-  IconRight,
-  IconEye,
-  IconApps,
-  IconList,
-  IconLink as IconLinkMini,
-} from '@arco-design/web-vue/es/icon'
-import PageHeader from '@/components/layout/PageHeader.vue'
-import RoleInheritanceTree from '@/components/rbac/RoleInheritanceTree.vue'
-import api from '@/utils/api'
-
-interface RoleRef {
-  id: string
-  name: string
-  display_name: string
-}
-
-interface Role {
-  id: string
-  name: string
-  display_name: string
-  description: string | null
-  role_type: string
-  is_super_admin: boolean
-  is_builtin: boolean
-  created_at: string
-  updated_at: string
-  parent_roles: RoleRef[]
-  child_roles: RoleRef[]
-  all_ancestors: RoleRef[]
-  all_descendants: RoleRef[]
-}
-
-interface Constraint {
-  id: string
-  name: string
-  constraint_type: string
-  is_active: boolean
-  roles: {
-    role_id: string
-    role_name: string
-    role_display_name: string
-    association_type: string
-  }[]
-}
-
-const loading = ref(false)
-const roles = ref<Role[]>([])
-const constraints = ref<Constraint[]>([])
-
-const BUILTIN_COLORS: Record<string, string> = {
-  admin: 'red',
-  manager: 'orangered',
-  operator: 'blue',
-  reviewer: 'green',
-}
-
-const CUSTOM_COLORS = ['arcoblue', 'purple', 'cyan', 'orange', 'pink', 'gold', 'lime', 'magenta']
-
-const roleColorMap = computed(() => {
-  const map: Record<string, string> = {}
-  let customIdx = 0
-  for (const r of roles.value) {
-    if (BUILTIN_COLORS[r.name]) {
-      map[r.name] = BUILTIN_COLORS[r.name]
-    } else {
-      map[r.name] = CUSTOM_COLORS[customIdx % CUSTOM_COLORS.length]
-      customIdx++
-    }
-  }
-  return map
-})
-
-function roleColor(role: Role): string {
-  return roleColorMap.value[role.name] || 'arcoblue'
-}
-
-function roleColorById(roleId: string): string {
-  const role = roles.value.find((r) => r.id === roleId)
-  return role ? roleColor(role) : 'arcoblue'
-}
-
-const sortedRoles = computed(() => {
-  return [...roles.value].sort((a, b) => {
-    if (a.is_super_admin) return -1
-    if (b.is_super_admin) return 1
-    const builtinOrder = ['manager', 'operator', 'reviewer']
-    const aIdx = builtinOrder.indexOf(a.name)
-    const bIdx = builtinOrder.indexOf(b.name)
-    if (aIdx !== -1 && bIdx !== -1) return aIdx - bIdx
-    if (aIdx !== -1) return -1
-    if (bIdx !== -1) return 1
-    return 0
-  })
-})
-
-async function fetchRoles() {
-  loading.value = true
-  try {
-    const res = await api.get<Role[]>('/v2/roles')
-    roles.value = Array.isArray(res.data) ? res.data : []
-  } catch (e: any) {
-    Message.error(e.response?.data?.detail || '加载角色列表失败')
-  } finally {
-    loading.value = false
-  }
-}
-
-async function fetchConstraints() {
-  try {
-    const res = await api.get<Constraint[]>('/v2/constraints')
-    constraints.value = Array.isArray(res.data) ? res.data : []
-  } catch {}
-}
-
-onMounted(async () => {
-  await Promise.all([fetchRoles(), fetchConstraints()])
-})
-
-const addVisible = ref(false)
-const addSaving = ref(false)
-const newRole = ref({
-  name: '',
-  display_name: '',
-  description: '',
-  role_type: 'other' as 'admin' | 'other',
-  parent_role_ids: [] as string[],
-})
-
-const roleTypeOptions = [
-  { value: 'admin', label: '管理类型' },
-  { value: 'other', label: '普通类型' },
-]
-
-function openAdd() {
-  newRole.value = {
-    name: '',
-    display_name: '',
-    description: '',
-    role_type: 'other',
-    parent_role_ids: [],
-  }
-  addVisible.value = true
-}
-
-async function createRole() {
-  if (!newRole.value.name.trim() || !newRole.value.display_name.trim()) {
-    Message.warning('请填写角色标识和显示名称')
-    return
-  }
-  addSaving.value = true
-  try {
-    await api.post<Role>('/v2/roles', newRole.value)
-    Message.success('角色创建成功')
-    addVisible.value = false
-    await fetchRoles()
-  } catch (e: any) {
-    Message.error(e.response?.data?.detail || '创建失败')
-  } finally {
-    addSaving.value = false
-  }
-}
-
-const editVisible = ref(false)
-const editSaving = ref(false)
-const editingRole = ref<Role | null>(null)
-const editForm = ref({
-  display_name: '',
-  description: '',
-  role_type: 'other' as 'admin' | 'other',
-})
-
-function openEdit(role: Role) {
-  editingRole.value = role
-  editForm.value = {
-    display_name: role.display_name,
-    description: role.description || '',
-    role_type: (role.role_type as 'admin' | 'other') || 'other',
-  }
-  editVisible.value = true
-}
-
-async function saveEdit() {
-  if (!editingRole.value) return
-  editSaving.value = true
-  try {
-    await api.put<Role>(`/v2/roles/${editingRole.value.id}`, editForm.value)
-    Message.success('角色已更新')
-    editVisible.value = false
-    await fetchRoles()
-  } catch (e: any) {
-    Message.error(e.response?.data?.detail || '更新失败')
-  } finally {
-    editSaving.value = false
-  }
-}
-
-function deleteRole(role: Role) {
-  Modal.warning({
-    title: '删除角色',
-    content: `确定要删除角色「${role.display_name}」吗？该操作不可逆，已分配的权限和继承关系将被清理。`,
-    hideCancel: false,
-    okText: '删除',
-    cancelText: '取消',
-    onOk: async () => {
-      try {
-        await api.delete(`/v2/roles/${role.id}`)
-        Message.success('角色已删除')
-        await fetchRoles()
-      } catch (e: any) {
-        Message.error(e.response?.data?.detail || '删除失败')
-      }
-    },
-  })
-}
-
-const expandedRoles = ref<Set<string>>(new Set())
-
-function toggleExpand(roleId: string) {
-  const newSet = new Set(expandedRoles.value)
-  if (newSet.has(roleId)) {
-    newSet.delete(roleId)
-  } else {
-    newSet.add(roleId)
-  }
-  expandedRoles.value = newSet
-}
-
-function isExpanded(roleId: string): boolean {
-  return expandedRoles.value.has(roleId)
-}
-
-function hasIndirectRelations(role: Role): boolean {
-  return (
-    role.all_ancestors.length > role.parent_roles.length ||
-    role.all_descendants.length > role.child_roles.length
-  )
-}
-
-function indirectAncestors(role: Role): RoleRef[] {
-  const directIds = new Set(role.parent_roles.map((p) => p.id))
-  return role.all_ancestors.filter((a) => !directIds.has(a.id))
-}
-
-function indirectDescendants(role: Role): RoleRef[] {
-  const directIds = new Set(role.child_roles.map((c) => c.id))
-  return role.all_descendants.filter((d) => !directIds.has(d.id))
-}
-
-function isAncestorOf(ancestorId: string, descendantId: string): boolean {
-  const descendant = roles.value.find((r) => r.id === descendantId)
-  if (!descendant) return false
-  return descendant.all_ancestors.some((a) => a.id === ancestorId)
-}
-
-const parentsVisible = ref(false)
-const parentsRole = ref<Role | null>(null)
-const parentsSaving = ref(false)
-const selectedParents = ref<string[]>([])
-const parentPreviewMap = ref<Record<string, Record<string, string>>>({})
-const parentPreviewLoading = ref<Record<string, boolean>>({})
-
-function openParents(role: Role) {
-  parentsRole.value = role
-  selectedParents.value = role.parent_roles.map((p) => p.id)
-  parentPreviewMap.value = {}
-  parentPreviewLoading.value = {}
-  parentsVisible.value = true
-}
-
-async function fetchParentPreview(parentId: string) {
-  if (!parentsRole.value) return
-  if (parentPreviewMap.value[parentId] !== undefined) return
-
-  parentPreviewLoading.value = { ...parentPreviewLoading.value, [parentId]: true }
-  try {
-    const res = await api.get<Record<string, string>>(
-      `/v2/roles/${parentsRole.value.id}/permissions/preview/${parentId}`,
-    )
-    parentPreviewMap.value = {
-      ...parentPreviewMap.value,
-      [parentId]: res.data || {},
-    }
-  } catch (e: any) {
-    if (e.response?.status === 400) {
-      parentPreviewMap.value = {
-        ...parentPreviewMap.value,
-        [parentId]: { _error: 'cycle' } as any,
-      }
-    } else {
-      parentPreviewMap.value = {
-        ...parentPreviewMap.value,
-        [parentId]: {},
-      }
-    }
-  } finally {
-    parentPreviewLoading.value = { ...parentPreviewLoading.value, [parentId]: false }
-  }
-}
-
-function previewedParentId(): string | null {
-  if (!selectedParents.value.length) return null
-  const currentIds = parentsRole.value
-    ? new Set(parentsRole.value.parent_roles.map((p) => p.id))
-    : new Set<string>()
-  for (const id of selectedParents.value) {
-    if (!currentIds.has(id)) return id
-  }
-  const allCurrentIds = new Set(parentsRole.value?.parent_roles.map((p) => p.id) || [])
-  return selectedParents.value.find((id) => !allCurrentIds.has(id)) || null
-}
-
-watch(
-  () => selectedParents.value,
-  (newVal) => {
-    if (!parentsVisible.value || !parentsRole.value) return
-    const currentIds = new Set(parentsRole.value.parent_roles.map((p) => p.id))
-    const newlyAdded = newVal.filter((id) => !currentIds.has(id))
-    for (const id of newlyAdded) {
-      fetchParentPreview(id)
-    }
-  },
-  { immediate: false },
-)
-
-function groupedPreviewPermissions(): {
-  resource: string
-  keys: { key: string; name: string }[]
-}[] {
-  const preview = parentPreviewMap.value
-  const pid = previewedParentId()
-  if (!pid) return []
-  const perms = preview[pid]
-  if (!perms || (perms as any)._error) return []
-
-  const groups: Record<string, { key: string; name: string }[]> = {}
-  for (const [key, name] of Object.entries(perms)) {
-    const parts = key.split(':')
-    const resource = parts[0]
-    if (!groups[resource]) groups[resource] = []
-    groups[resource].push({ key, name })
-  }
-  return Object.entries(groups).map(([resource, keys]) => ({ resource, keys }))
-}
-
-function availableParentOptions(role: Role) {
-  return roles.value.filter((r) => {
-    if (r.id === role.id) return false
-    if (r.is_super_admin) return false
-    return true
-  })
-}
-
-function isCycleCandidate(parentId: string): boolean {
-  if (!parentsRole.value) return false
-  return isAncestorOf(parentsRole.value.id, parentId)
-}
-
-async function saveParents() {
-  if (!parentsRole.value) return
-  parentsSaving.value = true
-  try {
-    const currentIds = new Set(parentsRole.value.parent_roles.map((p) => p.id))
-    const nextIds = new Set(selectedParents.value)
-
-    const toAdd = selectedParents.value.filter((id) => !currentIds.has(id))
-    const toRemove = parentsRole.value.parent_roles.filter((p) => !nextIds.has(p.id))
-
-    for (const parentId of toAdd) {
-      try {
-        await api.post(`/v2/roles/${parentsRole.value.id}/parents`, { id: parentId })
-      } catch (e: any) {
-        const msg = e.response?.data?.detail || '添加父角色失败'
-        if (msg.includes('循环继承')) {
-          Message.error(`无法添加「${getRoleName(parentId)}」为父角色：会形成循环继承`)
-        } else {
-          Message.error(msg)
-        }
-        parentsSaving.value = false
-        return
-      }
-    }
-    for (const parent of toRemove) {
-      await api.delete(`/v2/roles/${parentsRole.value.id}/parents/${parent.id}`)
-    }
-
-    Message.success('父角色已更新')
-    parentsVisible.value = false
-    await fetchRoles()
-  } catch (e: any) {
-    Message.error(e.response?.data?.detail || '更新失败')
-  } finally {
-    parentsSaving.value = false
-  }
-}
-
-function getRoleName(roleId: string): string {
-  const role = roles.value.find((r) => r.id === roleId)
-  return role ? role.display_name : roleId
-}
-
-function constraintTypeLabel(type: string): string {
-  const map: Record<string, string> = {
-    mutual_exclusive: '互斥角色',
-    prerequisite: '先决角色',
-    cardinality: '基数约束',
-  }
-  return map[type] || type
-}
-
-function constraintTypeColor(type: string): string {
-  const map: Record<string, string> = {
-    mutual_exclusive: 'red',
-    prerequisite: 'arcoblue',
-    cardinality: 'purple',
-  }
-  return map[type] || 'gray'
-}
-
-function constraintsForRole(roleId: string): Constraint[] {
-  return constraints.value.filter((c) => c.is_active && c.roles.some((r) => r.role_id === roleId))
-}
-
-function formatConstraintRoles(constraint: Constraint, roleId: string): string {
-  const others = constraint.roles
-    .filter((r) => r.role_id !== roleId)
-    .map((r) => r.role_display_name || r.role_name)
-  return others.length > 0 ? others.join('、') : '—'
-}
-
-const inheritanceRole = ref<Role | null>(null)
-const inheritanceDrawerVisible = ref(false)
-
-function openInheritance(role: Role) {
-  inheritanceRole.value = role
-  inheritanceDrawerVisible.value = false
-}
-
-function closeInheritancePanel() {
-  inheritanceRole.value = null
-  inheritanceDrawerVisible.value = false
-}
-
-function openInheritanceDrawer(role: Role) {
-  inheritanceRole.value = role
-  inheritanceDrawerVisible.value = true
-}
-
-const windowWidth = ref(window.innerWidth)
-function onResize() {
-  windowWidth.value = window.innerWidth
-}
-onMounted(() => {
-  window.addEventListener('resize', onResize)
-})
-const isMobile = computed(() => windowWidth.value < 1024)
-
-const viewMode = ref<'card' | 'table'>('card')
-</script>
-
 <template>
   <div class="page-main relative">
     <PageHeader title="角色管理" subtitle="管理系统角色、自定义角色与角色继承关系">
@@ -1087,7 +616,478 @@ const viewMode = ref<'card' | 'table'>('card')
   </div>
 </template>
 
-<style scoped>
+<script setup lang="ts">
+import { ref, computed, onMounted, watch } from 'vue'
+import { Message, Modal } from '@arco-design/web-vue'
+import {
+  IconPlus,
+  IconEdit,
+  IconDelete,
+  IconSafe,
+  IconSettings,
+  IconLink,
+  IconExclamationCircle,
+  IconDown,
+  IconRight,
+  IconEye,
+  IconApps,
+  IconList,
+  IconLink as IconLinkMini,
+} from '@arco-design/web-vue/es/icon'
+import PageHeader from '@/components/layout/PageHeader.vue'
+import RoleInheritanceTree from '@/components/rbac/RoleInheritanceTree.vue'
+import api from '@/utils/api'
+
+interface RoleRef {
+  id: string
+  name: string
+  display_name: string
+}
+
+interface Role {
+  id: string
+  name: string
+  display_name: string
+  description: string | null
+  role_type: string
+  is_super_admin: boolean
+  is_builtin: boolean
+  created_at: string
+  updated_at: string
+  parent_roles: RoleRef[]
+  child_roles: RoleRef[]
+  all_ancestors: RoleRef[]
+  all_descendants: RoleRef[]
+}
+
+interface Constraint {
+  id: string
+  name: string
+  constraint_type: string
+  is_active: boolean
+  roles: {
+    role_id: string
+    role_name: string
+    role_display_name: string
+    association_type: string
+  }[]
+}
+
+const loading = ref(false)
+const roles = ref<Role[]>([])
+const constraints = ref<Constraint[]>([])
+
+const BUILTIN_COLORS: Record<string, string> = {
+  admin: 'red',
+  manager: 'orangered',
+  operator: 'blue',
+  reviewer: 'green',
+}
+
+const CUSTOM_COLORS = ['arcoblue', 'purple', 'cyan', 'orange', 'pink', 'gold', 'lime', 'magenta']
+
+const roleColorMap = computed(() => {
+  const map: Record<string, string> = {}
+  let customIdx = 0
+  for (const r of roles.value) {
+    if (BUILTIN_COLORS[r.name]) {
+      map[r.name] = BUILTIN_COLORS[r.name]
+    } else {
+      map[r.name] = CUSTOM_COLORS[customIdx % CUSTOM_COLORS.length]
+      customIdx++
+    }
+  }
+  return map
+})
+
+function roleColor(role: Role): string {
+  return roleColorMap.value[role.name] || 'arcoblue'
+}
+
+function roleColorById(roleId: string): string {
+  const role = roles.value.find((r) => r.id === roleId)
+  return role ? roleColor(role) : 'arcoblue'
+}
+
+const sortedRoles = computed(() => {
+  return [...roles.value].sort((a, b) => {
+    if (a.is_super_admin) return -1
+    if (b.is_super_admin) return 1
+    const builtinOrder = ['manager', 'operator', 'reviewer']
+    const aIdx = builtinOrder.indexOf(a.name)
+    const bIdx = builtinOrder.indexOf(b.name)
+    if (aIdx !== -1 && bIdx !== -1) return aIdx - bIdx
+    if (aIdx !== -1) return -1
+    if (bIdx !== -1) return 1
+    return 0
+  })
+})
+
+async function fetchRoles() {
+  loading.value = true
+  try {
+    const res = await api.get<Role[]>('/v2/roles')
+    roles.value = Array.isArray(res.data) ? res.data : []
+  } catch (e: any) {
+    Message.error(e.response?.data?.detail || '加载角色列表失败')
+  } finally {
+    loading.value = false
+  }
+}
+
+async function fetchConstraints() {
+  try {
+    const res = await api.get<Constraint[]>('/v2/constraints')
+    constraints.value = Array.isArray(res.data) ? res.data : []
+  } catch {}
+}
+
+onMounted(async () => {
+  await Promise.all([fetchRoles(), fetchConstraints()])
+})
+
+const addVisible = ref(false)
+const addSaving = ref(false)
+const newRole = ref({
+  name: '',
+  display_name: '',
+  description: '',
+  role_type: 'other' as 'admin' | 'other',
+  parent_role_ids: [] as string[],
+})
+
+const roleTypeOptions = [
+  { value: 'admin', label: '管理类型' },
+  { value: 'other', label: '普通类型' },
+]
+
+function openAdd() {
+  newRole.value = {
+    name: '',
+    display_name: '',
+    description: '',
+    role_type: 'other',
+    parent_role_ids: [],
+  }
+  addVisible.value = true
+}
+
+async function createRole() {
+  if (!newRole.value.name.trim() || !newRole.value.display_name.trim()) {
+    Message.warning('请填写角色标识和显示名称')
+    return
+  }
+  addSaving.value = true
+  try {
+    await api.post<Role>('/v2/roles', newRole.value)
+    Message.success('角色创建成功')
+    addVisible.value = false
+    await fetchRoles()
+  } catch (e: any) {
+    Message.error(e.response?.data?.detail || '创建失败')
+  } finally {
+    addSaving.value = false
+  }
+}
+
+const editVisible = ref(false)
+const editSaving = ref(false)
+const editingRole = ref<Role | null>(null)
+const editForm = ref({
+  display_name: '',
+  description: '',
+  role_type: 'other' as 'admin' | 'other',
+})
+
+function openEdit(role: Role) {
+  editingRole.value = role
+  editForm.value = {
+    display_name: role.display_name,
+    description: role.description || '',
+    role_type: (role.role_type as 'admin' | 'other') || 'other',
+  }
+  editVisible.value = true
+}
+
+async function saveEdit() {
+  if (!editingRole.value) return
+  editSaving.value = true
+  try {
+    await api.put<Role>(`/v2/roles/${editingRole.value.id}`, editForm.value)
+    Message.success('角色已更新')
+    editVisible.value = false
+    await fetchRoles()
+  } catch (e: any) {
+    Message.error(e.response?.data?.detail || '更新失败')
+  } finally {
+    editSaving.value = false
+  }
+}
+
+function deleteRole(role: Role) {
+  Modal.warning({
+    title: '删除角色',
+    content: `确定要删除角色「${role.display_name}」吗？该操作不可逆，已分配的权限和继承关系将被清理。`,
+    hideCancel: false,
+    okText: '删除',
+    cancelText: '取消',
+    onOk: async () => {
+      try {
+        await api.delete(`/v2/roles/${role.id}`)
+        Message.success('角色已删除')
+        await fetchRoles()
+      } catch (e: any) {
+        Message.error(e.response?.data?.detail || '删除失败')
+      }
+    },
+  })
+}
+
+const expandedRoles = ref<Set<string>>(new Set())
+
+function toggleExpand(roleId: string) {
+  const newSet = new Set(expandedRoles.value)
+  if (newSet.has(roleId)) {
+    newSet.delete(roleId)
+  } else {
+    newSet.add(roleId)
+  }
+  expandedRoles.value = newSet
+}
+
+function isExpanded(roleId: string): boolean {
+  return expandedRoles.value.has(roleId)
+}
+
+function hasIndirectRelations(role: Role): boolean {
+  return (
+    role.all_ancestors.length > role.parent_roles.length ||
+    role.all_descendants.length > role.child_roles.length
+  )
+}
+
+function indirectAncestors(role: Role): RoleRef[] {
+  const directIds = new Set(role.parent_roles.map((p) => p.id))
+  return role.all_ancestors.filter((a) => !directIds.has(a.id))
+}
+
+function indirectDescendants(role: Role): RoleRef[] {
+  const directIds = new Set(role.child_roles.map((c) => c.id))
+  return role.all_descendants.filter((d) => !directIds.has(d.id))
+}
+
+function isAncestorOf(ancestorId: string, descendantId: string): boolean {
+  const descendant = roles.value.find((r) => r.id === descendantId)
+  if (!descendant) return false
+  return descendant.all_ancestors.some((a) => a.id === ancestorId)
+}
+
+const parentsVisible = ref(false)
+const parentsRole = ref<Role | null>(null)
+const parentsSaving = ref(false)
+const selectedParents = ref<string[]>([])
+const parentPreviewMap = ref<Record<string, Record<string, string>>>({})
+const parentPreviewLoading = ref<Record<string, boolean>>({})
+
+function openParents(role: Role) {
+  parentsRole.value = role
+  selectedParents.value = role.parent_roles.map((p) => p.id)
+  parentPreviewMap.value = {}
+  parentPreviewLoading.value = {}
+  parentsVisible.value = true
+}
+
+async function fetchParentPreview(parentId: string) {
+  if (!parentsRole.value) return
+  if (parentPreviewMap.value[parentId] !== undefined) return
+
+  parentPreviewLoading.value = { ...parentPreviewLoading.value, [parentId]: true }
+  try {
+    const res = await api.get<Record<string, string>>(
+      `/v2/roles/${parentsRole.value.id}/permissions/preview/${parentId}`,
+    )
+    parentPreviewMap.value = {
+      ...parentPreviewMap.value,
+      [parentId]: res.data || {},
+    }
+  } catch (e: any) {
+    if (e.response?.status === 400) {
+      parentPreviewMap.value = {
+        ...parentPreviewMap.value,
+        [parentId]: { _error: 'cycle' } as any,
+      }
+    } else {
+      parentPreviewMap.value = {
+        ...parentPreviewMap.value,
+        [parentId]: {},
+      }
+    }
+  } finally {
+    parentPreviewLoading.value = { ...parentPreviewLoading.value, [parentId]: false }
+  }
+}
+
+function previewedParentId(): string | null {
+  if (!selectedParents.value.length) return null
+  const currentIds = parentsRole.value
+    ? new Set(parentsRole.value.parent_roles.map((p) => p.id))
+    : new Set<string>()
+  for (const id of selectedParents.value) {
+    if (!currentIds.has(id)) return id
+  }
+  const allCurrentIds = new Set(parentsRole.value?.parent_roles.map((p) => p.id) || [])
+  return selectedParents.value.find((id) => !allCurrentIds.has(id)) || null
+}
+
+watch(
+  () => selectedParents.value,
+  (newVal) => {
+    if (!parentsVisible.value || !parentsRole.value) return
+    const currentIds = new Set(parentsRole.value.parent_roles.map((p) => p.id))
+    const newlyAdded = newVal.filter((id) => !currentIds.has(id))
+    for (const id of newlyAdded) {
+      fetchParentPreview(id)
+    }
+  },
+  { immediate: false },
+)
+
+function groupedPreviewPermissions(): {
+  resource: string
+  keys: { key: string; name: string }[]
+}[] {
+  const preview = parentPreviewMap.value
+  const pid = previewedParentId()
+  if (!pid) return []
+  const perms = preview[pid]
+  if (!perms || (perms as any)._error) return []
+
+  const groups: Record<string, { key: string; name: string }[]> = {}
+  for (const [key, name] of Object.entries(perms)) {
+    const parts = key.split(':')
+    const resource = parts[0]
+    if (!groups[resource]) groups[resource] = []
+    groups[resource].push({ key, name })
+  }
+  return Object.entries(groups).map(([resource, keys]) => ({ resource, keys }))
+}
+
+function availableParentOptions(role: Role) {
+  return roles.value.filter((r) => {
+    if (r.id === role.id) return false
+    if (r.is_super_admin) return false
+    return true
+  })
+}
+
+function isCycleCandidate(parentId: string): boolean {
+  if (!parentsRole.value) return false
+  return isAncestorOf(parentsRole.value.id, parentId)
+}
+
+async function saveParents() {
+  if (!parentsRole.value) return
+  parentsSaving.value = true
+  try {
+    const currentIds = new Set(parentsRole.value.parent_roles.map((p) => p.id))
+    const nextIds = new Set(selectedParents.value)
+
+    const toAdd = selectedParents.value.filter((id) => !currentIds.has(id))
+    const toRemove = parentsRole.value.parent_roles.filter((p) => !nextIds.has(p.id))
+
+    for (const parentId of toAdd) {
+      try {
+        await api.post(`/v2/roles/${parentsRole.value.id}/parents`, { id: parentId })
+      } catch (e: any) {
+        const msg = e.response?.data?.detail || '添加父角色失败'
+        if (msg.includes('循环继承')) {
+          Message.error(`无法添加「${getRoleName(parentId)}」为父角色：会形成循环继承`)
+        } else {
+          Message.error(msg)
+        }
+        parentsSaving.value = false
+        return
+      }
+    }
+    for (const parent of toRemove) {
+      await api.delete(`/v2/roles/${parentsRole.value.id}/parents/${parent.id}`)
+    }
+
+    Message.success('父角色已更新')
+    parentsVisible.value = false
+    await fetchRoles()
+  } catch (e: any) {
+    Message.error(e.response?.data?.detail || '更新失败')
+  } finally {
+    parentsSaving.value = false
+  }
+}
+
+function getRoleName(roleId: string): string {
+  const role = roles.value.find((r) => r.id === roleId)
+  return role ? role.display_name : roleId
+}
+
+function constraintTypeLabel(type: string): string {
+  const map: Record<string, string> = {
+    mutual_exclusive: '互斥角色',
+    prerequisite: '先决角色',
+    cardinality: '基数约束',
+  }
+  return map[type] || type
+}
+
+function constraintTypeColor(type: string): string {
+  const map: Record<string, string> = {
+    mutual_exclusive: 'red',
+    prerequisite: 'arcoblue',
+    cardinality: 'purple',
+  }
+  return map[type] || 'gray'
+}
+
+function constraintsForRole(roleId: string): Constraint[] {
+  return constraints.value.filter((c) => c.is_active && c.roles.some((r) => r.role_id === roleId))
+}
+
+function formatConstraintRoles(constraint: Constraint, roleId: string): string {
+  const others = constraint.roles
+    .filter((r) => r.role_id !== roleId)
+    .map((r) => r.role_display_name || r.role_name)
+  return others.length > 0 ? others.join('、') : '—'
+}
+
+const inheritanceRole = ref<Role | null>(null)
+const inheritanceDrawerVisible = ref(false)
+
+function openInheritance(role: Role) {
+  inheritanceRole.value = role
+  inheritanceDrawerVisible.value = false
+}
+
+function closeInheritancePanel() {
+  inheritanceRole.value = null
+  inheritanceDrawerVisible.value = false
+}
+
+function openInheritanceDrawer(role: Role) {
+  inheritanceRole.value = role
+  inheritanceDrawerVisible.value = true
+}
+
+const windowWidth = ref(window.innerWidth)
+function onResize() {
+  windowWidth.value = window.innerWidth
+}
+onMounted(() => {
+  window.addEventListener('resize', onResize)
+})
+const isMobile = computed(() => windowWidth.value < 1024)
+
+const viewMode = ref<'card' | 'table'>('card')
+</script>
+
+<style scoped lang="scss">
 .role-card {
   background: rgba(255, 255, 255, 0.8);
   backdrop-filter: blur(20px);

@@ -1,14 +1,14 @@
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Optional
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import func, select, text
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.deps import get_current_user, PermAPIRoute, RequiresPermissions
-from app.database import async_session_factory, get_db
+from app.core.deps import PermAPIRoute, RequiresPermissions, get_current_user
+from app.database import get_db
 from app.models.notification import Notification, NotificationType
 from app.models.rbac_permission import RBACPermission
 from app.models.rbac_role_hierarchy import RBACRoleHierarchy
@@ -21,6 +21,20 @@ from app.models.sql_change_request import (
 )
 from app.models.sql_history import SqlHistory
 from app.models.user import User
+from app.services.notification_broadcaster import broadcaster
+
+
+def _notification_dict(n: Notification) -> dict:
+    return {
+        "id": n.id,
+        "type": n.type.value if hasattr(n.type, "value") else n.type,
+        "title": n.title,
+        "content": n.content,
+        "related_id": n.related_id,
+        "is_read": n.is_read,
+        "created_at": n.created_at.isoformat() if n.created_at else None,
+    }
+
 
 router = APIRouter(prefix="/api/db-changes", tags=["SQL 变更审核"], route_class=PermAPIRoute)
 
@@ -41,9 +55,7 @@ async def _user_ids_with_permission(
         return set()
 
     rp_result = await db.execute(
-        select(RBACRolePermission.role_id).where(
-            RBACRolePermission.permission_id == perm.id
-        )
+        select(RBACRolePermission.role_id).where(RBACRolePermission.permission_id == perm.id)
     )
     role_ids = {row for row in rp_result.scalars().all()}
     if not role_ids:
@@ -75,6 +87,7 @@ async def _user_ids_with_permission(
         .distinct()
     )
     return {row[0] for row in user_result.all()}
+
 
 REQUIRED_APPROVALS = 2
 
@@ -172,15 +185,16 @@ async def submit_change(
     reviewers = reviewers_result.scalars().all()
     type_label = "删除" if "delete" in body.change_type else "修改"
     for reviewer in reviewers:
-        db.add(
-            Notification(
-                user_id=reviewer.id,
-                type=NotificationType.review_submit,
-                title="SQL 变更待审核",
-                content=f"{current_user.nickname} 提交了一条 SQL {type_label}操作待审核：{sql[:100]}",
-                related_id=req.id,
-            )
+        notification = Notification(
+            user_id=reviewer.id,
+            type=NotificationType.review_submit,
+            title="SQL 变更待审核",
+            content=f"{current_user.nickname} 提交了一条 SQL {type_label}操作待审核：{sql[:100]}",
+            related_id=req.id,
         )
+        db.add(notification)
+        await db.flush()
+        await broadcaster.broadcast(reviewer.id, _notification_dict(notification))
     await db.commit()
 
     return _to_item(req, current_user.nickname)
@@ -204,9 +218,7 @@ async def list_changes(
 
     items = []
     for req in reqs:
-        user_result = await db.execute(
-            select(User).where(User.id == req.requester_id)
-        )
+        user_result = await db.execute(select(User).where(User.id == req.requester_id))
         requester = user_result.scalar_one_or_none()
         items.append(_to_item(req, requester.nickname if requester else None))
 
@@ -222,9 +234,7 @@ async def approve_change(
 ):
     """审核通过 SQL 变更（达到 2 人通过后自动执行）"""
 
-    result = await db.execute(
-        select(SqlChangeRequest).where(SqlChangeRequest.id == change_id)
-    )
+    result = await db.execute(select(SqlChangeRequest).where(SqlChangeRequest.id == change_id))
     req = result.scalar_one_or_none()
     if not req:
         raise HTTPException(status_code=404, detail="审核请求不存在")
@@ -262,26 +272,28 @@ async def approve_change(
                 message=msg,
             )
         )
-        db.add(
-            Notification(
-                user_id=req.requester_id,
-                type=NotificationType.review_approved,
-                title="SQL 变更已执行" if success else "SQL 变更执行失败",
-                content=notify_content,
-                related_id=req.id,
-            )
+        notification = Notification(
+            user_id=req.requester_id,
+            type=NotificationType.review_approved,
+            title="SQL 变更已执行" if success else "SQL 变更执行失败",
+            content=notify_content,
+            related_id=req.id,
         )
+        db.add(notification)
+        await db.flush()
+        await broadcaster.broadcast(req.requester_id, _notification_dict(notification))
     else:
         req.status = SqlChangeStatus.approved.value
-        db.add(
-            Notification(
-                user_id=req.requester_id,
-                type=NotificationType.review_approved,
-                title="SQL 变更审核进度",
-                content=f"您提交的 SQL 变更已获得 {req.approvals}/{req.required_approvals} 人审核通过",
-                related_id=req.id,
-            )
+        notification = Notification(
+            user_id=req.requester_id,
+            type=NotificationType.review_approved,
+            title="SQL 变更审核进度",
+            content=f"您提交的 SQL 变更已获得 {req.approvals}/{req.required_approvals} 人审核通过",
+            related_id=req.id,
         )
+        db.add(notification)
+        await db.flush()
+        await broadcaster.broadcast(req.requester_id, _notification_dict(notification))
 
     await db.commit()
     await db.refresh(req)
@@ -300,9 +312,7 @@ async def reject_change(
 ):
     """驳回 SQL 变更请求"""
 
-    result = await db.execute(
-        select(SqlChangeRequest).where(SqlChangeRequest.id == change_id)
-    )
+    result = await db.execute(select(SqlChangeRequest).where(SqlChangeRequest.id == change_id))
     req = result.scalar_one_or_none()
     if not req:
         raise HTTPException(status_code=404, detail="审核请求不存在")
@@ -313,15 +323,16 @@ async def reject_change(
     req.status = SqlChangeStatus.rejected.value
     req.reject_reason = reason or "未填写原因"
 
-    db.add(
-        Notification(
-            user_id=req.requester_id,
-            type=NotificationType.review_rejected,
-            title="SQL 变更被驳回",
-            content=f"您提交的 SQL 变更被驳回，原因：{req.reject_reason}",
-            related_id=req.id,
-        )
+    notification = Notification(
+        user_id=req.requester_id,
+        type=NotificationType.review_rejected,
+        title="SQL 变更被驳回",
+        content=f"您提交的 SQL 变更被驳回，原因：{req.reject_reason}",
+        related_id=req.id,
     )
+    db.add(notification)
+    await db.flush()
+    await broadcaster.broadcast(req.requester_id, _notification_dict(notification))
     await db.commit()
     await db.refresh(req)
 

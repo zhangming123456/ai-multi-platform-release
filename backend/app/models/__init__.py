@@ -3,6 +3,7 @@ from app.models.ai_generation import AIGenerationRecord
 from app.models.content import Content, ContentStatus
 from app.models.model_config import ModelConfig
 from app.models.notification import Notification, NotificationType
+from app.models.notification_dict import DictCategory, NotificationDict
 from app.models.publish_task import PublishTask, PublishTaskStatus
 from app.models.rbac_constraint import RBACConstraint, RBACConstraintRoleAssociation
 from app.models.rbac_permission import RBACPermission
@@ -29,6 +30,8 @@ __all__ = [
     "ModelConfig",
     "Notification",
     "NotificationType",
+    "NotificationDict",
+    "DictCategory",
     "PublishTask",
     "PublishTaskStatus",
     "RBACRole",

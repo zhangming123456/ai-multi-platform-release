@@ -1,3 +1,112 @@
+<template>
+  <div class="page-main">
+    <PageHeader title="用户管理" subtitle="管理系统用户账号与 RBAC3 角色分配">
+      <template #actions>
+        <a-button
+          v-perm="'users:create:write'"
+          type="text"
+          size="mini"
+          class="!text-[#007AFF] !px-0 !h-auto"
+          @click="goCreate"
+        >
+          <template #icon><IconPlus :size="13" /></template>
+          添加账号
+        </a-button>
+      </template>
+    </PageHeader>
+
+    <a-spin :loading="loading" tip="加载中..." class="w-full">
+      <a-table
+        :columns="columns"
+        :data="users"
+        :bordered="false"
+        :hoverable="true"
+        :pagination="false"
+      >
+        <template #email="{ record }">
+          <span class="text-[13px] text-[#86868b]">{{ record.email || '--' }}</span>
+        </template>
+        <template #roles="{ record }">
+          <div class="flex flex-wrap gap-1.5">
+            <a-tag
+              v-for="role in record.roles"
+              :key="role.id"
+              :color="roleColor(role.id)"
+              size="small"
+              class="!m-0"
+            >
+              {{ role.display_name }}
+            </a-tag>
+            <span v-if="record.roles.length === 0" class="text-[13px] text-[#86868b]"
+              >未分配角色</span
+            >
+          </div>
+        </template>
+        <template #createdAt="{ record }">
+          <span class="text-[13px] text-[#86868b]">{{ formatDateTime(record.created_at) }}</span>
+        </template>
+        <template #actions="{ record }">
+          <a-space :size="2">
+            <a-tooltip content="自定义权限">
+              <a-button
+                v-perm="{
+                  key: 'users:custom_permissions:read || isSelf(user_id)',
+                  ctx: { user_id: record.id },
+                }"
+                type="text"
+                @click="goPermissions(record)"
+              >
+                <template #icon><IconEye /></template>
+              </a-button>
+            </a-tooltip>
+            <a-tooltip content="修改密码">
+              <a-button
+                v-perm="{
+                  key: 'users:change_password:read || isSelf(user_id)',
+                  ctx: { user_id: record.id },
+                }"
+                type="text"
+                size="small"
+                @click="goPassword(record)"
+              >
+                <template #icon><IconLock /></template>
+              </a-button>
+            </a-tooltip>
+            <a-tooltip content="编辑用户">
+              <a-button
+                v-perm="{ key: 'users:update:read||isSelf(user_id)', ctx: { user_id: record.id } }"
+                type="text"
+                size="small"
+                @click="goEdit(record)"
+              >
+                <template #icon><IconEdit /></template>
+              </a-button>
+            </a-tooltip>
+            <a-popconfirm content="确定要删除该用户吗？" @ok="removeUser(record)">
+              <a-tooltip content="删除">
+                <a-button
+                  v-perm="{
+                    key: 'users:delete:write & !isSelf(user_id) & !isBuiltInAdmin(user_id)',
+                    ctx: { user_id: record.id },
+                  }"
+                  type="text"
+                  status="danger"
+                  size="small"
+                >
+                  <template #icon><IconDelete /></template>
+                </a-button>
+              </a-tooltip>
+            </a-popconfirm>
+          </a-space>
+        </template>
+        <template #empty>
+          <a-empty description="暂无用户" />
+        </template>
+      </a-table>
+    </a-spin>
+  </div>
+</template>
+
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
@@ -116,112 +225,3 @@ function removeUser(user: UserListItem) {
   })
 }
 </script>
-
-<template>
-  <div class="page-main">
-    <PageHeader title="用户管理" subtitle="管理系统用户账号与 RBAC3 角色分配">
-      <template #actions>
-        <a-button
-          v-perm="'users:create:write'"
-          type="text"
-          size="mini"
-          class="!text-[#007AFF] !px-0 !h-auto"
-          @click="goCreate"
-        >
-          <template #icon><IconPlus :size="13" /></template>
-          添加账号
-        </a-button>
-      </template>
-    </PageHeader>
-
-    <a-spin :loading="loading" tip="加载中..." class="w-full">
-      <a-table
-        :columns="columns"
-        :data="users"
-        :bordered="false"
-        :hoverable="true"
-        :pagination="false"
-      >
-        <template #email="{ record }">
-          <span class="text-[13px] text-[#86868b]">{{ record.email || '--' }}</span>
-        </template>
-        <template #roles="{ record }">
-          <div class="flex flex-wrap gap-1.5">
-            <a-tag
-              v-for="role in record.roles"
-              :key="role.id"
-              :color="roleColor(role.id)"
-              size="small"
-              class="!m-0"
-            >
-              {{ role.display_name }}
-            </a-tag>
-            <span v-if="record.roles.length === 0" class="text-[13px] text-[#86868b]"
-              >未分配角色</span
-            >
-          </div>
-        </template>
-        <template #createdAt="{ record }">
-          <span class="text-[13px] text-[#86868b]">{{ formatDateTime(record.created_at) }}</span>
-        </template>
-        <template #actions="{ record }">
-          <a-space :size="2">
-            <a-tooltip content="自定义权限">
-              <a-button
-                v-perm="{
-                  key: 'users:custom_permissions:read || isSelf(user_id)',
-                  ctx: { user_id: record.id },
-                }"
-                type="text"
-                @click="goPermissions(record)"
-              >
-                <template #icon><IconEye /></template>
-              </a-button>
-            </a-tooltip>
-            <a-tooltip content="修改密码">
-              <a-button
-                v-perm="{
-                  key: 'users:change_password:read || isSelf(user_id)',
-                  ctx: { user_id: record.id },
-                }"
-                type="text"
-                size="small"
-                @click="goPassword(record)"
-              >
-                <template #icon><IconLock /></template>
-              </a-button>
-            </a-tooltip>
-            <a-tooltip content="编辑用户">
-              <a-button
-                v-perm="{ key: 'users:update:read||isSelf(user_id)', ctx: { user_id: record.id } }"
-                type="text"
-                size="small"
-                @click="goEdit(record)"
-              >
-                <template #icon><IconEdit /></template>
-              </a-button>
-            </a-tooltip>
-            <a-popconfirm content="确定要删除该用户吗？" @ok="removeUser(record)">
-              <a-tooltip content="删除">
-                <a-button
-                  v-perm="{
-                    key: 'users:delete:write & !isSelf(user_id) & !isBuiltInAdmin(user_id)',
-                    ctx: { user_id: record.id },
-                  }"
-                  type="text"
-                  status="danger"
-                  size="small"
-                >
-                  <template #icon><IconDelete /></template>
-                </a-button>
-              </a-tooltip>
-            </a-popconfirm>
-          </a-space>
-        </template>
-        <template #empty>
-          <a-empty description="暂无用户" />
-        </template>
-      </a-table>
-    </a-spin>
-  </div>
-</template>

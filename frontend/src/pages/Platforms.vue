@@ -1,3 +1,119 @@
+<template>
+  <div>
+    <PageHeader title="平台管理" subtitle="统一管理您在各平台的账号矩阵">
+      <template #actions>
+        <a-button type="primary" @click="showAddModal = true">
+          <template #icon>
+            <IconPlus />
+          </template>
+          添加账号
+        </a-button>
+      </template>
+    </PageHeader>
+
+    <div class="mb-5">
+      <SegmentedControl v-model="platformFilter" :options="platformOptions" />
+    </div>
+
+    <a-spin :loading="loading" tip="加载中..." style="display: block; width: 100%">
+      <a-empty v-if="!loading && filteredAccounts.length === 0" description="暂无账号" />
+      <a-row v-else :gutter="[16, 20]">
+        <a-col v-for="account in filteredAccounts" :key="account.id" :xs="24" :md="12" :lg="8">
+          <a-card :bordered="false" hoverable style="padding: 20px">
+            <a-space :size="12" align="start" fill>
+              <PlatformIcon :platform="account.platform" size="lg" />
+              <div style="flex: 1; min-width: 0">
+                <div style="display: flex; align-items: center; justify-content: space-between">
+                  <a-typography-text bold style="font-size: 15px">{{
+                    account.nickname
+                  }}</a-typography-text>
+                  <StatusBadge :status="account.status" />
+                </div>
+                <a-typography-text type="secondary" style="font-size: 12px"
+                  >粉丝 --</a-typography-text
+                >
+              </div>
+            </a-space>
+            <a-divider style="margin: 12px 0" />
+            <div style="display: flex; align-items: center; justify-content: space-between">
+              <a-typography-text type="disabled" style="font-size: 11px"
+                >最近检查 {{ formatRelativeTime(account.last_check_at) }}</a-typography-text
+              >
+              <a-space :size="4">
+                <a-button
+                  type="text"
+                  size="mini"
+                  title="刷新状态"
+                  :loading="checkingId === account.id"
+                  @click="checkStatus(account.id)"
+                >
+                  <template #icon>
+                    <IconRefresh />
+                  </template>
+                </a-button>
+                <a-button
+                  type="text"
+                  size="mini"
+                  status="danger"
+                  title="移除账号"
+                  :loading="deletingId === account.id"
+                  @click="deleteAccount(account.id)"
+                >
+                  <template #icon>
+                    <IconDelete />
+                  </template>
+                </a-button>
+              </a-space>
+            </div>
+          </a-card>
+        </a-col>
+      </a-row>
+    </a-spin>
+
+    <Modal v-model:visible="showAddModal" title="添加平台账号" width="480px">
+      <a-form :model="newAccount" layout="vertical">
+        <a-form-item label="选择平台">
+          <a-radio-group v-model="newAccount.platform" type="button">
+            <a-radio v-for="choice in platformChoices" :key="choice.value" :value="choice.value">
+              <a-space :size="6" align="center">
+                <PlatformIcon :platform="choice.value as 'wechat_mp'" size="sm" />
+                {{ choice.label }}
+              </a-space>
+            </a-radio>
+          </a-radio-group>
+        </a-form-item>
+        <a-form-item label="账号昵称">
+          <a-input v-model="newAccount.nickname" placeholder="请输入账号昵称" />
+        </a-form-item>
+        <a-form-item label="Cookie / 授权信息">
+          <a-textarea
+            v-model="newAccount.cookie"
+            placeholder="粘贴该平台的登录 Cookie 或授权 Token"
+            :auto-size="{ minRows: 3, maxRows: 5 }"
+          />
+          <template #extra> 我们将使用独立浏览器指纹与环境隔离，保障账号安全 </template>
+        </a-form-item>
+      </a-form>
+      <template #footer>
+        <a-space>
+          <a-button @click="showAddModal = false">取消</a-button>
+          <a-button
+            type="primary"
+            :disabled="!newAccount.nickname"
+            :loading="submitting"
+            @click="addAccount"
+          >
+            <template #icon>
+              <IconCheck />
+            </template>
+            验证并添加
+          </a-button>
+        </a-space>
+      </template>
+    </Modal>
+  </div>
+</template>
+
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { Message } from '@arco-design/web-vue'
@@ -115,7 +231,12 @@ async function deleteAccount(id: string) {
 async function checkStatus(id: string) {
   checkingId.value = id
   try {
-    const { data } = await api.post<{ id: string; status: AccountStatus; last_check_at: string; error_message: string | null }>(`/accounts/${id}/check`)
+    const { data } = await api.post<{
+      id: string
+      status: AccountStatus
+      last_check_at: string
+      error_message: string | null
+    }>(`/accounts/${id}/check`)
     const idx = accounts.value.findIndex((a) => a.id === id)
     if (idx !== -1) {
       accounts.value[idx] = {
@@ -138,123 +259,7 @@ onMounted(() => {
 })
 </script>
 
-<template>
-  <div>
-    <PageHeader title="平台管理" subtitle="统一管理您在各平台的账号矩阵">
-      <template #actions>
-        <a-button type="primary" @click="showAddModal = true">
-          <template #icon>
-            <IconPlus />
-          </template>
-          添加账号
-        </a-button>
-      </template>
-    </PageHeader>
-
-    <div class="mb-5">
-      <SegmentedControl v-model="platformFilter" :options="platformOptions" />
-    </div>
-
-    <a-spin :loading="loading" tip="加载中..." style="display: block; width: 100%">
-      <a-empty v-if="!loading && filteredAccounts.length === 0" description="暂无账号" />
-      <a-row v-else :gutter="[16, 20]">
-        <a-col v-for="account in filteredAccounts" :key="account.id" :xs="24" :md="12" :lg="8">
-          <a-card :bordered="false" hoverable style="padding: 20px">
-            <a-space :size="12" align="start" fill>
-              <PlatformIcon :platform="account.platform" size="lg" />
-              <div style="flex: 1; min-width: 0">
-                <div style="display: flex; align-items: center; justify-content: space-between">
-                  <a-typography-text bold style="font-size: 15px">{{
-                    account.nickname
-                  }}</a-typography-text>
-                  <StatusBadge :status="account.status" />
-                </div>
-                <a-typography-text type="secondary" style="font-size: 12px"
-                  >粉丝 --</a-typography-text
-                >
-              </div>
-            </a-space>
-            <a-divider style="margin: 12px 0" />
-            <div style="display: flex; align-items: center; justify-content: space-between">
-              <a-typography-text type="disabled" style="font-size: 11px"
-                >最近检查 {{ formatRelativeTime(account.last_check_at) }}</a-typography-text
-              >
-              <a-space :size="4">
-                <a-button
-                  type="text"
-                  size="mini"
-                  title="刷新状态"
-                  :loading="checkingId === account.id"
-                  @click="checkStatus(account.id)"
-                >
-                  <template #icon>
-                    <IconRefresh />
-                  </template>
-                </a-button>
-                <a-button
-                  type="text"
-                  size="mini"
-                  status="danger"
-                  title="移除账号"
-                  :loading="deletingId === account.id"
-                  @click="deleteAccount(account.id)"
-                >
-                  <template #icon>
-                    <IconDelete />
-                  </template>
-                </a-button>
-              </a-space>
-            </div>
-          </a-card>
-        </a-col>
-      </a-row>
-    </a-spin>
-
-    <Modal v-model:visible="showAddModal" title="添加平台账号" width="480px">
-      <a-form :model="newAccount" layout="vertical">
-        <a-form-item label="选择平台">
-          <a-radio-group v-model="newAccount.platform" type="button">
-            <a-radio v-for="choice in platformChoices" :key="choice.value" :value="choice.value">
-              <a-space :size="6" align="center">
-                <PlatformIcon :platform="choice.value as 'wechat_mp'" size="sm" />
-                {{ choice.label }}
-              </a-space>
-            </a-radio>
-          </a-radio-group>
-        </a-form-item>
-        <a-form-item label="账号昵称">
-          <a-input v-model="newAccount.nickname" placeholder="请输入账号昵称" />
-        </a-form-item>
-        <a-form-item label="Cookie / 授权信息">
-          <a-textarea
-            v-model="newAccount.cookie"
-            placeholder="粘贴该平台的登录 Cookie 或授权 Token"
-            :auto-size="{ minRows: 3, maxRows: 5 }"
-          />
-          <template #extra> 我们将使用独立浏览器指纹与环境隔离，保障账号安全 </template>
-        </a-form-item>
-      </a-form>
-      <template #footer>
-        <a-space>
-          <a-button @click="showAddModal = false">取消</a-button>
-          <a-button
-            type="primary"
-            :disabled="!newAccount.nickname"
-            :loading="submitting"
-            @click="addAccount"
-          >
-            <template #icon>
-              <IconCheck />
-            </template>
-            验证并添加
-          </a-button>
-        </a-space>
-      </template>
-    </Modal>
-  </div>
-</template>
-
-<style scoped>
+<style scoped lang="scss">
 @media (max-width: 248px) {
   :deep(.arco-card-header) {
     padding: 8px 10px !important;

@@ -1,3 +1,104 @@
+<template>
+  <div class="review-page">
+    <div class="page-header">
+      <h2>内容审核</h2>
+      <p class="page-desc">审核用户提交的内容</p>
+    </div>
+
+    <a-card :bordered="false" class="review-card">
+      <a-table
+        :data="reviews"
+        :loading="loading"
+        :pagination="false"
+        :bordered="false"
+        row-key="id"
+      >
+        <template #columns>
+          <a-table-column title="标题" data-index="title" :width="200">
+            <template #cell="{ record }">
+              <div class="title-cell">
+                <div class="title-text">{{ record.title }}</div>
+                <div class="username-text">提交人：{{ record.username }}</div>
+              </div>
+            </template>
+          </a-table-column>
+
+          <a-table-column title="内容" data-index="body" :width="300">
+            <template #cell="{ record }">
+              <div class="body-cell">{{ record.body }}</div>
+            </template>
+          </a-table-column>
+
+          <a-table-column title="平台" data-index="platform" :width="120">
+            <template #cell="{ record }">
+              <a-tag size="small" color="arcoblue">
+                {{ getPlatformName(record.platform) }}
+              </a-tag>
+            </template>
+          </a-table-column>
+
+          <a-table-column title="状态" data-index="status" :width="100">
+            <template #cell="{ record }">
+              <a-tag size="small" :color="getStatusColor(record.status)">
+                {{ getStatusText(record.status) }}
+              </a-tag>
+            </template>
+          </a-table-column>
+
+          <a-table-column title="提交时间" data-index="created_at" :width="160">
+            <template #cell="{ record }">
+              {{ formatDateTime(record.created_at) }}
+            </template>
+          </a-table-column>
+
+          <a-table-column title="操作" :width="160" fixed="right">
+            <template #cell="{ record }">
+              <a-space>
+                <a-button type="primary" size="small" @click="handleApprove(record.id)">
+                  通过
+                </a-button>
+                <a-button
+                  type="secondary"
+                  status="danger"
+                  size="small"
+                  @click="handleReject(record.id)"
+                >
+                  驳回
+                </a-button>
+              </a-space>
+            </template>
+          </a-table-column>
+        </template>
+
+        <template #empty>
+          <a-empty description="暂无待审核内容" />
+        </template>
+      </a-table>
+    </a-card>
+
+    <!-- 驳回原因弹窗 -->
+    <a-modal
+      v-model:visible="rejectModalVisible"
+      title="驳回内容"
+      :ok-loading="false"
+      @ok="confirmReject"
+      @cancel="rejectModalVisible = false"
+    >
+      <a-form :model="{ reason: rejectReason }" layout="vertical">
+        <a-form-item label="驳回原因" required>
+          <a-textarea
+            v-model="rejectReason"
+            placeholder="请输入驳回原因"
+            :max-length="500"
+            show-word-limit
+            :auto-size="{ minRows: 3, maxRows: 6 }"
+          />
+        </a-form-item>
+      </a-form>
+    </a-modal>
+  </div>
+</template>
+
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { Message } from '@arco-design/web-vue'
@@ -60,10 +161,10 @@ const confirmReject = async () => {
     Message.warning('请输入驳回原因')
     return
   }
-  
+
   try {
     await api.post(`/reviews/${currentReviewId.value}/reject`, {
-      reason: rejectReason.value
+      reason: rejectReason.value,
     })
     Message.success('已驳回')
     rejectModalVisible.value = false
@@ -78,12 +179,12 @@ const confirmReject = async () => {
 
 const getPlatformName = (platform: string) => {
   const map: Record<string, string> = {
-    'xiaohongshu': '小红书',
-    'douyin': '抖音',
-    'wechat_video': '微信视频号',
-    'wechat_mp': '微信公众号',
-    'weibo': '微博',
-    'bilibili': 'B站'
+    xiaohongshu: '小红书',
+    douyin: '抖音',
+    wechat_video: '微信视频号',
+    wechat_mp: '微信公众号',
+    weibo: '微博',
+    bilibili: 'B站',
   }
   return map[platform] || platform
 }
@@ -118,111 +219,6 @@ onMounted(() => {
   fetchReviews()
 })
 </script>
-
-<template>
-  <div class="review-page">
-    <div class="page-header">
-      <h2>内容审核</h2>
-      <p class="page-desc">审核用户提交的内容</p>
-    </div>
-
-    <a-card :bordered="false" class="review-card">
-      <a-table
-        :data="reviews"
-        :loading="loading"
-        :pagination="false"
-        :bordered="false"
-        row-key="id"
-      >
-        <template #columns>
-          <a-table-column title="标题" data-index="title" :width="200">
-            <template #cell="{ record }">
-              <div class="title-cell">
-                <div class="title-text">{{ record.title }}</div>
-                <div class="username-text">提交人：{{ record.username }}</div>
-              </div>
-            </template>
-          </a-table-column>
-
-          <a-table-column title="内容" data-index="body" :width="300">
-            <template #cell="{ record }">
-              <div class="body-cell">{{ record.body }}</div>
-            </template>
-          </a-table-column>
-
-          <a-table-column title="平台" data-index="platform" :width="120">
-            <template #cell="{ record }">
-              <a-tag size="small" color="arcoblue">
-                {{ getPlatformName(record.platform) }}
-              </a-tag>
-            </template>
-          </a-table-column>
-
-          <a-table-column title="状态" data-index="status" :width="100">
-            <template #cell="{ record }">
-              <a-tag size="small" :color="getStatusColor(record.status)">
-                {{ getStatusText(record.status) }}
-              </a-tag>
-            </template>
-          </a-table-column>
-
-          <a-table-column title="提交时间" data-index="created_at" :width="160">
-            <template #cell="{ record }">
-              {{ formatDateTime(record.created_at) }}
-            </template>
-          </a-table-column>
-
-          <a-table-column title="操作" :width="160" fixed="right">
-            <template #cell="{ record }">
-              <a-space>
-                <a-button
-                  type="primary"
-                  size="small"
-                  @click="handleApprove(record.id)"
-                >
-                  通过
-                </a-button>
-                <a-button
-                  type="secondary"
-                  status="danger"
-                  size="small"
-                  @click="handleReject(record.id)"
-                >
-                  驳回
-                </a-button>
-              </a-space>
-            </template>
-          </a-table-column>
-        </template>
-
-        <template #empty>
-          <a-empty description="暂无待审核内容" />
-        </template>
-      </a-table>
-    </a-card>
-
-    <!-- 驳回原因弹窗 -->
-    <a-modal
-      v-model:visible="rejectModalVisible"
-      title="驳回内容"
-      :ok-loading="false"
-      @ok="confirmReject"
-      @cancel="rejectModalVisible = false"
-    >
-      <a-form :model="{ reason: rejectReason }" layout="vertical">
-        <a-form-item label="驳回原因" required>
-          <a-textarea
-            v-model="rejectReason"
-            placeholder="请输入驳回原因"
-            :max-length="500"
-            show-word-limit
-            :auto-size="{ minRows: 3, maxRows: 6 }"
-          />
-        </a-form-item>
-      </a-form>
-    </a-modal>
-  </div>
-</template>
 
 <style scoped lang="scss">
 .review-page {

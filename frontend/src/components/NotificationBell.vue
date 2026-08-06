@@ -1,3 +1,13 @@
+<template>
+  <a-badge :count="notificationStore.unreadCount" :dot="false">
+    <a-button type="text" size="small" class="notification-btn" @click="goToNotifications">
+      <template #icon>
+        <IconNotification :size="18" />
+      </template>
+    </a-button>
+  </a-badge>
+</template>
+
 <script setup lang="ts">
 import { onMounted } from 'vue'
 import { useRouter } from 'vue-router'
@@ -16,16 +26,6 @@ function goToNotifications() {
   router.push('/notifications')
 }
 </script>
-
-<template>
-  <a-badge :count="notificationStore.unreadCount" :dot="false">
-    <a-button type="text" size="small" class="notification-btn" @click="goToNotifications">
-      <template #icon>
-        <IconNotification :size="18" />
-      </template>
-    </a-button>
-  </a-badge>
-</template>
 
 <style scoped lang="scss">
 .notification-btn {

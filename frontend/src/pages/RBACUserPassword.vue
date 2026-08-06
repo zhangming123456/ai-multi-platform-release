@@ -1,3 +1,68 @@
+<template>
+  <div class="page-main">
+    <PageHeader
+      :title="`修改密码 - ${user?.nickname || '...'}`"
+      subtitle="重置或修改用户的登录密码"
+    >
+      <template #actions>
+        <a-button type="text" size="mini" class="!text-[#007AFF] !px-0 !h-auto" @click="goBack">
+          <template #icon><IconLeft :size="13" /></template>
+          返回列表
+        </a-button>
+      </template>
+    </PageHeader>
+
+    <a-spin :loading="loading" class="w-full">
+      <div class="max-w-[480px]">
+        <a-card :bordered="false" class="!rounded-xl">
+          <a-form layout="vertical" class="!max-w-[400px]">
+            <a-form-item label="用户">
+              <a-input
+                :model-value="`${user?.nickname || '...'}  (${user?.username || '...'})`"
+                disabled
+              />
+            </a-form-item>
+
+            <div v-if="isDefaultPwd" class="mb-4">
+              <div
+                class="flex items-center gap-2 px-4 py-3 rounded-lg bg-[#30d158]/[0.06] border border-[#30d158]/[0.15]"
+              >
+                <IconSafe :size="16" class="text-[#30d158] shrink-0" />
+                <span class="text-[13px] text-[#30d158] font-medium"
+                  >当前为默认密码或管理员重置，可直接设置新密码</span
+                >
+              </div>
+            </div>
+
+            <a-form-item v-else label="旧密码" required>
+              <a-input-password v-model="oldPassword" placeholder="请输入当前密码" />
+            </a-form-item>
+
+            <a-form-item label="新密码" required>
+              <a-input-password v-model="newPassword" placeholder="输入新密码" />
+              <template #extra>
+                <span class="text-[11px] text-[#86868b]"
+                  >首字符须为字母，支持大小写字母、数字及 . _ @ $</span
+                >
+              </template>
+            </a-form-item>
+
+            <a-form-item>
+              <a-space>
+                <a-button type="primary" :loading="saving" @click="changePassword">
+                  <template #icon><IconLock /></template>
+                  确认修改
+                </a-button>
+                <a-button @click="goBack">取消</a-button>
+              </a-space>
+            </a-form-item>
+          </a-form>
+        </a-card>
+      </div>
+    </a-spin>
+  </div>
+</template>
+
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
@@ -81,68 +146,3 @@ function goBack() {
   router.push({ name: 'RBACUserManage' })
 }
 </script>
-
-<template>
-  <div class="page-main">
-    <PageHeader
-      :title="`修改密码 - ${user?.nickname || '...'}`"
-      subtitle="重置或修改用户的登录密码"
-    >
-      <template #actions>
-        <a-button type="text" size="mini" class="!text-[#007AFF] !px-0 !h-auto" @click="goBack">
-          <template #icon><IconLeft :size="13" /></template>
-          返回列表
-        </a-button>
-      </template>
-    </PageHeader>
-
-    <a-spin :loading="loading" class="w-full">
-      <div class="max-w-[480px]">
-        <a-card :bordered="false" class="!rounded-xl">
-          <a-form layout="vertical" class="!max-w-[400px]">
-            <a-form-item label="用户">
-              <a-input
-                :model-value="`${user?.nickname || '...'}  (${user?.username || '...'})`"
-                disabled
-              />
-            </a-form-item>
-
-            <div v-if="isDefaultPwd" class="mb-4">
-              <div
-                class="flex items-center gap-2 px-4 py-3 rounded-lg bg-[#30d158]/[0.06] border border-[#30d158]/[0.15]"
-              >
-                <IconSafe :size="16" class="text-[#30d158] shrink-0" />
-                <span class="text-[13px] text-[#30d158] font-medium"
-                  >当前为默认密码或管理员重置，可直接设置新密码</span
-                >
-              </div>
-            </div>
-
-            <a-form-item v-else label="旧密码" required>
-              <a-input-password v-model="oldPassword" placeholder="请输入当前密码" />
-            </a-form-item>
-
-            <a-form-item label="新密码" required>
-              <a-input-password v-model="newPassword" placeholder="输入新密码" />
-              <template #extra>
-                <span class="text-[11px] text-[#86868b]"
-                  >首字符须为字母，支持大小写字母、数字及 . _ @ $</span
-                >
-              </template>
-            </a-form-item>
-
-            <a-form-item>
-              <a-space>
-                <a-button type="primary" :loading="saving" @click="changePassword">
-                  <template #icon><IconLock /></template>
-                  确认修改
-                </a-button>
-                <a-button @click="goBack">取消</a-button>
-              </a-space>
-            </a-form-item>
-          </a-form>
-        </a-card>
-      </div>
-    </a-spin>
-  </div>
-</template>

@@ -1,17 +1,3 @@
-<script setup lang="ts">
-import type { Component } from 'vue'
-import { IconArrowRise, IconArrowFall } from '@arco-design/web-vue/es/icon'
-
-defineProps<{
-  title: string
-  value: number
-  trend: string
-  icon: Component
-  color: string
-  delay?: number
-}>()
-</script>
-
 <template>
   <a-card class="stat-card" :bordered="false" :style="{ animationDelay: `${delay || 0}ms` }">
     <div class="flex items-center justify-between mb-4">
@@ -37,7 +23,21 @@ defineProps<{
   </a-card>
 </template>
 
-<style scoped>
+<script setup lang="ts">
+import type { Component } from 'vue'
+import { IconArrowRise, IconArrowFall } from '@arco-design/web-vue/es/icon'
+
+defineProps<{
+  title: string
+  value: number
+  trend: string
+  icon: Component
+  color: string
+  delay?: number
+}>()
+</script>
+
+<style scoped lang="scss">
 .stat-card {
   animation: fade-up 0.5s ease both;
   transition:

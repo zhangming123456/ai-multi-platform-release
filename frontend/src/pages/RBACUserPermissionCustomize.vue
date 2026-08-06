@@ -1,3 +1,147 @@
+<template>
+  <div class="page-main">
+    <PageHeader
+      :title="`${targetUser?.nickname || '用户'} 的自定义权限`"
+      :subtitle="
+        canWrite
+          ? '为该用户单独配置权限覆盖，将影响其最终有效权限'
+          : '查看用户的有效权限（只读模式）'
+      "
+    >
+      <template #actions>
+        <a-space>
+          <a-button type="text" size="mini" class="!text-[#007AFF] !px-0 !h-auto" @click="goBack">
+            <template #icon><IconLeft :size="13" /></template>
+            返回用户列表
+          </a-button>
+          <a-button
+            v-perm="{
+              key: 'users:custom_permissions:write & !isBuiltInAdmin(user_id)',
+              ctx: { user_id: targetUser?.id },
+            }"
+            type="text"
+            size="mini"
+            class="!text-[#007AFF] !px-0 !h-auto"
+            :loading="resetting"
+            :disabled="readOnly"
+            @click="resetOverrides"
+          >
+            <template #icon><IconRefresh :size="13" /></template>
+            重置权限
+          </a-button>
+          <a-button
+            v-perm="{
+              key: 'users:custom_permissions:write & !isBuiltInAdmin(user_id)',
+              ctx: { user_id: targetUser?.id },
+            }"
+            type="text"
+            size="mini"
+            class="!text-[#007AFF] !px-0 !h-auto"
+            :loading="saving"
+            @click="saveOverrides"
+          >
+            保存权限
+          </a-button>
+        </a-space>
+      </template>
+    </PageHeader>
+
+    <a-spin :loading="loading" tip="加载中..." class="w-full">
+      <div
+        v-if="isBuiltInAdmin"
+        class="p-4 rounded-2xl bg-[#ff9500]/[0.06] border border-[#ff9500]/[0.15] flex items-start gap-3 mb-5"
+      >
+        <IconSafe :size="18" class="text-[#ff9500] mt-0.5 shrink-0" />
+        <div>
+          <p class="text-[14px] font-medium text-[#1D1D1F] m-0">超级管理员</p>
+          <p class="text-[12px] text-[#86868B] m-0 mt-1">
+            超级管理员拥有所有权限，不可单独配置自定义权限覆盖。
+          </p>
+        </div>
+      </div>
+
+      <div
+        v-else-if="!canWrite"
+        class="p-4 rounded-2xl bg-[#007AFF]/[0.06] border border-[#007AFF]/[0.15] flex items-start gap-3 mb-5"
+      >
+        <IconSafe :size="18" class="text-[#007AFF] mt-0.5 shrink-0" />
+        <div>
+          <p class="text-[14px] font-medium text-[#1D1D1F] m-0">查看模式</p>
+          <p class="text-[12px] text-[#86868B] m-0 mt-1">
+            你没有写入权限，只能查看该用户的有效权限，无法修改覆盖项。
+          </p>
+        </div>
+      </div>
+
+      <div class="space-y-4">
+        <div
+          v-for="module in modules"
+          :key="module.key"
+          class="bg-white/80 backdrop-blur-xl rounded-2xl border border-black/[0.05] p-5"
+        >
+          <div class="flex items-center justify-between mb-4">
+            <div class="flex items-center gap-2">
+              <h3 class="text-[15px] font-semibold text-[#1D1D1F] m-0">{{ module.label }}</h3>
+              <span class="text-[12px] text-[#86868B] font-medium">{{ module.items.length }}</span>
+            </div>
+            <div class="flex items-center gap-3">
+              <a-checkbox
+                v-if="module.items.some((i) => i.readKey)"
+                :model-value="moduleReadChecked(module)"
+                :indeterminate="moduleReadIndeterminate(module)"
+                :disabled="readOnly"
+                @change="toggleModuleAllRead(module, $event)"
+              >
+                读
+              </a-checkbox>
+              <a-checkbox
+                v-if="module.items.some((i) => i.writeKeys.length > 0)"
+                :model-value="moduleWriteChecked(module)"
+                :indeterminate="moduleWriteIndeterminate(module)"
+                :disabled="readOnly"
+                @change="toggleModuleAllWrite(module, $event)"
+              >
+                写
+              </a-checkbox>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div
+              v-for="item in module.items"
+              :key="item.permId"
+              class="flex items-center justify-between px-4 py-3 rounded-xl border border-black/[0.04] bg-black/[0.01] hover:bg-black/[0.02] transition-colors"
+            >
+              <div class="min-w-0 mr-3">
+                <p class="text-[13px] font-medium text-[#1D1D1F] m-0 truncate">{{ item.title }}</p>
+                <p class="text-[11px] text-[#86868B] m-0 truncate">{{ item.subtitle }}</p>
+              </div>
+              <div class="flex flex-col items-end gap-1 shrink-0">
+                <a-checkbox
+                  v-if="item.readKey"
+                  :model-value="selectedKeys.has(item.readKey)"
+                  :disabled="readOnly"
+                  @change="toggleReadKey(item.readKey!)"
+                >
+                  读
+                </a-checkbox>
+                <a-checkbox
+                  v-if="item.writeKeys.length > 0"
+                  :model-value="item.writeKeys.some((k) => selectedKeys.has(k))"
+                  :disabled="readOnly"
+                  @change="toggleWriteKey(item.writeKeys[0])"
+                >
+                  写
+                </a-checkbox>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </a-spin>
+  </div>
+</template>
+
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -429,147 +573,3 @@ function goBack() {
 
 onMounted(loadAll)
 </script>
-
-<template>
-  <div class="page-main">
-    <PageHeader
-      :title="`${targetUser?.nickname || '用户'} 的自定义权限`"
-      :subtitle="
-        canWrite
-          ? '为该用户单独配置权限覆盖，将影响其最终有效权限'
-          : '查看用户的有效权限（只读模式）'
-      "
-    >
-      <template #actions>
-        <a-space>
-          <a-button type="text" size="mini" class="!text-[#007AFF] !px-0 !h-auto" @click="goBack">
-            <template #icon><IconLeft :size="13" /></template>
-            返回用户列表
-          </a-button>
-          <a-button
-            v-perm="{
-              key: 'users:custom_permissions:write & !isBuiltInAdmin(user_id)',
-              ctx: { user_id: targetUser?.id },
-            }"
-            type="text"
-            size="mini"
-            class="!text-[#007AFF] !px-0 !h-auto"
-            :loading="resetting"
-            :disabled="readOnly"
-            @click="resetOverrides"
-          >
-            <template #icon><IconRefresh :size="13" /></template>
-            重置权限
-          </a-button>
-          <a-button
-            v-perm="{
-              key: 'users:custom_permissions:write & !isBuiltInAdmin(user_id)',
-              ctx: { user_id: targetUser?.id },
-            }"
-            type="text"
-            size="mini"
-            class="!text-[#007AFF] !px-0 !h-auto"
-            :loading="saving"
-            @click="saveOverrides"
-          >
-            保存权限
-          </a-button>
-        </a-space>
-      </template>
-    </PageHeader>
-
-    <a-spin :loading="loading" tip="加载中..." class="w-full">
-      <div
-        v-if="isBuiltInAdmin"
-        class="p-4 rounded-2xl bg-[#ff9500]/[0.06] border border-[#ff9500]/[0.15] flex items-start gap-3 mb-5"
-      >
-        <IconSafe :size="18" class="text-[#ff9500] mt-0.5 shrink-0" />
-        <div>
-          <p class="text-[14px] font-medium text-[#1D1D1F] m-0">超级管理员</p>
-          <p class="text-[12px] text-[#86868B] m-0 mt-1">
-            超级管理员拥有所有权限，不可单独配置自定义权限覆盖。
-          </p>
-        </div>
-      </div>
-
-      <div
-        v-else-if="!canWrite"
-        class="p-4 rounded-2xl bg-[#007AFF]/[0.06] border border-[#007AFF]/[0.15] flex items-start gap-3 mb-5"
-      >
-        <IconSafe :size="18" class="text-[#007AFF] mt-0.5 shrink-0" />
-        <div>
-          <p class="text-[14px] font-medium text-[#1D1D1F] m-0">查看模式</p>
-          <p class="text-[12px] text-[#86868B] m-0 mt-1">
-            你没有写入权限，只能查看该用户的有效权限，无法修改覆盖项。
-          </p>
-        </div>
-      </div>
-
-      <div class="space-y-4">
-        <div
-          v-for="module in modules"
-          :key="module.key"
-          class="bg-white/80 backdrop-blur-xl rounded-2xl border border-black/[0.05] p-5"
-        >
-          <div class="flex items-center justify-between mb-4">
-            <div class="flex items-center gap-2">
-              <h3 class="text-[15px] font-semibold text-[#1D1D1F] m-0">{{ module.label }}</h3>
-              <span class="text-[12px] text-[#86868B] font-medium">{{ module.items.length }}</span>
-            </div>
-            <div class="flex items-center gap-3">
-              <a-checkbox
-                v-if="module.items.some((i) => i.readKey)"
-                :model-value="moduleReadChecked(module)"
-                :indeterminate="moduleReadIndeterminate(module)"
-                :disabled="readOnly"
-                @change="toggleModuleAllRead(module, $event)"
-              >
-                读
-              </a-checkbox>
-              <a-checkbox
-                v-if="module.items.some((i) => i.writeKeys.length > 0)"
-                :model-value="moduleWriteChecked(module)"
-                :indeterminate="moduleWriteIndeterminate(module)"
-                :disabled="readOnly"
-                @change="toggleModuleAllWrite(module, $event)"
-              >
-                写
-              </a-checkbox>
-            </div>
-          </div>
-
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div
-              v-for="item in module.items"
-              :key="item.permId"
-              class="flex items-center justify-between px-4 py-3 rounded-xl border border-black/[0.04] bg-black/[0.01] hover:bg-black/[0.02] transition-colors"
-            >
-              <div class="min-w-0 mr-3">
-                <p class="text-[13px] font-medium text-[#1D1D1F] m-0 truncate">{{ item.title }}</p>
-                <p class="text-[11px] text-[#86868B] m-0 truncate">{{ item.subtitle }}</p>
-              </div>
-              <div class="flex flex-col items-end gap-1 shrink-0">
-                <a-checkbox
-                  v-if="item.readKey"
-                  :model-value="selectedKeys.has(item.readKey)"
-                  :disabled="readOnly"
-                  @change="toggleReadKey(item.readKey!)"
-                >
-                  读
-                </a-checkbox>
-                <a-checkbox
-                  v-if="item.writeKeys.length > 0"
-                  :model-value="item.writeKeys.some((k) => selectedKeys.has(k))"
-                  :disabled="readOnly"
-                  @change="toggleWriteKey(item.writeKeys[0])"
-                >
-                  写
-                </a-checkbox>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </a-spin>
-  </div>
-</template>

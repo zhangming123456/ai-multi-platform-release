@@ -1,3 +1,18 @@
+<template>
+  <a-avatar
+    :size="sizeMap[size || 'md']"
+    :style="{
+      background: platformConfig[platform]?.gradient,
+      boxShadow: '0 1px 3px rgba(0,0,0,0.16)',
+      fontWeight: 600,
+      fontSize: size === 'lg' ? '15px' : size === 'sm' ? '10px' : '12px',
+    }"
+    :title="platformConfig[platform]?.name || platform"
+  >
+    {{ platformConfig[platform]?.letter || '?' }}
+  </a-avatar>
+</template>
+
 <script setup lang="ts">
 defineProps<{
   platform: 'wechat_mp' | 'xiaohongshu' | 'douyin' | 'wechat_video'
@@ -33,18 +48,3 @@ const sizeMap = {
   lg: 44,
 }
 </script>
-
-<template>
-  <a-avatar
-    :size="sizeMap[size || 'md']"
-    :style="{
-      background: platformConfig[platform]?.gradient,
-      boxShadow: '0 1px 3px rgba(0,0,0,0.16)',
-      fontWeight: 600,
-      fontSize: size === 'lg' ? '15px' : size === 'sm' ? '10px' : '12px',
-    }"
-    :title="platformConfig[platform]?.name || platform"
-  >
-    {{ platformConfig[platform]?.letter || '?' }}
-  </a-avatar>
-</template>

@@ -1,10 +1,3 @@
-<script setup lang="ts">
-import { IconLanguage } from '@arco-design/web-vue/es/icon'
-import { useRegionStore } from '@/stores/region'
-
-const { selectedTz, regions, switchRegion } = useRegionStore()
-</script>
-
 <template>
   <a-select
     :model-value="selectedTz"
@@ -12,9 +5,11 @@ const { selectedTz, regions, switchRegion } = useRegionStore()
     :bordered="false"
     class="region-select"
     :trigger-props="{ autoFitPopupWidth: true }"
-    @change="(value: string | number | boolean | Record<string, any> | undefined) => {
-      if (typeof value === 'string') switchRegion(value)
-    }"
+    @change="
+      (value: string | number | boolean | Record<string, any> | undefined) => {
+        if (typeof value === 'string') switchRegion(value)
+      }
+    "
   >
     <template #prefix>
       <IconLanguage :size="16" />
@@ -33,7 +28,14 @@ const { selectedTz, regions, switchRegion } = useRegionStore()
   </a-select>
 </template>
 
-<style scoped>
+<script setup lang="ts">
+import { IconLanguage } from '@arco-design/web-vue/es/icon'
+import { useRegionStore } from '@/stores/region'
+
+const { selectedTz, regions, switchRegion } = useRegionStore()
+</script>
+
+<style scoped lang="scss">
 .region-select {
   width: auto;
   min-width: 90px;

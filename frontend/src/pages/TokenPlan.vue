@@ -1,3 +1,460 @@
+<template>
+  <div class="page-main">
+    <PageHeader title="Token方案" subtitle="配置 AI 模型服务商与自定义接入，统一管理调用配额">
+      <template #actions>
+        <a-tag :color="store.activePlan ? 'green' : 'red'" size="small">
+          <template #icon>
+            <IconCheckCircle v-if="store.activePlan" :size="12" />
+            <IconUpCircle v-else :size="12" />
+          </template>
+          {{ store.activePlan ? '已就绪' : '未配置' }}
+        </a-tag>
+        <a-button type="text" size="mini" class="!text-[#007AFF] !px-0 !h-auto" @click="openAdd">
+          <template #icon><IconPlus :size="13" /></template>添加模型
+        </a-button>
+      </template>
+    </PageHeader>
+
+    <a-row :gutter="[24, 10]" class="mb-6">
+      <a-col :xs="24" :lg="16">
+        <a-space direction="vertical" :size="14" fill>
+          <div
+            v-for="plan in store.plans"
+            :key="plan.id"
+            class="plan-card"
+            :class="{ active: store.activePlanId === plan.id && plan.enabled }"
+          >
+            <span class="plan-accent" :style="{ background: providerColor(plan.provider) }" />
+            <div class="plan-top">
+              <div class="plan-badge" :style="{ background: providerColor(plan.provider) }">
+                {{ providerLetter(plan.provider) }}
+              </div>
+              <div class="plan-meta">
+                <div class="plan-title">
+                  {{ plan.displayName || plan.model || '未命名模型' }}
+                  <span v-if="store.activePlanId === plan.id && plan.enabled" class="plan-live"
+                    >生效中</span
+                  >
+                </div>
+                <div class="plan-sub">
+                  <span>{{ providerLabel(plan.provider) }}</span>
+                  <span class="dot">·</span>
+                  <span>{{ plan.mode === 'custom' ? '自定义接入' : '官方服务商' }}</span>
+                  <span v-if="plan.multimodal" class="chip-mm">多模态</span>
+                </div>
+              </div>
+              <div class="plan-acts">
+                <a-switch
+                  :model-value="plan.enabled"
+                  @change="(v: unknown) => toggleEnabled(plan.id, v)"
+                />
+                <button class="icon-btn" title="编辑" @click="openEdit(plan.id)">
+                  <IconEdit />
+                </button>
+                <button
+                  class="icon-btn danger"
+                  title="删除"
+                  :disabled="store.plans.length <= 1"
+                  @click="removePlan(plan.id)"
+                >
+                  <IconDelete />
+                </button>
+              </div>
+            </div>
+            <div class="plan-info">
+              <span class="info-chip info-chip--models">
+                <b>模型</b>
+                <template v-for="m in parseModelField(plan.model)" :key="m.id">
+                  <span
+                    class="model-tag"
+                    :style="{
+                      background:
+                        (m.types && m.types[0]
+                          ? MODEL_TYPE_COLORS[m.types[0]] || '#007AFF'
+                          : '#007AFF') + '15',
+                      color:
+                        m.types && m.types[0]
+                          ? MODEL_TYPE_COLORS[m.types[0]] || '#0062CC'
+                          : '#0062CC',
+                    }"
+                  >
+                    <span v-if="m.types && m.types.length" class="model-tag__icons">
+                      <component
+                        v-for="t in m.types"
+                        :key="t"
+                        :is="modelTypeIcon(t)"
+                        :size="11"
+                        :style="{ color: MODEL_TYPE_COLORS[t] || '#007AFF' }"
+                      />
+                    </span>
+                    {{ m.id }}
+                  </span>
+                </template>
+                <span v-if="!plan.model">—</span>
+              </span>
+              <span class="info-chip"
+                ><b>上下文</b>{{ fmtK(plan.contextInput) }} / {{ fmtK(plan.contextOutput) }}</span
+              >
+              <span class="info-chip"><b>工具轮次</b>{{ plan.toolCallRounds }}</span>
+              <span class="info-chip right">
+                <b>配额</b>
+                <em :class="{ warn: getUsagePercent(plan) > 80 }">{{ getUsagePercent(plan) }}%</em>
+              </span>
+            </div>
+            <div class="plan-bar">
+              <span
+                :style="{ width: getUsagePercent(plan) + '%' }"
+                :class="{ warn: getUsagePercent(plan) > 80 }"
+              />
+            </div>
+          </div>
+
+          <div v-if="store.plans.length === 0" class="empty-card">
+            <div class="empty-glyph">＋</div>
+            <p>还没有配置任何模型</p>
+            <a-button type="primary" size="small" @click="openAdd">
+              <template #icon><IconPlus /></template>添加第一个模型
+            </a-button>
+          </div>
+        </a-space>
+      </a-col>
+
+      <a-col :xs="24" :lg="8">
+        <a-card :bordered="false" title="用量总览" style="padding: 20px">
+          <a-space direction="vertical" :size="16" fill>
+            <div v-for="plan in store.plans" :key="plan.id">
+              <div class="flex items-center justify-between mb-2">
+                <a-typography-text class="text-[13px]">{{
+                  plan.displayName || plan.model
+                }}</a-typography-text>
+                <a-typography-text
+                  class="text-[12px]"
+                  :type="getUsagePercent(plan) > 80 ? 'danger' : 'secondary'"
+                >
+                  {{ getUsagePercent(plan) }}%
+                </a-typography-text>
+              </div>
+              <a-progress
+                :percent="getUsagePercent(plan)"
+                :show-text="false"
+                size="small"
+                :color="getUsagePercent(plan) > 80 ? '#FF3B30' : '#34C759'"
+              />
+              <div class="flex justify-between mt-1">
+                <a-typography-text type="disabled" class="text-[11px]">
+                  {{ plan.usedTokens.toLocaleString() }} / {{ plan.monthlyQuota.toLocaleString() }}
+                </a-typography-text>
+                <a-typography-text type="secondary" class="text-[11px]">
+                  剩余 {{ (plan.monthlyQuota - plan.usedTokens).toLocaleString() }}
+                </a-typography-text>
+              </div>
+            </div>
+
+            <a-divider v-if="store.plans.length > 0" style="margin: 12px 0" />
+
+            <div v-if="store.activePlan" class="bg-[#34C759]/10 rounded-[12px] p-4">
+              <div class="flex items-center gap-2 mb-2">
+                <IconBarChart :size="16" style="color: #34c759" />
+                <a-typography-text bold class="text-[13px]" style="color: #248a3d"
+                  >当前生效模型</a-typography-text
+                >
+              </div>
+              <a-typography-text class="text-[12px]" style="color: #34c759">
+                {{ store.activePlan.displayName || store.activePlan.model }} ·
+                {{ providerLabel(store.activePlan.provider) }}
+              </a-typography-text>
+              <a-typography-text type="secondary" class="text-[11px] block mt-1">
+                本月剩余配额：{{ store.getRemainingQuota().toLocaleString() }} tokens
+              </a-typography-text>
+            </div>
+            <div v-else class="bg-[#FF9500]/10 rounded-[12px] p-4">
+              <a-typography-text class="text-[12px]" style="color: #ff9500">
+                未启用任何模型，请在卡片右侧打开开关并设为默认。
+              </a-typography-text>
+            </div>
+          </a-space>
+        </a-card>
+      </a-col>
+    </a-row>
+
+    <a-modal
+      v-model:visible="showModal"
+      modal-class="tp-cabin-modal"
+      body-class="tp-cabin-body-modal"
+      align-center
+      :mask-closable="false"
+      :esc-to-close="true"
+      unmount-on-close
+    >
+      <template #title>
+        <span class="tp-title">{{ isEdit ? '编辑模型' : '添加模型' }}</span>
+      </template>
+
+      <div class="tp-cabin">
+        <div class="tp-seg">
+          <span class="tp-seg-thumb" :class="{ right: form.mode === 'custom' }" />
+          <button
+            type="button"
+            class="tp-seg-btn"
+            :class="{ active: form.mode === 'provider' }"
+            @click="setMode('provider')"
+          >
+            模型服务商
+          </button>
+          <button
+            type="button"
+            class="tp-seg-btn"
+            :class="{ active: form.mode === 'custom' }"
+            @click="setMode('custom')"
+          >
+            自定义配置
+          </button>
+        </div>
+
+        <template v-if="form.mode === 'provider'">
+          <div class="tp-row">
+            <label class="tp-label"><i class="tp-req">*</i>服务商</label>
+            <a-select
+              v-model="form.provider"
+              :options="providerOptions"
+              placeholder="选择模型服务商"
+              @change="onProviderChange"
+            />
+          </div>
+        </template>
+
+        <template v-else>
+          <div class="tp-row">
+            <label class="tp-label"><i class="tp-req">*</i>API 格式</label>
+            <a-select v-model="form.apiFormat" :options="apiFormatOptions" />
+          </div>
+
+          <div class="tp-row">
+            <div class="tp-labelrow">
+              <label class="tp-label"><i class="tp-req">*</i>自定义请求地址</label>
+              <span class="tp-inline">
+                <IconLink :size="14" />完整 URL
+                <button
+                  type="button"
+                  role="switch"
+                  class="tp-toggle"
+                  :class="{ on: form.fullUrl }"
+                  :aria-checked="form.fullUrl"
+                  @click="form.fullUrl = !form.fullUrl"
+                >
+                  <span class="tp-knob" />
+                </button>
+              </span>
+            </div>
+            <input
+              v-model="form.baseUrl"
+              class="tp-field"
+              placeholder="e.g. https://api.openai.com/v1"
+            />
+            <div class="tp-banner">
+              <IconInfoCircleFill class="tp-banner-i" />
+              <p>{{ bannerText }}</p>
+            </div>
+          </div>
+        </template>
+
+        <div class="tp-row">
+          <label class="tp-label"><i class="tp-req">*</i>API 密钥</label>
+          <input
+            v-model="form.apiKey"
+            class="tp-field"
+            type="password"
+            placeholder="输入 API 密钥"
+          />
+        </div>
+
+        <div class="tp-row">
+          <label class="tp-label"><i class="tp-req">*</i>模型列表</label>
+          <div class="model-list">
+            <div
+              v-for="(entry, idx) in form.models"
+              :key="idx"
+              class="model-entry"
+              :class="{
+                dragging: dragIndex === idx,
+                'drag-over': dragOverIndex === idx && dragIndex !== idx,
+              }"
+              draggable="true"
+              @dragstart="onDragStart(idx, $event)"
+              @dragend="onDragEnd($event)"
+              @dragover="onDragOver(idx, $event)"
+              @dragleave="onDragLeave"
+              @drop="onDrop(idx)"
+            >
+              <div class="model-entry__top">
+                <span class="model-entry__grip" title="拖拽排序">
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+                    <path
+                      d="M8 6a2 2 0 1 1 0-4 2 2 0 0 1 0 4zm8 0a2 2 0 1 1 0-4 2 2 0 0 1 0 4zM8 14a2 2 0 1 1 0-4 2 2 0 0 1 0 4zm8 0a2 2 0 1 1 0-4 2 2 0 0 1 0 4zM8 22a2 2 0 1 1 0-4 2 2 0 0 1 0 4zm8 0a2 2 0 1 1 0-4 2 2 0 0 1 0 4z"
+                    />
+                  </svg>
+                </span>
+                <div class="model-entry__id">
+                  <a-select
+                    v-model="entry.id"
+                    placeholder="选择或输入模型 ID"
+                    allow-search
+                    allow-create
+                    size="mini"
+                    @change="(val: unknown) => onModelIdInput(entry, val as string)"
+                  >
+                    <a-select-opt-group
+                      v-if="form.mode === 'provider' && presetModels[form.provider].length"
+                      label="预设模型"
+                    >
+                      <a-option
+                        v-for="m in presetModels[form.provider].filter((pm) =>
+                          availableModelsForEntry(idx).includes(pm),
+                        )"
+                        :key="m"
+                        :value="m"
+                      >
+                        {{ m
+                        }}<span class="tp-opt-meta"
+                          >{{ getModelContext(m).i.toLocaleString() }} tokens</span
+                        >
+                      </a-option>
+                    </a-select-opt-group>
+                    <a-select-opt-group v-if="dedupedFetchedModels.length" label="API 拉取">
+                      <a-option
+                        v-for="m in dedupedFetchedModels.filter((fm) =>
+                          availableModelsForEntry(idx).includes(fm),
+                        )"
+                        :key="m"
+                        :value="m"
+                      >
+                        {{ m
+                        }}<span class="tp-opt-meta"
+                          >{{ getModelContext(m).i.toLocaleString() }} tokens</span
+                        >
+                      </a-option>
+                    </a-select-opt-group>
+                  </a-select>
+                </div>
+                <button
+                  v-if="form.models.length > 1"
+                  type="button"
+                  class="model-entry__del"
+                  title="删除"
+                  @click="removeModelEntry(idx)"
+                >
+                  <IconDelete :size="15" />
+                </button>
+              </div>
+              <div class="model-entry__bottom">
+                <div class="model-entry__types">
+                  <a-select
+                    v-model="entry.types"
+                    placeholder="模型类型（可多选）"
+                    multiple
+                    size="mini"
+                    :options="MODEL_TYPE_OPTIONS as unknown as { value: string; label: string }[]"
+                  />
+                </div>
+                <div class="model-entry__ctx">
+                  <input
+                    v-model.number="entry.contextInput"
+                    type="number"
+                    class="tp-field model-entry__ctx-input"
+                    placeholder="输入上下文"
+                  />
+                  <input
+                    v-model.number="entry.contextOutput"
+                    type="number"
+                    class="tp-field model-entry__ctx-input"
+                    placeholder="输出上下文"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+          <button type="button" class="model-add-btn" @click="addModelEntry">
+            <IconPlus :size="14" /> 添加模型
+          </button>
+          <div class="tp-aux">
+            <span class="tp-aux-hint"
+              >每个模型可配置多个类型与独立上下文窗口，留空则使用高级配置中的默认值</span
+            >
+            <button
+              v-if="form.apiKey && (form.mode === 'provider' || form.baseUrl)"
+              type="button"
+              class="tp-aux-link"
+              :disabled="fetching"
+              @click="form.mode === 'provider' ? fetchProviderModels() : fetchCustomModels()"
+            >
+              <IconRefresh :class="{ 'tp-spin': fetching }" />{{ fetching ? '拉取中' : '拉取列表' }}
+            </button>
+          </div>
+        </div>
+
+        <button type="button" class="tp-collapse-hd" @click="advanced = !advanced">
+          <IconDown class="tp-chev" :class="{ open: advanced }" />高级配置
+        </button>
+
+        <div class="tp-collapse-bd" :class="{ open: advanced }">
+          <div class="tp-collapse-inner">
+            <div v-if="form.mode === 'custom'" class="tp-row">
+              <label class="tp-label">模型系列</label>
+              <p class="tp-hint">针对特定模型系列优化了 Prompt 和超参，未选择时使用默认配置。</p>
+              <a-select v-model="form.modelSeries" :options="modelSeriesOptions" />
+            </div>
+
+            <div class="tp-row">
+              <label class="tp-label">模型展示名称</label>
+              <p class="tp-hint">在模型列表中展示的名称，未设置时默认显示 Model ID。</p>
+              <div class="tp-countwrap">
+                <input
+                  v-model="form.displayName"
+                  class="tp-field tp-count-input"
+                  maxlength="32"
+                  placeholder="请输入模型展示名称"
+                />
+                <span class="tp-count">{{ (form.displayName || '').length }}/32</span>
+              </div>
+            </div>
+
+            <div class="tp-row">
+              <label class="tp-label">上下文窗口</label>
+              <div class="tp-ctx">
+                <span class="tp-ctx-k">输入</span>
+                <input v-model.number="form.contextInput" type="number" class="tp-field tp-ctx-f" />
+                <span class="tp-ctx-k">输出</span>
+                <input
+                  v-model.number="form.contextOutput"
+                  type="number"
+                  class="tp-field tp-ctx-f"
+                />
+              </div>
+            </div>
+
+            <div class="tp-row">
+              <label class="tp-label">工具调用轮次</label>
+              <input v-model.number="form.toolCallRounds" type="number" class="tp-field" />
+            </div>
+
+            <div class="tp-row last">
+              <label class="tp-label">月度配额</label>
+              <p class="tp-hint">每月可用 token 上限，用于用量统计与告警。</p>
+              <input v-model.number="form.monthlyQuota" type="number" class="tp-field" />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <template #footer>
+        <button type="button" class="tp-submit" @click="save">
+          {{ isEdit ? '保存配置' : '添加模型' }}
+        </button>
+      </template>
+    </a-modal>
+  </div>
+</template>
+
 <script setup lang="ts">
 import { ref, computed, watch, onBeforeUnmount, onMounted } from 'vue'
 import {
@@ -460,464 +917,7 @@ onBeforeUnmount(() => {
 })
 </script>
 
-<template>
-  <div class="page-main">
-    <PageHeader title="Token方案" subtitle="配置 AI 模型服务商与自定义接入，统一管理调用配额">
-      <template #actions>
-        <a-tag :color="store.activePlan ? 'green' : 'red'" size="small">
-          <template #icon>
-            <IconCheckCircle v-if="store.activePlan" :size="12" />
-            <IconUpCircle v-else :size="12" />
-          </template>
-          {{ store.activePlan ? '已就绪' : '未配置' }}
-        </a-tag>
-        <a-button type="text" size="mini" class="!text-[#007AFF] !px-0 !h-auto" @click="openAdd">
-          <template #icon><IconPlus :size="13" /></template>添加模型
-        </a-button>
-      </template>
-    </PageHeader>
-
-    <a-row :gutter="[24, 10]" class="mb-6">
-      <a-col :xs="24" :lg="16">
-        <a-space direction="vertical" :size="14" fill>
-          <div
-            v-for="plan in store.plans"
-            :key="plan.id"
-            class="plan-card"
-            :class="{ active: store.activePlanId === plan.id && plan.enabled }"
-          >
-            <span class="plan-accent" :style="{ background: providerColor(plan.provider) }" />
-            <div class="plan-top">
-              <div class="plan-badge" :style="{ background: providerColor(plan.provider) }">
-                {{ providerLetter(plan.provider) }}
-              </div>
-              <div class="plan-meta">
-                <div class="plan-title">
-                  {{ plan.displayName || plan.model || '未命名模型' }}
-                  <span v-if="store.activePlanId === plan.id && plan.enabled" class="plan-live"
-                    >生效中</span
-                  >
-                </div>
-                <div class="plan-sub">
-                  <span>{{ providerLabel(plan.provider) }}</span>
-                  <span class="dot">·</span>
-                  <span>{{ plan.mode === 'custom' ? '自定义接入' : '官方服务商' }}</span>
-                  <span v-if="plan.multimodal" class="chip-mm">多模态</span>
-                </div>
-              </div>
-              <div class="plan-acts">
-                <a-switch
-                  :model-value="plan.enabled"
-                  @change="(v: unknown) => toggleEnabled(plan.id, v)"
-                />
-                <button class="icon-btn" title="编辑" @click="openEdit(plan.id)">
-                  <IconEdit />
-                </button>
-                <button
-                  class="icon-btn danger"
-                  title="删除"
-                  :disabled="store.plans.length <= 1"
-                  @click="removePlan(plan.id)"
-                >
-                  <IconDelete />
-                </button>
-              </div>
-            </div>
-            <div class="plan-info">
-              <span class="info-chip info-chip--models">
-                <b>模型</b>
-                <template v-for="m in parseModelField(plan.model)" :key="m.id">
-                  <span
-                    class="model-tag"
-                    :style="{
-                      background:
-                        (m.types && m.types[0]
-                          ? MODEL_TYPE_COLORS[m.types[0]] || '#007AFF'
-                          : '#007AFF') + '15',
-                      color:
-                        m.types && m.types[0]
-                          ? MODEL_TYPE_COLORS[m.types[0]] || '#0062CC'
-                          : '#0062CC',
-                    }"
-                  >
-                    <span v-if="m.types && m.types.length" class="model-tag__icons">
-                      <component
-                        v-for="t in m.types"
-                        :key="t"
-                        :is="modelTypeIcon(t)"
-                        :size="11"
-                        :style="{ color: MODEL_TYPE_COLORS[t] || '#007AFF' }"
-                      />
-                    </span>
-                    {{ m.id }}
-                  </span>
-                </template>
-                <span v-if="!plan.model">—</span>
-              </span>
-              <span class="info-chip"
-                ><b>上下文</b>{{ fmtK(plan.contextInput) }} / {{ fmtK(plan.contextOutput) }}</span
-              >
-              <span class="info-chip"><b>工具轮次</b>{{ plan.toolCallRounds }}</span>
-              <span class="info-chip right">
-                <b>配额</b>
-                <em :class="{ warn: getUsagePercent(plan) > 80 }">{{ getUsagePercent(plan) }}%</em>
-              </span>
-            </div>
-            <div class="plan-bar">
-              <span
-                :style="{ width: getUsagePercent(plan) + '%' }"
-                :class="{ warn: getUsagePercent(plan) > 80 }"
-              />
-            </div>
-          </div>
-
-          <div v-if="store.plans.length === 0" class="empty-card">
-            <div class="empty-glyph">＋</div>
-            <p>还没有配置任何模型</p>
-            <a-button type="primary" size="small" @click="openAdd">
-              <template #icon><IconPlus /></template>添加第一个模型
-            </a-button>
-          </div>
-        </a-space>
-      </a-col>
-
-      <a-col :xs="24" :lg="8">
-        <a-card :bordered="false" title="用量总览" style="padding: 20px">
-          <a-space direction="vertical" :size="16" fill>
-            <div v-for="plan in store.plans" :key="plan.id">
-              <div class="flex items-center justify-between mb-2">
-                <a-typography-text class="text-[13px]">{{
-                  plan.displayName || plan.model
-                }}</a-typography-text>
-                <a-typography-text
-                  class="text-[12px]"
-                  :type="getUsagePercent(plan) > 80 ? 'danger' : 'secondary'"
-                >
-                  {{ getUsagePercent(plan) }}%
-                </a-typography-text>
-              </div>
-              <a-progress
-                :percent="getUsagePercent(plan)"
-                :show-text="false"
-                size="small"
-                :color="getUsagePercent(plan) > 80 ? '#FF3B30' : '#34C759'"
-              />
-              <div class="flex justify-between mt-1">
-                <a-typography-text type="disabled" class="text-[11px]">
-                  {{ plan.usedTokens.toLocaleString() }} / {{ plan.monthlyQuota.toLocaleString() }}
-                </a-typography-text>
-                <a-typography-text type="secondary" class="text-[11px]">
-                  剩余 {{ (plan.monthlyQuota - plan.usedTokens).toLocaleString() }}
-                </a-typography-text>
-              </div>
-            </div>
-
-            <a-divider v-if="store.plans.length > 0" style="margin: 12px 0" />
-
-            <div v-if="store.activePlan" class="bg-[#34C759]/10 rounded-[12px] p-4">
-              <div class="flex items-center gap-2 mb-2">
-                <IconBarChart :size="16" style="color: #34c759" />
-                <a-typography-text bold class="text-[13px]" style="color: #248a3d"
-                  >当前生效模型</a-typography-text
-                >
-              </div>
-              <a-typography-text class="text-[12px]" style="color: #34c759">
-                {{ store.activePlan.displayName || store.activePlan.model }} ·
-                {{ providerLabel(store.activePlan.provider) }}
-              </a-typography-text>
-              <a-typography-text type="secondary" class="text-[11px] block mt-1">
-                本月剩余配额：{{ store.getRemainingQuota().toLocaleString() }} tokens
-              </a-typography-text>
-            </div>
-            <div v-else class="bg-[#FF9500]/10 rounded-[12px] p-4">
-              <a-typography-text class="text-[12px]" style="color: #ff9500">
-                未启用任何模型，请在卡片右侧打开开关并设为默认。
-              </a-typography-text>
-            </div>
-          </a-space>
-        </a-card>
-      </a-col>
-    </a-row>
-
-    <a-modal
-      v-model:visible="showModal"
-      modal-class="tp-cabin-modal"
-      body-class="tp-cabin-body-modal"
-      align-center
-      :mask-closable="false"
-      :esc-to-close="true"
-      unmount-on-close
-    >
-      <template #title>
-        <span class="tp-title">{{ isEdit ? '编辑模型' : '添加模型' }}</span>
-      </template>
-
-      <div class="tp-cabin">
-        <div class="tp-seg">
-          <span class="tp-seg-thumb" :class="{ right: form.mode === 'custom' }" />
-          <button
-            type="button"
-            class="tp-seg-btn"
-            :class="{ active: form.mode === 'provider' }"
-            @click="setMode('provider')"
-          >
-            模型服务商
-          </button>
-          <button
-            type="button"
-            class="tp-seg-btn"
-            :class="{ active: form.mode === 'custom' }"
-            @click="setMode('custom')"
-          >
-            自定义配置
-          </button>
-        </div>
-
-        <template v-if="form.mode === 'provider'">
-          <div class="tp-row">
-            <label class="tp-label"><i class="tp-req">*</i>服务商</label>
-            <a-select
-              v-model="form.provider"
-              :options="providerOptions"
-              placeholder="选择模型服务商"
-              @change="onProviderChange"
-            />
-          </div>
-        </template>
-
-        <template v-else>
-          <div class="tp-row">
-            <label class="tp-label"><i class="tp-req">*</i>API 格式</label>
-            <a-select v-model="form.apiFormat" :options="apiFormatOptions" />
-          </div>
-
-          <div class="tp-row">
-            <div class="tp-labelrow">
-              <label class="tp-label"><i class="tp-req">*</i>自定义请求地址</label>
-              <span class="tp-inline">
-                <IconLink :size="14" />完整 URL
-                <button
-                  type="button"
-                  role="switch"
-                  class="tp-toggle"
-                  :class="{ on: form.fullUrl }"
-                  :aria-checked="form.fullUrl"
-                  @click="form.fullUrl = !form.fullUrl"
-                >
-                  <span class="tp-knob" />
-                </button>
-              </span>
-            </div>
-            <input
-              v-model="form.baseUrl"
-              class="tp-field"
-              placeholder="e.g. https://api.openai.com/v1"
-            />
-            <div class="tp-banner">
-              <IconInfoCircleFill class="tp-banner-i" />
-              <p>{{ bannerText }}</p>
-            </div>
-          </div>
-        </template>
-
-        <div class="tp-row">
-          <label class="tp-label"><i class="tp-req">*</i>API 密钥</label>
-          <input
-            v-model="form.apiKey"
-            class="tp-field"
-            type="password"
-            placeholder="输入 API 密钥"
-          />
-        </div>
-
-        <div class="tp-row">
-          <label class="tp-label"><i class="tp-req">*</i>模型列表</label>
-          <div class="model-list">
-            <div
-              v-for="(entry, idx) in form.models"
-              :key="idx"
-              class="model-entry"
-              :class="{
-                dragging: dragIndex === idx,
-                'drag-over': dragOverIndex === idx && dragIndex !== idx,
-              }"
-              draggable="true"
-              @dragstart="onDragStart(idx, $event)"
-              @dragend="onDragEnd($event)"
-              @dragover="onDragOver(idx, $event)"
-              @dragleave="onDragLeave"
-              @drop="onDrop(idx)"
-            >
-              <div class="model-entry__top">
-                <span class="model-entry__grip" title="拖拽排序">
-                  <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
-                    <path
-                      d="M8 6a2 2 0 1 1 0-4 2 2 0 0 1 0 4zm8 0a2 2 0 1 1 0-4 2 2 0 0 1 0 4zM8 14a2 2 0 1 1 0-4 2 2 0 0 1 0 4zm8 0a2 2 0 1 1 0-4 2 2 0 0 1 0 4zM8 22a2 2 0 1 1 0-4 2 2 0 0 1 0 4zm8 0a2 2 0 1 1 0-4 2 2 0 0 1 0 4z"
-                    />
-                  </svg>
-                </span>
-                <div class="model-entry__id">
-                  <a-select
-                    v-model="entry.id"
-                    placeholder="选择或输入模型 ID"
-                    allow-search
-                    allow-create
-                    size="mini"
-                    @change="(val: unknown) => onModelIdInput(entry, val as string)"
-                  >
-                    <a-select-opt-group
-                      v-if="form.mode === 'provider' && presetModels[form.provider].length"
-                      label="预设模型"
-                    >
-                      <a-option
-                        v-for="m in presetModels[form.provider].filter((pm) =>
-                          availableModelsForEntry(idx).includes(pm),
-                        )"
-                        :key="m"
-                        :value="m"
-                      >
-                        {{ m
-                        }}<span class="tp-opt-meta"
-                          >{{ getModelContext(m).i.toLocaleString() }} tokens</span
-                        >
-                      </a-option>
-                    </a-select-opt-group>
-                    <a-select-opt-group v-if="dedupedFetchedModels.length" label="API 拉取">
-                      <a-option
-                        v-for="m in dedupedFetchedModels.filter((fm) =>
-                          availableModelsForEntry(idx).includes(fm),
-                        )"
-                        :key="m"
-                        :value="m"
-                      >
-                        {{ m
-                        }}<span class="tp-opt-meta"
-                          >{{ getModelContext(m).i.toLocaleString() }} tokens</span
-                        >
-                      </a-option>
-                    </a-select-opt-group>
-                  </a-select>
-                </div>
-                <button
-                  v-if="form.models.length > 1"
-                  type="button"
-                  class="model-entry__del"
-                  title="删除"
-                  @click="removeModelEntry(idx)"
-                >
-                  <IconDelete :size="15" />
-                </button>
-              </div>
-              <div class="model-entry__bottom">
-                <div class="model-entry__types">
-                  <a-select
-                    v-model="entry.types"
-                    placeholder="模型类型（可多选）"
-                    multiple
-                    size="mini"
-                    :options="MODEL_TYPE_OPTIONS as unknown as { value: string; label: string }[]"
-                  />
-                </div>
-                <div class="model-entry__ctx">
-                  <input
-                    v-model.number="entry.contextInput"
-                    type="number"
-                    class="tp-field model-entry__ctx-input"
-                    placeholder="输入上下文"
-                  />
-                  <input
-                    v-model.number="entry.contextOutput"
-                    type="number"
-                    class="tp-field model-entry__ctx-input"
-                    placeholder="输出上下文"
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-          <button type="button" class="model-add-btn" @click="addModelEntry">
-            <IconPlus :size="14" /> 添加模型
-          </button>
-          <div class="tp-aux">
-            <span class="tp-aux-hint"
-              >每个模型可配置多个类型与独立上下文窗口，留空则使用高级配置中的默认值</span
-            >
-            <button
-              v-if="form.apiKey && (form.mode === 'provider' || form.baseUrl)"
-              type="button"
-              class="tp-aux-link"
-              :disabled="fetching"
-              @click="form.mode === 'provider' ? fetchProviderModels() : fetchCustomModels()"
-            >
-              <IconRefresh :class="{ 'tp-spin': fetching }" />{{ fetching ? '拉取中' : '拉取列表' }}
-            </button>
-          </div>
-        </div>
-
-        <button type="button" class="tp-collapse-hd" @click="advanced = !advanced">
-          <IconDown class="tp-chev" :class="{ open: advanced }" />高级配置
-        </button>
-
-        <div class="tp-collapse-bd" :class="{ open: advanced }">
-          <div class="tp-collapse-inner">
-            <div v-if="form.mode === 'custom'" class="tp-row">
-              <label class="tp-label">模型系列</label>
-              <p class="tp-hint">针对特定模型系列优化了 Prompt 和超参，未选择时使用默认配置。</p>
-              <a-select v-model="form.modelSeries" :options="modelSeriesOptions" />
-            </div>
-
-            <div class="tp-row">
-              <label class="tp-label">模型展示名称</label>
-              <p class="tp-hint">在模型列表中展示的名称，未设置时默认显示 Model ID。</p>
-              <div class="tp-countwrap">
-                <input
-                  v-model="form.displayName"
-                  class="tp-field tp-count-input"
-                  maxlength="32"
-                  placeholder="请输入模型展示名称"
-                />
-                <span class="tp-count">{{ (form.displayName || '').length }}/32</span>
-              </div>
-            </div>
-
-            <div class="tp-row">
-              <label class="tp-label">上下文窗口</label>
-              <div class="tp-ctx">
-                <span class="tp-ctx-k">输入</span>
-                <input v-model.number="form.contextInput" type="number" class="tp-field tp-ctx-f" />
-                <span class="tp-ctx-k">输出</span>
-                <input
-                  v-model.number="form.contextOutput"
-                  type="number"
-                  class="tp-field tp-ctx-f"
-                />
-              </div>
-            </div>
-
-            <div class="tp-row">
-              <label class="tp-label">工具调用轮次</label>
-              <input v-model.number="form.toolCallRounds" type="number" class="tp-field" />
-            </div>
-
-            <div class="tp-row last">
-              <label class="tp-label">月度配额</label>
-              <p class="tp-hint">每月可用 token 上限，用于用量统计与告警。</p>
-              <input v-model.number="form.monthlyQuota" type="number" class="tp-field" />
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <template #footer>
-        <button type="button" class="tp-submit" @click="save">
-          {{ isEdit ? '保存配置' : '添加模型' }}
-        </button>
-      </template>
-    </a-modal>
-  </div>
-</template>
-
-<style>
+<style lang="scss">
 .arco-modal.tp-cabin-modal {
   display: flex;
   flex-direction: column;
@@ -1049,7 +1049,7 @@ body.tp-cabin-open .tp-opt-meta {
 }
 </style>
 
-<style scoped>
+<style scoped lang="scss">
 .tp-title {
   display: inline-block;
 }

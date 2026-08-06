@@ -1,3 +1,97 @@
+<template>
+  <div>
+    <PageHeader title="发布管理" subtitle="管理内容发布任务">
+      <template #actions>
+        <a-button type="primary" @click="showCreateModal = true">
+          <template #icon><IconPlus /></template>
+          新建发布
+        </a-button>
+      </template>
+    </PageHeader>
+
+    <div class="mb-5">
+      <SegmentedControl v-model="activeTab" :options="tabs" />
+    </div>
+
+    <a-spin :loading="loading" style="width: 100%; display: block">
+      <a-empty v-if="!loading && filteredTasks.length === 0" description="暂无发布任务" />
+      <a-table
+        v-else
+        :columns="columns"
+        :data="filteredTasks"
+        :bordered="false"
+        :hoverable="true"
+        :pagination="false"
+      >
+        <template #platform="{ record }">
+          <PlatformIcon :platform="record.platform" size="sm" />
+        </template>
+        <template #status="{ record }">
+          <StatusBadge :status="record.status" />
+        </template>
+        <template #scheduled_at="{ record }">
+          <span class="tabular-nums text-[13px] text-secondary">{{
+            formatDateTime(record.scheduled_at)
+          }}</span>
+        </template>
+        <template #actions="{ record }">
+          <a-space :size="4">
+            <a-button type="text" size="small" title="查看">
+              <template #icon><IconEye /></template>
+            </a-button>
+            <a-button
+              v-if="record.status === 'failed'"
+              type="text"
+              status="warning"
+              size="small"
+              title="重试"
+              @click="retryTask(record.id)"
+            >
+              <template #icon><IconRefresh /></template>
+            </a-button>
+            <a-button type="text" status="danger" size="small" title="删除">
+              <template #icon><IconDelete /></template>
+            </a-button>
+          </a-space>
+        </template>
+      </a-table>
+    </a-spin>
+
+    <Modal v-model:visible="showCreateModal" title="新建发布" width="560px">
+      <a-form :model="formData" layout="vertical">
+        <a-form-item label="选择内容">
+          <a-select v-model="formData.contentId" placeholder="请选择要发布的内容" allow-clear>
+            <a-option v-for="content in contents" :key="content.id" :value="content.id">
+              {{ content.title }}
+            </a-option>
+          </a-select>
+        </a-form-item>
+        <a-form-item label="选择账号">
+          <a-select v-model="formData.accountId" placeholder="请选择目标账号" allow-clear>
+            <a-option v-for="account in accounts" :key="account.id" :value="account.id">
+              {{ account.nickname }} ({{ platformChoices[account.platform] || account.platform }})
+            </a-option>
+          </a-select>
+        </a-form-item>
+        <a-form-item label="发布时间">
+          <a-date-picker
+            v-model="formData.scheduledAt"
+            show-time
+            format="YYYY-MM-DD HH:mm"
+            style="width: 100%"
+          />
+        </a-form-item>
+      </a-form>
+      <template #footer>
+        <a-space>
+          <a-button @click="showCreateModal = false">取消</a-button>
+          <a-button type="primary" :loading="submitting" @click="createTask">确认发布</a-button>
+        </a-space>
+      </template>
+    </Modal>
+  </div>
+</template>
+
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { IconPlus, IconEye, IconRefresh, IconDelete } from '@arco-design/web-vue/es/icon'
@@ -154,99 +248,7 @@ onMounted(() => {
 })
 </script>
 
-<template>
-  <div>
-    <PageHeader title="发布管理" subtitle="管理内容发布任务">
-      <template #actions>
-        <a-button type="primary" @click="showCreateModal = true">
-          <template #icon><IconPlus /></template>
-          新建发布
-        </a-button>
-      </template>
-    </PageHeader>
-
-    <div class="mb-5">
-      <SegmentedControl v-model="activeTab" :options="tabs" />
-    </div>
-
-    <a-spin :loading="loading" style="width: 100%; display: block">
-      <a-empty v-if="!loading && filteredTasks.length === 0" description="暂无发布任务" />
-      <a-table
-        v-else
-        :columns="columns"
-        :data="filteredTasks"
-        :bordered="false"
-        :hoverable="true"
-        :pagination="false"
-      >
-        <template #platform="{ record }">
-          <PlatformIcon :platform="record.platform" size="sm" />
-        </template>
-        <template #status="{ record }">
-          <StatusBadge :status="record.status" />
-        </template>
-        <template #scheduled_at="{ record }">
-          <span class="tabular-nums text-[13px] text-secondary">{{ formatDateTime(record.scheduled_at) }}</span>
-        </template>
-        <template #actions="{ record }">
-          <a-space :size="4">
-            <a-button type="text" size="small" title="查看">
-              <template #icon><IconEye /></template>
-            </a-button>
-            <a-button
-              v-if="record.status === 'failed'"
-              type="text"
-              status="warning"
-              size="small"
-              title="重试"
-              @click="retryTask(record.id)"
-            >
-              <template #icon><IconRefresh /></template>
-            </a-button>
-            <a-button type="text" status="danger" size="small" title="删除">
-              <template #icon><IconDelete /></template>
-            </a-button>
-          </a-space>
-        </template>
-      </a-table>
-    </a-spin>
-
-    <Modal v-model:visible="showCreateModal" title="新建发布" width="560px">
-      <a-form :model="formData" layout="vertical">
-        <a-form-item label="选择内容">
-          <a-select v-model="formData.contentId" placeholder="请选择要发布的内容" allow-clear>
-            <a-option v-for="content in contents" :key="content.id" :value="content.id">
-              {{ content.title }}
-            </a-option>
-          </a-select>
-        </a-form-item>
-        <a-form-item label="选择账号">
-          <a-select v-model="formData.accountId" placeholder="请选择目标账号" allow-clear>
-            <a-option v-for="account in accounts" :key="account.id" :value="account.id">
-              {{ account.nickname }} ({{ platformChoices[account.platform] || account.platform }})
-            </a-option>
-          </a-select>
-        </a-form-item>
-        <a-form-item label="发布时间">
-          <a-date-picker
-            v-model="formData.scheduledAt"
-            show-time
-            format="YYYY-MM-DD HH:mm"
-            style="width: 100%"
-          />
-        </a-form-item>
-      </a-form>
-      <template #footer>
-        <a-space>
-          <a-button @click="showCreateModal = false">取消</a-button>
-          <a-button type="primary" :loading="submitting" @click="createTask">确认发布</a-button>
-        </a-space>
-      </template>
-    </Modal>
-  </div>
-</template>
-
-<style scoped>
+<style scoped lang="scss">
 @media (max-width: 248px) {
   :deep(.arco-card-header) {
     padding: 8px 10px !important;

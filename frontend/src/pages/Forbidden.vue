@@ -1,13 +1,3 @@
-<script setup lang="ts">
-import { useRouter } from 'vue-router'
-
-const router = useRouter()
-
-function goHome() {
-  router.push({ name: 'Dashboard' })
-}
-</script>
-
 <template>
   <div class="flex items-center justify-center py-20">
     <div class="text-center px-6">
@@ -20,3 +10,13 @@ function goHome() {
     </div>
   </div>
 </template>
+
+<script setup lang="ts">
+import { useRouter } from 'vue-router'
+
+const router = useRouter()
+
+function goHome() {
+  router.push({ name: 'Dashboard' })
+}
+</script>

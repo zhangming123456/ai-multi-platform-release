@@ -1,4 +1,4 @@
-import { createRouter, createWebHistory } from 'vue-router'
+import { createRouter, createWebHistory, type RouteMeta } from 'vue-router'
 import type { RouteLocationNormalized } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { usePermissionStore } from '@/stores/permission'
@@ -283,6 +283,18 @@ const router = createRouter({
           name: 'Notifications',
           component: () => import('@/pages/Notifications.vue'),
           meta: { title: '通知中心', skipPermCheck: true },
+        },
+        {
+          path: 'settings/notification-dict',
+          name: 'NotificationDictManage',
+          component: () => import('@/pages/NotificationDictManage.vue'),
+          meta: {
+            title: '通知消息字典',
+            permKey: 'notification:enum:read',
+            sidebarType: 'system',
+            sidebarOrder: 3,
+            icon: 'tool',
+          },
         },
       ],
     },
