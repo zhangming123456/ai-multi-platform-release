@@ -49,10 +49,11 @@ func registerRoutes() {
 
 	modelConfigs := &controllers.ModelConfigsController{}
 	web.Router("/api/model-configs/", modelConfigs, "get:List;post:Create")
-	web.Router("/api/model-configs/:id", modelConfigs, "put:Update;delete:Delete")
+	web.Router("/api/model-configs/:config_id", modelConfigs, "put:Update;delete:Delete")
 
 	models := &controllers.ModelsController{}
 	web.Router("/api/models/fetch", models, "post:Fetch")
+	web.Router("/api/models/test", models, "post:Test")
 
 	notifications := &controllers.NotificationsController{}
 	web.Router("/api/notifications/", notifications, "get:List")

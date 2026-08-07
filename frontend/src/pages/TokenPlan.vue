@@ -1,6 +1,9 @@
 <template>
   <div class="page-main">
-    <PageHeader title="Token方案" subtitle="配置 AI 模型服务商与自定义接入，统一管理调用配额">
+    <PageHeader
+      title="AI 模型服务商管理"
+      subtitle="配置 AI 模型服务商与自定义接入，统一管理调用配额"
+    >
       <template #actions>
         <a-tag :color="store.activePlan ? 'green' : 'red'" size="small">
           <template #icon>
@@ -31,7 +34,7 @@
               </div>
               <div class="plan-meta">
                 <div class="plan-title">
-                  {{ plan.displayName || plan.model || '未命名模型' }}
+                  {{ plan.displayName || plan.name || '未命名模型' }}
                   <span v-if="store.activePlanId === plan.id && plan.enabled" class="plan-live"
                     >生效中</span
                   >
@@ -125,7 +128,7 @@
             <div v-for="plan in store.plans" :key="plan.id">
               <div class="flex items-center justify-between mb-2">
                 <a-typography-text class="text-[13px]">{{
-                  plan.displayName || plan.model
+                  plan.displayName || plan.name
                 }}</a-typography-text>
                 <a-typography-text
                   class="text-[12px]"
@@ -160,7 +163,7 @@
                 >
               </div>
               <a-typography-text class="text-[12px]" style="color: #34c759">
-                {{ store.activePlan.displayName || store.activePlan.model }} ·
+                {{ store.activePlan.displayName || store.activePlan.name }} ·
                 {{ providerLabel(store.activePlan.provider) }}
               </a-typography-text>
               <a-typography-text type="secondary" class="text-[11px] block mt-1">
@@ -264,8 +267,11 @@
             v-model="form.apiKey"
             class="tp-field"
             type="password"
-            placeholder="输入 API 密钥"
+            :placeholder="isEdit ? '已保存的密钥已隐式化，输入新密钥可替换' : '输入 API 密钥'"
           />
+          <p v-if="isEdit && isMaskedApiKey(form.apiKey)" class="tp-hint">
+            密钥不会明文回显；保持掩码值不变即可保留原密钥，输入新密钥后将覆盖保存。连通测试与拉取模型列表将使用已保存的密钥执行。
+          </p>
         </div>
 
         <div class="tp-row">
@@ -337,6 +343,20 @@
                   </a-select>
                 </div>
                 <button
+                  v-if="canTest(idx)"
+                  type="button"
+                  class="model-entry__test"
+                  :class="testClass(idx)"
+                  :disabled="testingIdx !== null && testingIdx !== idx"
+                  :title="testBtnText(idx)"
+                  @click.stop="testModel(idx)"
+                >
+                  <IconRefresh v-if="testingIdx === idx" :size="12" class="tp-spin" />
+                  <IconCheckCircle v-else-if="testStates[idx] === 'ok'" :size="12" />
+                  <IconCloseCircle v-else-if="testStates[idx] === 'fail'" :size="12" />
+                  <span>{{ testBtnText(idx) }}</span>
+                </button>
+                <button
                   v-if="form.models.length > 1"
                   type="button"
                   class="model-entry__del"
@@ -381,10 +401,10 @@
               >每个模型可配置多个类型与独立上下文窗口，留空则使用高级配置中的默认值</span
             >
             <button
-              v-if="form.apiKey && (form.mode === 'provider' || form.baseUrl)"
+              v-if="form.mode === 'provider' || form.baseUrl"
               type="button"
               class="tp-aux-link"
-              :disabled="fetching"
+              :disabled="fetching || !form.apiKey || (!isEdit && isMaskedApiKey(form.apiKey))"
               @click="form.mode === 'provider' ? fetchProviderModels() : fetchCustomModels()"
             >
               <IconRefresh :class="{ 'tp-spin': fetching }" />{{ fetching ? '拉取中' : '拉取列表' }}
@@ -405,14 +425,14 @@
             </div>
 
             <div class="tp-row">
-              <label class="tp-label">模型展示名称</label>
-              <p class="tp-hint">在模型列表中展示的名称，未设置时默认显示 Model ID。</p>
+              <label class="tp-label">服务商展示名称</label>
+              <p class="tp-hint">在服务商列表中展示的名称，未设置时默认显示 Model ID。</p>
               <div class="tp-countwrap">
                 <input
                   v-model="form.displayName"
                   class="tp-field tp-count-input"
                   maxlength="32"
-                  placeholder="请输入模型展示名称"
+                  placeholder="请输入服务商展示名称"
                 />
                 <span class="tp-count">{{ (form.displayName || '').length }}/32</span>
               </div>
@@ -471,6 +491,7 @@ import {
 } from '@/stores/tokenPlan'
 import {
   IconCheckCircle,
+  IconCloseCircle,
   IconUpCircle,
   IconBarChart,
   IconPlus,
@@ -558,6 +579,26 @@ const presetModels: Record<string, string[]> = {
   deepseek: ['deepseek-chat', 'deepseek-r1-chat', 'deepseek-coder'],
   moonshot: ['moonshot-v1-8k', 'moonshot-v1-32k', 'moonshot-v1-128k'],
   zhipu: ['glm-4-plus', 'glm-4-air', 'glm-4-flash', 'glm-4v-plus'],
+  gemini: [
+    'gemini-3.6-flash',
+    'gemini-3.5-flash',
+    'gemini-3.5-flash-lite',
+    'gemini-3.1-flash-lite',
+    'gemini-3-flash-preview',
+    'gemini-3.1-pro-preview',
+    'gemini-2.5-flash',
+    'gemini-2.5-pro',
+  ],
+  volcengine: [
+    'doubao-seed-1-6-251015',
+    'doubao-seed-1-6-flash-250915',
+    'doubao-1-5-pro-32k-250115',
+    'doubao-1-5-lite-32k-250115',
+    'doubao-seedream-3-0-t2i-250415',
+    'doubao-seedance-1-0-pro-250528',
+    'deepseek-v3-250324',
+    'deepseek-r1-250120',
+  ],
   custom: [],
 }
 
@@ -566,6 +607,8 @@ const providerDefaultModel: Record<string, string> = {
   deepseek: 'deepseek-chat',
   moonshot: 'moonshot-v1-8k',
   zhipu: 'glm-4-plus',
+  gemini: 'gemini-3.6-flash',
+  volcengine: 'doubao-seed-1-6-251015',
   custom: '',
 }
 
@@ -585,6 +628,22 @@ const modelContext: Record<string, { i: number; o: number }> = {
   'glm-4-air': { i: 128000, o: 4096 },
   'glm-4-flash': { i: 128000, o: 4096 },
   'glm-4v-plus': { i: 8192, o: 4096 },
+  'gemini-3.6-flash': { i: 1000000, o: 65536 },
+  'gemini-3.5-flash': { i: 1000000, o: 65536 },
+  'gemini-3.5-flash-lite': { i: 1000000, o: 65536 },
+  'gemini-3.1-flash-lite': { i: 1000000, o: 65536 },
+  'gemini-3-flash-preview': { i: 1000000, o: 65536 },
+  'gemini-3.1-pro-preview': { i: 1000000, o: 65536 },
+  'gemini-2.5-flash': { i: 1048576, o: 65536 },
+  'gemini-2.5-pro': { i: 1048576, o: 65536 },
+  'doubao-seed-1-6-251015': { i: 262144, o: 32768 },
+  'doubao-seed-1-6-flash-250915': { i: 262144, o: 32768 },
+  'doubao-1-5-pro-32k-250115': { i: 32768, o: 8192 },
+  'doubao-1-5-lite-32k-250115': { i: 32768, o: 4096 },
+  'doubao-seedream-3-0-t2i-250415': { i: 32768, o: 4096 },
+  'doubao-seedance-1-0-pro-250528': { i: 32768, o: 4096 },
+  'deepseek-v3-250324': { i: 65536, o: 8192 },
+  'deepseek-r1-250120': { i: 65536, o: 8192 },
 }
 
 const providerOptions = [
@@ -592,6 +651,8 @@ const providerOptions = [
   { value: 'deepseek', label: 'DeepSeek' },
   { value: 'moonshot', label: 'Moonshot' },
   { value: 'zhipu', label: '智谱 AI' },
+  { value: 'gemini', label: 'Google Gemini' },
+  { value: 'volcengine', label: '火山方舟' },
 ]
 
 const apiFormatOptions = [
@@ -607,6 +668,8 @@ const modelSeriesOptions = [
   { value: 'claude', label: 'Claude' },
   { value: 'qwen', label: 'Qwen' },
   { value: 'glm', label: 'GLM' },
+  { value: 'gemini', label: 'Gemini' },
+  { value: 'doubao', label: '豆包' },
 ]
 
 const bannerText = computed(() => {
@@ -634,7 +697,13 @@ function getBaseUrl(provider: string, customUrl?: string): string {
   if (provider === 'deepseek') return 'https://api.deepseek.com/v1'
   if (provider === 'moonshot') return 'https://api.moonshot.cn/v1'
   if (provider === 'zhipu') return 'https://open.bigmodel.cn/api/paas/v4'
+  if (provider === 'gemini') return 'https://generativelanguage.googleapis.com/v1beta/openai'
+  if (provider === 'volcengine') return 'https://ark.cn-beijing.volces.com/api/v3'
   return customUrl || ''
+}
+
+function isMaskedApiKey(key: string): boolean {
+  return key.includes('****')
 }
 
 async function doFetch(url: string, _target: 'provider' | 'custom') {
@@ -651,6 +720,7 @@ async function doFetch(url: string, _target: 'provider' | 'custom') {
     const res = await api.post('/models/fetch', {
       base_url: url,
       api_key: form.value.apiKey,
+      config_id: isEdit.value ? editingId.value : '',
     })
     const models: string[] = res.data.models || []
     fetchedModels.value = models
@@ -673,6 +743,149 @@ async function doFetch(url: string, _target: 'provider' | 'custom') {
     Message.error(`拉取失败：${msg}`)
   } finally {
     fetching.value = false
+  }
+}
+
+const testingIdx = ref<number | null>(null)
+const testStates = ref<Record<number, 'ok' | 'fail'>>({})
+
+function canTest(idx: number): boolean {
+  const entry = form.value.models[idx]
+  if (!entry || !entry.id) return false
+  if (!form.value.apiKey) return false
+  if (!isEdit.value && isMaskedApiKey(form.value.apiKey)) return false
+  if (form.value.mode === 'provider') return true
+  return !!form.value.baseUrl
+}
+
+function testClass(idx: number) {
+  return {
+    testing: testingIdx.value === idx,
+    ok: testStates.value[idx] === 'ok',
+    fail: testStates.value[idx] === 'fail',
+  }
+}
+
+function testBtnText(idx: number) {
+  if (testingIdx.value === idx) return '测试中'
+  if (testStates.value[idx] === 'ok') return '连通正常'
+  if (testStates.value[idx] === 'fail') return '重试'
+  return '连通测试'
+}
+
+function inferModelTypes(modelId: string): ModelType[] {
+  const id = modelId.toLowerCase()
+  const types = new Set<ModelType>(['text'])
+  if (
+    [
+      'gemini',
+      'gpt-4o',
+      'gpt-4.1',
+      'gpt-4.5',
+      'gpt-5',
+      'claude',
+      'glm-4v',
+      'qwen-vl',
+      'qwen2-vl',
+      'llava',
+      'vision',
+      'doubao-seed-1-6',
+      'doubao-1-5-pro',
+    ].some((k) => id.includes(k))
+  ) {
+    types.add('vision')
+  }
+  if (
+    [
+      'gpt-5',
+      'o1',
+      'o3',
+      'o4',
+      'r1',
+      'reasoning',
+      'thinking',
+      'gemini-2.5',
+      '-pro',
+      'sonnet-4',
+      'k2-thinking',
+      'doubao-seed-1-6',
+    ].some((k) => id.includes(k))
+  ) {
+    types.add('reasoning')
+  }
+  if (
+    [
+      'dall-e',
+      'gpt-image',
+      'flux',
+      'imagen',
+      'diffusion',
+      'sdxl',
+      'midjourney',
+      'qwen-image',
+      'seedream',
+    ].some((k) => id.includes(k))
+  ) {
+    types.add('image')
+  }
+  if (['sora', 'veo', 'video', 'kling', 'runway', 'seedance'].some((k) => id.includes(k))) {
+    types.add('video')
+  }
+  return Array.from(types)
+}
+
+function autoFillModelConfig(idx: number) {
+  const entry = form.value.models[idx]
+  if (!entry) return
+  const isDefaultTypes =
+    entry.types.length === 0 || (entry.types.length === 1 && entry.types[0] === 'text')
+  if (isDefaultTypes) {
+    entry.types = inferModelTypes(entry.id)
+  }
+  const ctx = modelContext[entry.id]
+  if (ctx) {
+    if (!entry.contextInput || entry.contextInput <= 0) entry.contextInput = ctx.i
+    if (!entry.contextOutput || entry.contextOutput <= 0) entry.contextOutput = ctx.o
+  }
+}
+
+async function testModel(idx: number) {
+  const entry = form.value.models[idx]
+  if (!entry || !entry.id.trim()) {
+    Message.warning('请先填写模型 ID')
+    return
+  }
+  if (!form.value.apiKey.trim()) {
+    Message.warning('请先填写 API 密钥')
+    return
+  }
+  const baseUrl =
+    form.value.mode === 'provider' ? getBaseUrl(form.value.provider) : form.value.baseUrl
+  if (!baseUrl) {
+    Message.warning('请先填写请求地址')
+    return
+  }
+  testingIdx.value = idx
+  try {
+    const res = await api.post('/models/test', {
+      base_url: baseUrl,
+      api_key: form.value.apiKey,
+      model: entry.id,
+      api_format: form.value.apiFormat,
+      config_id: isEdit.value ? editingId.value : '',
+    })
+    testStates.value[idx] = 'ok'
+    autoFillModelConfig(idx)
+    Message.success(`连通正常（${res.data?.latency_ms ?? '-'}ms），已自动填充模型配置`)
+  } catch (e: unknown) {
+    testStates.value[idx] = 'fail'
+    const msg =
+      e instanceof Error
+        ? e.message
+        : (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail || '测试失败'
+    Message.error(`连通失败：${msg}`)
+  } finally {
+    testingIdx.value = null
   }
 }
 
@@ -767,6 +980,8 @@ function openAdd() {
   editingId.value = ''
   advanced.value = false
   fetchedModels.value = []
+  testingIdx.value = null
+  testStates.value = {}
   showModal.value = true
 }
 
@@ -793,6 +1008,8 @@ function openEdit(id: string) {
   editingId.value = id
   advanced.value = false
   fetchedModels.value = []
+  testingIdx.value = null
+  testStates.value = {}
   showModal.value = true
 }
 
@@ -832,7 +1049,13 @@ async function save() {
   const modelStr = serializeModelField(validModels)
   const firstModelId = validModels[0]?.id || ''
   const name = f.displayName || firstModelId || providerLabel(f.provider)
-  const payload = { ...f, model: modelStr, name }
+  const payload = {
+    ...f,
+    baseUrl: f.mode === 'provider' ? getBaseUrl(f.provider) : f.baseUrl,
+    model: modelStr,
+    name,
+    displayName: f.displayName,
+  }
   if (isEdit.value) {
     await store.updatePlan(editingId.value, payload)
     Message.success('配置已保存')
@@ -872,6 +1095,10 @@ function providerColor(p: PlanProvider) {
       return '#0EA5E9'
     case 'zhipu':
       return '#14B8A6'
+    case 'gemini':
+      return '#4285F4'
+    case 'volcengine':
+      return '#3370FF'
     default:
       return '#636366'
   }
@@ -899,6 +1126,10 @@ function providerLetter(p: PlanProvider) {
       return 'M'
     case 'zhipu':
       return 'Z'
+    case 'gemini':
+      return 'G'
+    case 'volcengine':
+      return 'V'
     default:
       return 'C'
   }
@@ -1632,6 +1863,47 @@ body.tp-cabin-open .tp-opt-meta {
 }
 .model-entry__del:hover {
   background: rgba(255, 59, 48, 0.1);
+  color: #ff3b30;
+}
+.model-entry__test {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 11px;
+  border: 1px solid rgba(0, 122, 255, 0.28);
+  border-radius: 8px;
+  background: rgba(0, 122, 255, 0.05);
+  color: #007aff;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    background 0.18s,
+    border-color 0.18s,
+    color 0.18s;
+}
+.model-entry__test:hover:not(:disabled) {
+  background: rgba(0, 122, 255, 0.12);
+}
+.model-entry__test:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.model-entry__test.testing {
+  border-color: rgba(0, 122, 255, 0.35);
+  background: rgba(0, 122, 255, 0.1);
+}
+.model-entry__test.ok {
+  border-color: rgba(52, 199, 89, 0.35);
+  background: rgba(52, 199, 89, 0.08);
+  color: #34c759;
+}
+.model-entry__test.fail {
+  border-color: rgba(255, 59, 48, 0.35);
+  background: rgba(255, 59, 48, 0.07);
   color: #ff3b30;
 }
 .model-add-btn {

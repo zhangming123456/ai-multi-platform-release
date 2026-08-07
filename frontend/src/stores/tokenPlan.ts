@@ -3,7 +3,8 @@ import { ref, computed, watch } from 'vue'
 import { Message } from '@arco-design/web-vue'
 import api from '@/utils/api'
 
-export type PlanProvider = 'openai' | 'deepseek' | 'moonshot' | 'zhipu' | 'custom'
+export type PlanProvider =
+  'openai' | 'deepseek' | 'moonshot' | 'zhipu' | 'gemini' | 'volcengine' | 'custom'
 export type PlanMode = 'provider' | 'custom'
 export type ModelType = 'text' | 'reasoning' | 'vision' | 'image' | 'video'
 
@@ -54,12 +55,15 @@ export function parseModelField(raw: string): ModelEntry[] {
       const data = JSON.parse(trimmed)
       if (Array.isArray(data)) {
         return data
-          .filter((item: unknown) => typeof item === 'object' && item !== null && (item as Record<string, unknown>).id)
+          .filter(
+            (item: unknown) =>
+              typeof item === 'object' && item !== null && (item as Record<string, unknown>).id,
+          )
           .map((item: unknown) => {
             const obj = item as Record<string, unknown>
             const rawType = obj.types || obj.type || 'text'
             const types: ModelType[] = Array.isArray(rawType)
-              ? rawType as ModelType[]
+              ? (rawType as ModelType[])
               : [rawType as ModelType]
             return {
               id: obj.id as string,
@@ -89,6 +93,12 @@ export function serializeModelField(entries: ModelEntry[]): string {
       contextOutput: e.contextOutput ?? null,
     })),
   )
+}
+
+export function maskApiKey(key: string): string {
+  if (!key || key.includes('****')) return key
+  if (key.length <= 8) return '******'
+  return key.slice(0, 4) + '****' + key.slice(-4)
 }
 
 export interface TokenPlan {
@@ -122,6 +132,10 @@ export function providerLabel(provider: PlanProvider): string {
       return 'Moonshot'
     case 'zhipu':
       return '智谱 AI'
+    case 'gemini':
+      return 'Google Gemini'
+    case 'volcengine':
+      return '火山方舟'
     default:
       return '自定义'
   }
@@ -214,8 +228,17 @@ export const useTokenPlanStore = defineStore('tokenPlan', () => {
     const provider = data?.provider || 'openai'
     const model =
       data?.model ||
-      (provider === 'openai' ? 'gpt-4o-mini' : provider === 'deepseek' ? 'deepseek-chat' : '')
-    const displayName = data?.displayName || model
+      (provider === 'openai'
+        ? 'gpt-4o-mini'
+        : provider === 'deepseek'
+          ? 'deepseek-chat'
+          : provider === 'gemini'
+            ? 'gemini-3.6-flash'
+            : provider === 'volcengine'
+              ? 'doubao-seed-1-6-251015'
+              : '')
+    const displayName =
+      data?.displayName || data?.name || (model.startsWith('[') ? providerLabel(provider) : model)
     const plan: TokenPlan = {
       id: data?.id || generateId(),
       name: data?.name || displayName || providerLabel(provider),
@@ -243,8 +266,8 @@ export const useTokenPlanStore = defineStore('tokenPlan', () => {
       console.error('addPlan error:', e)
       throw e
     }
-    plans.value.push(plan)
-    return plan
+    plans.value.push({ ...plan, apiKey: maskApiKey(plan.apiKey) })
+    return { ...plan, apiKey: maskApiKey(plan.apiKey) }
   }
 
   async function removePlan(id: string) {
@@ -290,7 +313,11 @@ export const useTokenPlanStore = defineStore('tokenPlan', () => {
       const oldValues = { ...plan }
       Object.assign(plan, updates)
       try {
-        await api.put(`/model-configs/${id}`, camelToSnake(updates as unknown as Record<string, unknown>))
+        await api.put(
+          `/model-configs/${id}`,
+          camelToSnake(updates as unknown as Record<string, unknown>),
+        )
+        plan.apiKey = maskApiKey(plan.apiKey)
       } catch (e) {
         Object.assign(plan, oldValues)
         Message.error('更新模型配置失败')
@@ -305,6 +332,15 @@ export const useTokenPlanStore = defineStore('tokenPlan', () => {
     if (plan && plan.enabled) {
       activePlanId.value = id
     }
+  }
+
+  function selectModel(planId: string, modelId: string) {
+    const plan = plans.value.find((p) => p.id === planId && p.enabled)
+    if (!plan) return
+    const models = parseModelField(plan.model)
+    if (!models.some((m) => m.id === modelId)) return
+    activePlanId.value = planId
+    selectedModelId.value = modelId
   }
 
   function incrementUsage(tokens: number) {
@@ -334,6 +370,7 @@ export const useTokenPlanStore = defineStore('tokenPlan', () => {
     setPlanEnabled,
     updatePlan,
     setActivePlan,
+    selectModel,
     incrementUsage,
     getRemainingQuota,
   }

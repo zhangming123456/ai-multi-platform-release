@@ -170,7 +170,7 @@ async function confirmReject() {
 
 onMounted(async () => {
   try {
-    const rolesRes = await api.get<RoleDef[]>('/roles')
+    const rolesRes = await api.get<RoleDef[]>('/v2/roles')
     roleDefs.value = Array.isArray(rolesRes.data) ? rolesRes.data : []
   } catch {}
   await fetchRequests()

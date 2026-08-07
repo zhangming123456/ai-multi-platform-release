@@ -34,7 +34,7 @@ var RBACResources = []resourceDef{
 	{Key: "review:read", Name: "内容审核", Description: "管理内容审核流程"},
 	{Key: "sql_review:read", Name: "SQL审核", Description: "管理SQL变更审核流程"},
 	{Key: "accounts:read", Name: "平台账号", Description: "管理各平台的登录账号信息"},
-	{Key: "token_plan:read", Name: "Token方案", Description: "管理API Token用量方案"},
+	{Key: "token_plan:read", Name: "AI 模型服务商管理", Description: "管理AI模型服务商接入与调用配额"},
 	{Key: "api_docs:read", Name: "API文档", Description: "查看系统API接口文档"},
 	{Key: "db:read", Name: "数据库控制台", Description: "访问数据库控制台"},
 	{Key: "users:read", Name: "用户管理", Description: "管理系统用户列表和基本信息"},

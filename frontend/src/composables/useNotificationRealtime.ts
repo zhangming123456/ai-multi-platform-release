@@ -1,5 +1,4 @@
 import { ref, onUnmounted } from 'vue'
-import { useRouter } from 'vue-router'
 import { Notification as ArcoNotification } from '@arco-design/web-vue'
 import { useNotificationStore } from '@/stores/notification'
 import { usePermissionStore } from '@/stores/permission'
@@ -59,7 +58,6 @@ function createRealtimeInstance() {
   const notificationStore = useNotificationStore()
   const permissionStore = usePermissionStore()
   const userStore = useUserStore()
-  const router = useRouter()
 
   function isPageVisible(): boolean {
     return document.visibilityState === 'visible'
@@ -243,9 +241,6 @@ function createRealtimeInstance() {
       content: summary || undefined,
       duration: 5000,
       closable: true,
-      onClose: () => {
-        router.push('/notifications')
-      },
     })
   }
 
@@ -268,9 +263,6 @@ function createRealtimeInstance() {
       content: titles,
       duration: 6000,
       closable: true,
-      onClose: () => {
-        router.push('/notifications')
-      },
     })
   }
 
@@ -283,16 +275,19 @@ function createRealtimeInstance() {
   function handleNewNotifications(items: NotificationItem[]) {
     if (!items || items.length === 0) return
 
-    for (const item of items) {
+    const unreadItems = items.filter((item) => !item.is_read)
+    if (unreadItems.length === 0) return
+
+    for (const item of unreadItems) {
       showBrowserNotification(item)
     }
-    showAppNotificationBatch(items)
+    showAppNotificationBatch(unreadItems)
 
     notificationStore.fetchNotifications()
     notificationStore.fetchUnreadCount()
     updateBadge()
 
-    if (hasPermissionChange(items)) {
+    if (hasPermissionChange(unreadItems)) {
       console.log(`${LOG_PREFIX} 检测到角色/权限变更通知，立即同步权限与用户数据`)
       permissionStore.loadPermissions()
       userStore.fetchUserInfo()

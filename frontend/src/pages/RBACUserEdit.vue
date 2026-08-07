@@ -115,6 +115,7 @@ interface UserDetail {
 const router = useRouter()
 const route = useRoute()
 const permStore = usePermissionStore()
+const userStore = useUserStore()
 
 const userId = route.params.id as string
 
@@ -206,6 +207,10 @@ async function saveEdit() {
       body.role_ids = form.value.role_ids
     }
     await api.put(`/v2/users/${userId}`, body)
+    if (user.value?.id === userStore.userInfo?.id) {
+      userStore.fetchUserInfo().catch(() => {})
+      permStore.loadPermissions().catch(() => {})
+    }
     Message.success('用户信息已更新')
     router.push({ name: 'RBACUserManage' })
   } catch (e: any) {

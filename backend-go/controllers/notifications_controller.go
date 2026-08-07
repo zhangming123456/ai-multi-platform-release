@@ -94,7 +94,7 @@ func (c *NotificationsController) TypeCounts() {
 	})
 }
 
-// MarkRead POST /api/notifications/:notification_id/read
+// MarkRead POST /api/notifications/:id/read
 func (c *NotificationsController) MarkRead() {
 	user := c.CurrentUser()
 	if user == nil {
@@ -103,7 +103,7 @@ func (c *NotificationsController) MarkRead() {
 	}
 	var notification models.Notification
 	err := services.GetOrm().QueryTable(new(models.Notification)).
-		Filter("id", c.GetPathParam("notification_id")).
+		Filter("id", c.GetPathParam("id")).
 		Filter("user_id", user.ID).
 		One(&notification)
 	if err != nil {
@@ -204,6 +204,7 @@ func pollNotifications(userID string, knownIDs map[string]bool) []map[string]int
 	var notifications []models.Notification
 	_, err := services.GetOrm().QueryTable(new(models.Notification)).
 		Filter("user_id", userID).
+		Filter("is_read", 0).
 		OrderBy("-created_at").
 		Limit(20).
 		All(&notifications)

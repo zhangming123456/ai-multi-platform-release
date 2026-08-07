@@ -124,149 +124,182 @@
         </div>
       </a-card>
 
-      <div class="content-bottom">
-        <div class="content-bottom__left">
-          <div class="log-terminal animate-fade-up">
-            <div
-              class="log-terminal__bar"
-              :class="{ 'log-terminal__bar--collapsed': !logExpanded }"
-              @click="logExpanded = !logExpanded"
-            >
-              <div class="flex items-center gap-2">
-                <span class="log-dot log-dot--r"></span>
-                <span class="log-dot log-dot--y"></span>
-                <span class="log-dot log-dot--g"></span>
-                <IconCode :size="14" class="ml-2" style="color: #8e8e93" />
-                <span class="log-terminal__title">API 调用日志</span>
-                <span v-if="isGenerating" class="log-live">
-                  <span class="log-live__pulse"></span>
-                  实时监听中
-                </span>
-                <span v-else-if="logs.length > 0" class="log-idle">空闲</span>
+      <div class="content-left">
+        <div class="log-terminal animate-fade-up">
+          <div class="log-terminal__bar">
+            <div class="flex items-center gap-2">
+              <span class="log-dot log-dot--r"></span>
+              <span class="log-dot log-dot--y"></span>
+              <span class="log-dot log-dot--g"></span>
+              <IconCode :size="14" class="ml-2" style="color: #8e8e93" />
+              <span class="log-terminal__title">API 调用日志</span>
+              <span v-if="isGenerating" class="log-live">
+                <span class="log-live__pulse"></span>
+                实时监听中
+              </span>
+              <span v-else-if="logs.length > 0" class="log-idle">空闲</span>
+            </div>
+            <div class="flex items-center gap-1">
+              <span class="log-terminal__count">{{ logs.length }} 条</span>
+              <button class="log-terminal__btn" title="清空日志" @click="clearLogs">
+                <IconDelete :size="13" />
+              </button>
+            </div>
+          </div>
+
+          <div class="log-terminal__body-wrap">
+            <div ref="logPanelRef" class="log-terminal__body">
+              <div v-if="logs.length === 0" class="log-terminal__empty">
+                <span class="log-terminal__prompt">➜</span>
+                暂无调用记录，点击「AI 生成内容」后这里将实时输出接口日志
               </div>
-              <div class="flex items-center gap-1" @click.stop>
-                <span class="log-terminal__count">{{ logs.length }} 条</span>
-                <button class="log-terminal__btn" title="清空日志" @click="clearLogs">
-                  <IconDelete :size="13" />
-                </button>
-                <button
-                  class="log-terminal__btn"
-                  :title="logExpanded ? '收起' : '展开'"
-                  @click="logExpanded = !logExpanded"
-                >
-                  <IconUp v-if="logExpanded" :size="13" />
-                  <IconDown v-else :size="13" />
+              <div
+                v-for="entry in logs"
+                :key="entry.id"
+                class="log-line"
+                :class="`log-line--${entry.level}`"
+              >
+                <span class="log-line__time">{{ entry.time }}</span>
+                <span class="log-line__level">{{ levelText(entry.level) }}</span>
+                <span class="log-line__msg">{{ entry.message }}</span>
+              </div>
+              <div v-if="isGenerating" class="log-line log-line--cursor">
+                <span class="log-terminal__prompt">➜</span>
+                <span class="log-cursor"></span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="chat-input-section">
+          <div class="platform-select-bar">
+            <button
+              v-for="choice in platformChoices"
+              :key="choice.value"
+              type="button"
+              class="platform-chip"
+              :class="{ 'platform-chip--active': selectedPlatforms.includes(choice.value) }"
+              @click="togglePlatform(choice.value)"
+            >
+              <PlatformIcon
+                :platform="choice.value as 'wechat_mp' | 'xiaohongshu' | 'douyin' | 'wechat_video'"
+                size="sm"
+              />
+              <span>{{ choice.label }}</span>
+            </button>
+          </div>
+
+          <div
+            ref="inputCardRef"
+            class="chat-input-card"
+            :class="{ 'chat-input-card--drag': isDragOver }"
+            @dragenter.prevent="onDragEnter"
+            @dragover.prevent="onDragOver"
+            @dragleave.prevent="onDragLeave"
+            @drop.prevent="onDrop"
+          >
+            <div v-if="uploadedFiles.length > 0" class="uploaded-files">
+              <div v-for="(item, idx) in uploadedFiles" :key="idx" class="file-chip">
+                <template v-if="item.kind === 'link'">
+                  <img v-if="item.isImage" :src="item.url" class="file-thumb" />
+                  <div v-else class="file-icon"><IconFile :size="20" /></div>
+                </template>
+                <template v-else>
+                  <img v-if="isImage(item.file)" :src="filePreview(item.file)" class="file-thumb" />
+                  <div v-else class="file-icon"><IconFile :size="20" /></div>
+                </template>
+                <div class="file-info">
+                  <div class="file-name">{{ itemName(item) }}</div>
+                  <div class="file-meta">{{ itemMeta(item) }}</div>
+                </div>
+                <button type="button" class="file-remove" @click="removeFile(idx)">
+                  <IconClose :size="14" />
                 </button>
               </div>
             </div>
 
-            <transition name="log-collapse">
-              <div v-show="logExpanded" class="log-terminal__body-wrap">
-                <div ref="logPanelRef" class="log-terminal__body">
-                  <div v-if="logs.length === 0" class="log-terminal__empty">
-                    <span class="log-terminal__prompt">➜</span>
-                    暂无调用记录，点击「AI 生成内容」后这里将实时输出接口日志
-                  </div>
-                  <div
-                    v-for="entry in logs"
-                    :key="entry.id"
-                    class="log-line"
-                    :class="`log-line--${entry.level}`"
-                  >
-                    <span class="log-line__time">{{ entry.time }}</span>
-                    <span class="log-line__level">{{ levelText(entry.level) }}</span>
-                    <span class="log-line__msg">{{ entry.message }}</span>
-                  </div>
-                  <div v-if="isGenerating" class="log-line log-line--cursor">
-                    <span class="log-terminal__prompt">➜</span>
-                    <span class="log-cursor"></span>
-                  </div>
-                </div>
-              </div>
-            </transition>
-          </div>
-        </div>
+            <a-textarea
+              v-model="promptText"
+              :auto-size="{ minRows: 3, maxRows: 8 }"
+              placeholder="输入创作需求，使用 #标签 添加关键词，例如：写一篇小红书文案 #穿搭 #夏季"
+              class="chat-textarea"
+              @keydown="handleTextareaKeydown"
+              @paste="handleTextareaPaste"
+            />
 
-        <div class="content-bottom__right">
-          <a-card :bordered="false" title="创作输入" class="content-create-card">
-            <a-form :model="{}" layout="vertical">
-              <a-form-item label="内容主题">
-                <a-input v-model="topic" placeholder="例如：春季护肤、职场成长、美食探店" />
-              </a-form-item>
-              <a-form-item label="关键词（可选）">
-                <a-input v-model="keywords" placeholder="用逗号分隔，例如：保湿,防晒,敏感肌" />
-              </a-form-item>
-              <a-form-item label="目标平台">
-                <a-checkbox-group v-model="selectedPlatforms">
-                  <a-row :gutter="[8, 8]">
-                    <a-col :span="12" v-for="choice in platformChoices" :key="choice.value">
-                      <a-checkbox :value="choice.value">
-                        <a-space :size="6" align="center">
-                          <PlatformIcon
-                            :platform="
-                              choice.value as
-                                'wechat_mp' | 'xiaohongshu' | 'douyin' | 'wechat_video'
-                            "
-                            size="sm"
-                          />
-                          {{ choice.label }}
-                        </a-space>
-                      </a-checkbox>
-                    </a-col>
-                  </a-row>
-                </a-checkbox-group>
-              </a-form-item>
-              <a-form-item v-if="store.activeModelList.length > 1" label="模型 ID">
-                <a-select
-                  v-model="store.selectedModelId"
-                  placeholder="选择要使用的模型"
-                  allow-search
+            <div class="chat-toolbar">
+              <div class="toolbar-left">
+                <button
+                  type="button"
+                  class="toolbar-btn"
+                  title="上传文件"
+                  @click="triggerUpload('all')"
                 >
-                  <a-option v-for="m in store.activeModelList" :key="m.id" :value="m.id">
-                    <span class="model-opt">
-                      <span class="model-opt__icons">
-                        <component
-                          v-for="t in m.types || ['text']"
-                          :key="t"
-                          :is="modelTypeIcon(t)"
-                          :size="12"
-                          :style="{ color: modelTypeColor(t) }"
-                        />
+                  <IconFolderAdd :size="18" />
+                </button>
+                <button
+                  type="button"
+                  class="toolbar-btn"
+                  title="图片"
+                  @click="triggerUpload('image')"
+                >
+                  <IconImage :size="18" />
+                </button>
+                <button
+                  type="button"
+                  class="toolbar-btn"
+                  title="视频"
+                  @click="triggerUpload('video')"
+                >
+                  <IconVideoCamera :size="18" />
+                </button>
+                <span class="chat-shortcut-hint">{{ shortcutHint }}</span>
+              </div>
+              <div class="toolbar-right">
+                <span
+                  class="model-select-wrap"
+                  :class="{ 'model-select-wrap--compact': modelCompact }"
+                >
+                  <a-select
+                    :model-value="activeModelKey"
+                    :placeholder="modelOptions.length ? '选择模型' : '无可用模型'"
+                    size="small"
+                    class="chat-model-select"
+                    @change="onModelChange"
+                  >
+                    <a-option v-for="opt in modelOptions" :key="opt.key" :value="opt.key">
+                      <span class="provider-opt">
+                        <span class="provider-opt__name">
+                          <span class="provider-opt__bracket">【</span>{{ opt.planName
+                          }}<span class="provider-opt__bracket">】</span>
+                        </span>
+                        <span class="provider-opt__model">{{ opt.modelId }}</span>
                       </span>
-                      {{ m.id }}
-                    </span>
-                  </a-option>
-                </a-select>
-              </a-form-item>
-              <a-form-item v-if="store.selectedModelSupportsFiles" label="上传文件">
-                <a-upload
-                  :file-list="uploadedFiles"
-                  @change="handleFileChange"
-                  :auto-upload="false"
-                  multiple
-                  :limit="10"
-                  draggable
-                  :tip="fileUploadTip"
-                  accept="image/*,video/*"
-                />
-              </a-form-item>
-              <a-form-item>
-                <a-button
-                  type="primary"
-                  long
-                  :loading="isGenerating"
-                  :disabled="!topic || isGenerating"
+                    </a-option>
+                  </a-select>
+                  <IconRobot class="model-select-icon" :size="18" />
+                </span>
+                <button
+                  type="button"
+                  class="send-btn"
+                  :disabled="!canGenerate || isGenerating"
                   @click="generate"
                 >
-                  <template #icon><IconStar /></template>
-                  {{ isGenerating ? 'AI 正在创作…' : 'AI 生成内容' }}
-                </a-button>
-              </a-form-item>
-            </a-form>
-            <a-typography-text type="secondary" class="text-[11px] block text-center">
-              AI 将根据各平台的推荐算法与用户偏好调整文案风格
-            </a-typography-text>
-          </a-card>
+                  <IconArrowUp v-if="!isGenerating" :size="18" />
+                  <IconLoading v-else :size="16" spin />
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <input
+            ref="fileInputRef"
+            type="file"
+            :accept="acceptType"
+            multiple
+            class="hidden-file-input"
+            @change="handleNativeFileChange"
+          />
         </div>
       </div>
     </div>
@@ -274,32 +307,28 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, nextTick, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { Message } from '@arco-design/web-vue'
 import {
-  IconStar,
   IconCopy,
   IconSave,
   IconSettings,
   IconCode,
   IconDelete,
-  IconDown,
-  IconUp,
-  IconEdit,
-  IconMindMapping,
-  IconEye,
   IconImage,
   IconVideoCamera,
+  IconFile,
+  IconClose,
+  IconArrowUp,
+  IconLoading,
+  IconFolderAdd,
+  IconStar,
+  IconRobot,
 } from '@arco-design/web-vue/es/icon'
 import PageHeader from '@/components/layout/PageHeader.vue'
 import PlatformIcon from '@/components/shared/PlatformIcon.vue'
-import {
-  useTokenPlanStore,
-  MODEL_TYPE_COLORS,
-  MODEL_TYPE_ICONS,
-  type ModelType,
-} from '@/stores/tokenPlan'
+import { useTokenPlanStore, parseModelField } from '@/stores/tokenPlan'
 import api from '@/utils/api'
 
 const router = useRouter()
@@ -321,7 +350,6 @@ interface LogEntry {
 }
 
 const logs = ref<LogEntry[]>([])
-const logExpanded = ref(true)
 const logPanelRef = ref<HTMLElement | null>(null)
 const streamingTextRef = ref<HTMLElement | null>(null)
 let logSeq = 0
@@ -360,39 +388,6 @@ function platformLabel(value: string) {
   return platformChoices.find((p) => p.value === value)?.label || value
 }
 
-function modelTypeColor(type: string): string {
-  return MODEL_TYPE_COLORS[type as ModelType] || '#007AFF'
-}
-
-const MODEL_ICON_MAP: Record<string, typeof IconEdit> = {
-  IconEdit,
-  IconMindMapping,
-  IconEye,
-  IconImage,
-  IconVideoCamera,
-}
-
-function modelTypeIcon(type: string) {
-  const key = MODEL_TYPE_ICONS[type as ModelType] || 'IconEdit'
-  return MODEL_ICON_MAP[key] || IconEdit
-}
-
-const fileUploadTip = computed(() => {
-  const entry = store.selectedModelEntry
-  if (!entry) return ''
-  const types = entry.types
-  if (types.includes('image') && types.includes('video')) {
-    return '支持上传图片和视频文件（最多 10 个）'
-  }
-  if (types.includes('image')) {
-    return '支持上传图片文件（最多 10 个）'
-  }
-  if (types.includes('video')) {
-    return '支持上传视频文件（最多 10 个）'
-  }
-  return '支持上传图片/视频文件（最多 10 个）'
-})
-
 function levelText(level: LogLevel) {
   switch (level) {
     case 'req':
@@ -406,32 +401,284 @@ function levelText(level: LogLevel) {
   }
 }
 
-const topic = ref('')
-const keywords = ref('')
+const promptText = ref('')
 const selectedPlatforms = ref<string[]>(['xiaohongshu'])
 const isGenerating = ref(false)
 const streamingText = ref('')
-const uploadedFiles = ref<any[]>([])
-const streamingPlatform = ref('')
 
-function getNativeFile(file: any): File | null {
-  return file?.file || file?.originFile || (file instanceof File ? file : null)
+interface UploadedItemBase {
+  name: string
+  isImage: boolean
 }
 
-function handleFileChange(fileList: any[]) {
-  uploadedFiles.value = fileList.filter((item) => {
-    const file = getNativeFile(item)
-    if (!file) return false
+interface UploadedFileItem extends UploadedItemBase {
+  kind: 'file'
+  file: File
+}
+
+interface UploadedLinkItem extends UploadedItemBase {
+  kind: 'link'
+  url: string
+}
+
+type UploadedItem = UploadedFileItem | UploadedLinkItem
+
+const uploadedFiles = ref<UploadedItem[]>([])
+const isDragOver = ref(false)
+let dragDepth = 0
+
+function onDragEnter() {
+  dragDepth++
+  isDragOver.value = true
+}
+
+function onDragOver() {
+  isDragOver.value = true
+}
+
+function onDragLeave() {
+  dragDepth--
+  if (dragDepth <= 0) {
+    dragDepth = 0
+    isDragOver.value = false
+  }
+}
+
+function onDrop(e: DragEvent) {
+  dragDepth = 0
+  isDragOver.value = false
+  const files = Array.from(e.dataTransfer?.files || [])
+  if (files.length > 0) {
+    addFiles(files)
+  }
+}
+const streamingPlatform = ref('')
+const fileInputRef = ref<HTMLInputElement | null>(null)
+const acceptType = ref('image/*,video/*')
+const inputCardRef = ref<HTMLElement | null>(null)
+const modelCompact = ref(false)
+const MODEL_COMPACT_THRESHOLD = 440
+
+let cardResizeObserver: ResizeObserver | null = null
+
+onMounted(() => {
+  if (inputCardRef.value) {
+    cardResizeObserver = new ResizeObserver((entries) => {
+      const width = entries[0]?.contentRect.width ?? 0
+      modelCompact.value = width < MODEL_COMPACT_THRESHOLD
+    })
+    cardResizeObserver.observe(inputCardRef.value)
+  }
+})
+
+onUnmounted(() => {
+  cardResizeObserver?.disconnect()
+  cardResizeObserver = null
+})
+
+const parsedPrompt = computed(() => {
+  const text = promptText.value
+  const keywords: string[] = []
+  const topic = text
+    .replace(/#[\p{L}\p{N}_\u4e00-\u9fa5]+/gu, (match) => {
+      keywords.push(match.slice(1))
+      return ''
+    })
+    .trim()
+  return { topic, keywords }
+})
+
+const canGenerate = computed(
+  () =>
+    !!parsedPrompt.value.topic ||
+    parsedPrompt.value.keywords.length > 0 ||
+    uploadedFiles.value.length > 0,
+)
+
+function onModelChange(val: unknown) {
+  if (typeof val !== 'string') return
+  const idx = val.indexOf(':')
+  if (idx <= 0) return
+  store.selectModel(val.slice(0, idx), val.slice(idx + 1))
+}
+
+interface ModelOption {
+  key: string
+  planName: string
+  modelId: string
+}
+
+const modelOptions = computed<ModelOption[]>(() => {
+  const options: ModelOption[] = []
+  for (const p of store.enabledPlans) {
+    const planName = p.displayName || p.name
+    for (const m of parseModelField(p.model)) {
+      if (m.id) options.push({ key: `${p.id}:${m.id}`, planName, modelId: m.id })
+    }
+  }
+  return options
+})
+
+const activeModelKey = computed(() => {
+  if (!store.activePlan) return ''
+  const modelId = store.selectedModelId || store.activeModelList[0]?.id || ''
+  return modelId ? `${store.activePlanId}:${modelId}` : ''
+})
+
+function togglePlatform(value: string) {
+  const idx = selectedPlatforms.value.indexOf(value)
+  if (idx > -1) {
+    if (selectedPlatforms.value.length > 1) {
+      selectedPlatforms.value.splice(idx, 1)
+    }
+  } else {
+    selectedPlatforms.value.push(value)
+  }
+}
+
+function triggerUpload(type: 'all' | 'image' | 'video') {
+  acceptType.value = type === 'image' ? 'image/*' : type === 'video' ? 'video/*' : 'image/*,video/*'
+  nextTick(() => {
+    fileInputRef.value?.click()
+  })
+}
+
+function handleNativeFileChange(e: Event) {
+  const input = e.target as HTMLInputElement
+  const files = Array.from(input.files || [])
+  addFiles(files)
+  input.value = ''
+}
+
+function addFiles(files: File[]) {
+  const valid: UploadedItem[] = []
+  for (const file of files) {
     if (!file.type.startsWith('image/') && !file.type.startsWith('video/')) {
       Message.warning(`不支持的文件类型：${file.name}，仅支持图片和视频`)
-      return false
+      continue
     }
     if (file.type.startsWith('video/') && file.size > 50 * 1024 * 1024) {
       Message.warning(`视频文件过大：${file.name}（最大 50MB）`)
-      return false
+      continue
     }
-    return true
+    valid.push({
+      kind: 'file',
+      file,
+      name: file.name,
+      isImage: file.type.startsWith('image/'),
+    })
+  }
+  uploadedFiles.value.push(...valid)
+  if (uploadedFiles.value.length > 10) {
+    uploadedFiles.value = uploadedFiles.value.slice(0, 10)
+    Message.warning('最多上传 10 个文件')
+  }
+}
+
+function removeFile(idx: number) {
+  uploadedFiles.value.splice(idx, 1)
+}
+
+const FILE_URL_PATTERN = /https?:\/\/[^\s<>"'（）()，。；！？、]+/gi
+const IMAGE_URL_PATTERN = /\.(png|jpe?g|gif|webp|avif|svg|bmp|ico)(\?.*)?$/i
+const FILE_URL_EXT_PATTERN =
+  /\.(png|jpe?g|gif|webp|avif|svg|bmp|ico|mp4|webm|mov|m4v|avi|mkv|flv|wmv|pdf|zip|rar|7z|tar|gz|mp3|wav|flac|aac|ogg|docx?|xlsx?|pptx?|txt)(\?.*)?$/i
+
+function extractFileLinks() {
+  const text = promptText.value
+  const urls = Array.from(new Set(text.match(FILE_URL_PATTERN) || []))
+    .map((u) => u.replace(/[.,;:!?，。；：！？、]+$/, ''))
+    .filter((u) => FILE_URL_EXT_PATTERN.test(u))
+  if (urls.length === 0) return
+  const existing = new Set(uploadedFiles.value.filter((i) => i.kind === 'link').map((i) => i.url))
+  for (const url of urls) {
+    if (existing.has(url)) continue
+    const path = url.split(/[?#]/)[0]
+    let name = path.split('/').pop() || url
+    try {
+      name = decodeURIComponent(name)
+    } catch {
+      /* 保留原始名称 */
+    }
+    uploadedFiles.value.push({
+      kind: 'link',
+      url,
+      name,
+      isImage: IMAGE_URL_PATTERN.test(url),
+    })
+    existing.add(url)
+  }
+  if (uploadedFiles.value.length > 10) {
+    uploadedFiles.value = uploadedFiles.value.slice(0, 10)
+  }
+  const cleaned = text.replace(FILE_URL_PATTERN, (match) => {
+    const url = match.replace(/[.,;:!?，。；：！？、]+$/, '')
+    return FILE_URL_EXT_PATTERN.test(url) ? '' : match
   })
+  promptText.value = cleaned.replace(/ {2,}/g, ' ').replace(/[ \t]+(?=[，。；：！？、])/g, '')
+}
+
+watch(
+  promptText,
+  () => {
+    extractFileLinks()
+  },
+  { immediate: true },
+)
+
+const isMac = /Mac|iPhone|iPad|iPod/i.test(navigator.userAgent)
+const shortcutHint = computed(() => (isMac ? '⌘+Enter 换行' : 'Ctrl+Enter 换行'))
+
+function handleTextareaKeydown(e: KeyboardEvent) {
+  if (e.key !== 'Enter') return
+  if (e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) {
+    e.preventDefault()
+    const target = e.target as HTMLTextAreaElement
+    const start = target.selectionStart
+    const end = target.selectionEnd
+    target.value = target.value.slice(0, start) + '\n' + target.value.slice(end)
+    target.selectionStart = target.selectionEnd = start + 1
+    target.dispatchEvent(new Event('input', { bubbles: true }))
+    return
+  }
+  e.preventDefault()
+  generate()
+}
+
+function handleTextareaPaste(e: ClipboardEvent) {
+  const files = Array.from(e.clipboardData?.files || [])
+  if (files.length > 0) {
+    e.preventDefault()
+    addFiles(files)
+  }
+}
+
+function itemName(item: UploadedItem): string {
+  return item.name
+}
+
+function itemMeta(item: UploadedItem): string {
+  if (item.kind === 'link') return item.isImage ? '图片链接' : '文件链接'
+  return `${fileExt(item.file!)} · ${fileSize(item.file!)}`
+}
+
+function fileExt(file: File): string {
+  const parts = file.name.split('.')
+  return parts.length > 1 ? parts.pop()!.toUpperCase() : 'FILE'
+}
+
+function fileSize(file: File): string {
+  if (file.size < 1024) return file.size + ' B'
+  if (file.size < 1024 * 1024) return (file.size / 1024).toFixed(1) + ' KB'
+  return (file.size / (1024 * 1024)).toFixed(1) + ' MB'
+}
+
+function filePreview(file: File): string {
+  return URL.createObjectURL(file)
+}
+
+function isImage(file: File): boolean {
+  return file.type.startsWith('image/')
 }
 
 function compressImage(file: File, maxWidth = 1920, quality = 0.8): Promise<File> {
@@ -495,6 +742,29 @@ async function fileToBase64(file: File): Promise<{ data: string; mime_type: stri
     reader.readAsDataURL(processed)
   })
 }
+
+async function itemToBase64(
+  item: UploadedItem,
+): Promise<{ data: string; mime_type: string } | null> {
+  try {
+    if (item.kind === 'file' && item.file) {
+      return await fileToBase64(item.file)
+    }
+    if (item.kind === 'link' && item.url) {
+      const res = await fetch(item.url)
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const blob = await res.blob()
+      const file = new File([blob], item.name || 'file', {
+        type: blob.type || 'application/octet-stream',
+      })
+      return await fileToBase64(file)
+    }
+  } catch (err) {
+    const e = err as { message?: string }
+    pushLog('err', `链接素材获取失败：${item.name}（${e.message || '网络错误'}）`)
+  }
+  return null
+}
 const isSaving = ref(false)
 const hasGenerated = ref(false)
 const activePreview = ref('')
@@ -530,7 +800,16 @@ async function generate() {
     router.push('/settings/token-plan')
     return
   }
-  if (!topic.value) return
+  if (!canGenerate.value) {
+    pushLog('err', '内容主题、关键词、上传文件至少填写一项')
+    Message.error('内容主题、关键词、上传文件至少填写一项')
+    return
+  }
+  if (uploadedFiles.value.length > 0 && !store.selectedModelSupportsFiles) {
+    pushLog('err', '当前模型不支持文件上传，请切换到支持视觉/图片/视频的模型')
+    Message.error('当前模型不支持文件上传，请切换到支持视觉/图片/视频的模型')
+    return
+  }
 
   isGenerating.value = true
   hasGenerated.value = false
@@ -540,30 +819,29 @@ async function generate() {
   const startedAt = performance.now()
   const plan = store.activePlan
   const modelId = store.selectedModelId || store.activeModelList[0]?.id || ''
+  const { topic, keywords } = parsedPrompt.value
+  const inputDesc = topic
+    ? `主题「${topic}」`
+    : keywords.length > 0
+      ? `关键词「${keywords.join('、')}」`
+      : `上传素材 ${uploadedFiles.value.length} 个`
   pushLog(
     'info',
-    `开始生成任务 · 主题「${topic.value}」 · 平台 ${selectedPlatforms.value
-      .map(platformLabel)
-      .join(' / ')}`,
+    `开始生成任务 · ${inputDesc} · 平台 ${selectedPlatforms.value.map(platformLabel).join(' / ')}`,
   )
   pushLog('info', `使用模型配置 ${plan.name}（${modelId}）`)
 
-  const keywordsArray = keywords.value
-    ? keywords.value
-        .split(',')
-        .map((k) => k.trim())
-        .filter(Boolean)
-    : undefined
+  const keywordsArray = keywords.length > 0 ? keywords : undefined
 
   let filesPayload: { data: string; mime_type: string }[] | undefined
   if (uploadedFiles.value.length > 0) {
-    const nativeFiles = uploadedFiles.value
-      .map((f) => getNativeFile(f))
-      .filter((f): f is File => f !== null)
-    if (nativeFiles.length > 0) {
-      pushLog('info', `正在编码 ${nativeFiles.length} 个上传文件…`)
-      filesPayload = await Promise.all(nativeFiles.map((f) => fileToBase64(f)))
-      pushLog('ok', `文件编码完成，共 ${filesPayload.length} 个`)
+    pushLog('info', `正在编码 ${uploadedFiles.value.length} 个素材文件…`)
+    const results = await Promise.all(uploadedFiles.value.map(itemToBase64))
+    filesPayload = results.filter((r): r is { data: string; mime_type: string } => r !== null)
+    if (filesPayload.length > 0) {
+      pushLog('ok', `素材编码完成，共 ${filesPayload.length} 个`)
+    } else {
+      pushLog('err', '所有素材均无法编码，本次生成将不带文件')
     }
   }
 
@@ -575,7 +853,7 @@ async function generate() {
         Authorization: `Bearer ${localStorage.getItem('token')}`,
       },
       body: JSON.stringify({
-        topic: topic.value,
+        topic: topic,
         platforms: selectedPlatforms.value,
         plan_id: plan.id,
         model_id: modelId,
@@ -766,66 +1044,86 @@ async function copyContent() {
   align-items: center;
   gap: 2px;
 }
+.provider-opt {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  white-space: nowrap;
+  max-width: 100%;
+}
+.provider-opt__name {
+  font-weight: 500;
+}
+.provider-opt__bracket {
+  color: #007aff;
+  font-weight: 600;
+}
+.provider-opt__model {
+  font-size: 12px;
+  color: #86909c;
+  font-family: 'SF Mono', Menlo, Consolas, monospace;
+}
 
 .content-layout {
   display: flex;
+  flex-direction: row;
+  gap: 12px;
+  align-items: stretch;
+  height: 760px;
+}
+
+.content-left {
+  flex: 1;
+  min-width: 0;
+  display: flex;
   flex-direction: column;
   gap: 12px;
+  min-height: 0;
+  order: 1;
+  background: #1d1d1f;
+  border-radius: 16px;
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.28),
+    0 2px 8px rgba(0, 0, 0, 0.2);
 }
 
-.content-preview-card {
-  min-height: 200px;
+.content-left .log-terminal {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
 }
 
-.content-preview-card .arco-card-body {
-  flex: 1;
+.content-left .log-terminal__body-wrap {
+  flex: none;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.content-left .log-terminal__body {
+  max-height: 160px;
+  height: 160px;
   min-height: 0;
   overflow-y: auto;
 }
 
-.content-bottom {
-  display: flex;
-  gap: 12px;
-  align-items: stretch;
-  max-height: 750px;
-  > div {
-    flex: 1;
-  }
+.content-left .chat-input-section {
+  flex-shrink: 0;
 }
 
-.content-bottom__left {
+.content-preview-card {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  min-height: 0;
-  overflow: hidden;
+  order: 2;
 }
 
-.content-bottom__right {
-  display: flex;
-  flex-direction: column;
-}
-
-.content-bottom__right .content-create-card {
-  flex: 1;
-}
-
-.content-bottom__left .log-terminal {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  overflow: hidden;
-}
-
-.content-bottom__left .log-terminal__body-wrap {
-  flex: 1;
-  min-height: 0;
-  overflow: hidden;
-}
-
-.content-bottom__left .log-terminal__body {
-  max-height: none;
-  height: 100%;
+.content-preview-card :deep(.arco-card-body) {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
@@ -893,13 +1191,8 @@ async function copyContent() {
   justify-content: space-between;
   padding: 10px 14px;
   background: linear-gradient(180deg, #2c2c2e 0%, #252527 100%);
-  cursor: pointer;
   user-select: none;
   border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-}
-
-.log-terminal__bar--collapsed {
-  border-bottom-color: transparent;
 }
 
 .log-dot {
@@ -1004,10 +1297,6 @@ async function copyContent() {
     radial-gradient(ellipse 60% 40% at 80% 0%, rgba(0, 122, 255, 0.05), transparent), #1d1d1f;
 }
 
-.content-bottom__left .log-terminal__body {
-  max-height: none;
-}
-
 .log-terminal__empty {
   color: #48484a;
   font-size: 12px;
@@ -1104,17 +1393,6 @@ async function copyContent() {
   }
 }
 
-.log-collapse-enter-active,
-.log-collapse-leave-active {
-  transition: opacity 0.22s ease;
-  opacity: 1;
-}
-
-.log-collapse-enter-from,
-.log-collapse-leave-to {
-  opacity: 0;
-}
-
 @media (max-width: 768px) {
   .content-create-card .arco-card-body {
     padding: 14px 16px !important;
@@ -1125,10 +1403,11 @@ async function copyContent() {
   .content-create-card .arco-card-header-title {
     font-size: 15px !important;
   }
-  .content-bottom {
-    grid-template-columns: 1fr;
+  .content-layout {
+    flex-direction: column;
+    height: auto;
   }
-  .content-bottom__left .log-terminal__body {
+  .content-left .log-terminal__body {
     max-height: 200px;
   }
   .streaming-view__text {
@@ -1168,7 +1447,7 @@ async function copyContent() {
     padding: 10px 12px;
     font-size: 13px;
   }
-  .content-bottom__left .log-terminal__body {
+  .content-left .log-terminal__body {
     max-height: 160px;
   }
   .streaming-view__header {
@@ -1213,7 +1492,7 @@ async function copyContent() {
     font-size: 9px;
     padding: 1px 5px;
   }
-  .content-bottom__left .log-terminal__body {
+  .content-left .log-terminal__body {
     max-height: 120px;
     font-size: 11px;
     padding: 8px 10px;
@@ -1229,5 +1508,352 @@ async function copyContent() {
     font-size: 11px;
     padding: 4px 8px;
   }
+}
+
+.chat-input-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: auto;
+}
+
+.platform-select-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.platform-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: #2c2c2e;
+  color: #d1d1d6;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.platform-chip:hover {
+  background: #3a3a3c;
+  color: #ffffff;
+}
+
+.platform-chip--active {
+  background: #007aff;
+  color: #ffffff;
+  border-color: #007aff;
+}
+
+.chat-input-card {
+  background: #2c2c2e;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  padding: 14px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.2);
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.chat-input-card--drag {
+  border-color: rgba(0, 122, 255, 0.65);
+  box-shadow:
+    0 0 0 3px rgba(0, 122, 255, 0.18),
+    0 2px 12px rgba(0, 0, 0, 0.2);
+}
+
+.chat-textarea {
+  border-radius: 10px;
+  border: 1px solid transparent;
+  background: #2c2c2e;
+  &:hover {
+    background: #2c2c2e;
+    border-color: transparent;
+  }
+  &:focus-within {
+    background: #2c2c2e;
+    border-color: transparent;
+    box-shadow: none;
+  }
+  :deep(.arco-textarea) {
+    border: none;
+    background: transparent;
+    padding: 4px 0;
+    font-size: 15px;
+    line-height: 1.65;
+    resize: none;
+    box-shadow: none;
+    color: #f2f2f7;
+    &::placeholder {
+      color: #8e8e93;
+    }
+  }
+  :deep(.arco-textarea:focus) {
+    box-shadow: none;
+  }
+}
+
+.uploaded-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.file-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  background: #3a3a3c;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  max-width: 240px;
+}
+
+.file-thumb {
+  width: 36px;
+  height: 36px;
+  object-fit: cover;
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+
+.file-icon {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #48484a;
+  border-radius: 6px;
+  color: #4098ff;
+  flex-shrink: 0;
+}
+
+.file-info {
+  min-width: 0;
+  flex: 1;
+}
+
+.file-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: #f2f2f7;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.file-meta {
+  font-size: 11px;
+  color: #8e8e93;
+  margin-top: 2px;
+}
+
+.file-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.1);
+  color: #aeaeb2;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.file-remove:hover {
+  background: rgba(255, 255, 255, 0.18);
+  color: #ffffff;
+}
+
+.chat-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.toolbar-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: #aeaeb2;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.toolbar-btn:hover {
+  background: #3a3a3c;
+  color: #ffffff;
+}
+
+.chat-shortcut-hint {
+  margin-left: 8px;
+  flex-shrink: 0;
+  font-size: 11px;
+  color: #7a7a80;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.toolbar-right {
+  :deep(.chat-model-select) {
+    flex: 0 1 auto;
+    width: auto;
+    min-width: 0;
+    max-width: 240px;
+    border-radius: 14px;
+    background: #2c2c2e;
+    border-color: transparent;
+    color: #f2f2f7;
+    &:hover,
+    &:focus-within,
+    &.arco-select-view--focus {
+      background: #3a3a3c;
+      border-color: rgba(0, 122, 255, 0.45);
+    }
+    .arco-select-view-value {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      min-width: 0;
+    }
+    .provider-opt__model {
+      color: #aeaeb2;
+    }
+  }
+}
+
+.model-select-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.model-select-icon {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  color: #aeaeb2;
+  pointer-events: none;
+  display: none;
+}
+
+.model-select-wrap--compact .model-select-icon {
+  display: block;
+}
+
+.model-select-wrap--compact :deep(.chat-model-select) {
+  width: 32px;
+  min-width: 32px;
+  max-width: 32px;
+  flex: none;
+  padding: 0;
+  height: 28px;
+  justify-content: center;
+}
+
+.model-select-wrap--compact :deep(.chat-model-select .arco-select-view-value),
+.model-select-wrap--compact :deep(.chat-model-select .arco-select-view-suffix) {
+  display: none;
+}
+
+:global(.arco-select-dropdown:has(.provider-opt)) {
+  min-width: 340px;
+  width: max-content !important;
+  max-width: min(560px, 92vw);
+  background: #2c2c2e;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.5),
+    0 2px 8px rgba(0, 0, 0, 0.3);
+  border-radius: 12px;
+}
+
+:global(.arco-select-dropdown:has(.provider-opt) .arco-select-option) {
+  background: #2c2c2e;
+  color: #f2f2f7;
+}
+
+:global(.arco-select-dropdown:has(.provider-opt) .arco-select-option:hover) {
+  background: #3a3a3c;
+  color: #ffffff;
+}
+
+:global(.arco-select-dropdown:has(.provider-opt) .arco-select-option-selected),
+:global(.arco-select-dropdown:has(.provider-opt) .arco-select-option-active) {
+  background: #3a3a3c;
+  color: #ffffff;
+}
+
+:global(.arco-select-dropdown:has(.provider-opt) .provider-opt__bracket) {
+  color: #4098ff;
+}
+
+:global(.arco-select-dropdown:has(.provider-opt) .provider-opt__model) {
+  color: #aeaeb2;
+}
+
+.send-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 50%;
+  background: #007aff;
+  color: #ffffff;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.send-btn:hover:not(:disabled) {
+  background: #0062cc;
+}
+
+.send-btn:disabled {
+  background: #48484a;
+  color: #8e8e93;
+  cursor: not-allowed;
+}
+
+.hidden-file-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
 }
 </style>

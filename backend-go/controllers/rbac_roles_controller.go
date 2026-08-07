@@ -65,6 +65,7 @@ func buildRoleItem(role *models.RBACRole) map[string]interface{} {
 		"display_name":    role.DisplayName,
 		"description":     role.Description,
 		"role_type":       role.RoleType,
+		"is_builtin":      role.IsBuiltin,
 		"parent_roles":    parentRoles,
 		"child_roles":     childRoles,
 		"all_ancestors":   ancestors,

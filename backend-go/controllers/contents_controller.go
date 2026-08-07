@@ -277,8 +277,12 @@ func (c *ContentsController) AIGenerate() {
 		return
 	}
 	var req aiGenerateRequest
-	if err := c.ParseBody(&req); err != nil || req.Topic == "" {
-		c.WriteError(http.StatusBadRequest, "主题不能为空")
+	if err := c.ParseBody(&req); err != nil {
+		c.WriteError(http.StatusBadRequest, "请求体格式错误")
+		return
+	}
+	if req.Topic == "" && len(req.Keywords) == 0 {
+		c.WriteError(http.StatusBadRequest, "内容主题、关键词至少填写一项")
 		return
 	}
 	count := req.Count
@@ -342,8 +346,20 @@ func (c *ContentsController) AIGenerateStream() {
 		return
 	}
 	var req aiGenerateStreamRequest
-	if err := c.ParseBody(&req); err != nil || req.Topic == "" || len(req.Platforms) == 0 {
-		c.WriteError(http.StatusBadRequest, "主题和平台不能为空")
+	if err := c.ParseBody(&req); err != nil {
+		c.WriteError(http.StatusBadRequest, "请求体格式错误")
+		return
+	}
+	if req.Topic == "" && len(req.Keywords) == 0 && len(req.Files) == 0 {
+		c.WriteError(http.StatusBadRequest, "内容主题、关键词、上传文件至少填写一项")
+		return
+	}
+	if len(req.Platforms) == 0 {
+		c.WriteError(http.StatusBadRequest, "请至少选择一个目标平台")
+		return
+	}
+	if len(req.Files) > 0 && !services.ModelSupportsFiles(req.PlanID, req.ModelID) {
+		c.WriteError(http.StatusBadRequest, "当前模型不支持文件上传，请切换到支持视觉/图片/视频的模型配置")
 		return
 	}
 

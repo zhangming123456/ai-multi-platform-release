@@ -246,6 +246,14 @@ func GenerateContentVariants(topic, platform, style string, keywords []string, c
 	if len(keywords) > 0 {
 		keywordsStr = "，关键词：" + strings.Join(keywords, ", ")
 	}
+	subject := strings.TrimSpace(topic)
+	if subject == "" {
+		if len(keywords) > 0 {
+			subject = "围绕关键词进行创作：" + strings.Join(keywords, "、")
+		} else {
+			subject = "通用内容创作"
+		}
+	}
 
 	prompt := fmt.Sprintf(`请为以下主题生成 %d 个不同风格的内容变体，目标平台：%s。
 风格要求：%s%s
@@ -253,7 +261,7 @@ func GenerateContentVariants(topic, platform, style string, keywords []string, c
 主题：%s
 
 请以 JSON 数组格式返回，每个变体包含 title（标题）、body（正文）、hashtags（标签列表）。
-直接返回 JSON，不要包含其他说明文字。`, count, platform, platformStyle, keywordsStr, topic)
+直接返回 JSON，不要包含其他说明文字。`, count, platform, platformStyle, keywordsStr, subject)
 
 	resp, err := callChatCompletions(apiKey, baseURL, model, []chatMessage{
 		{Role: "system", Content: "你是一个专业的社交媒体内容创作助手，擅长为不同平台生成适配的优质内容。"},
@@ -483,6 +491,16 @@ func GenerateContentStream(topic, platform, style string, keywords []string, pla
 		if len(keywords) > 0 {
 			keywordsStr = "，关键词：" + strings.Join(keywords, ", ")
 		}
+		subject := strings.TrimSpace(topic)
+		if subject == "" {
+			if len(keywords) > 0 {
+				subject = "围绕关键词进行创作：" + strings.Join(keywords, "、")
+			} else if len(files) > 0 {
+				subject = "围绕上传的图片/视频素材进行创作"
+			} else {
+				subject = "通用内容创作"
+			}
+		}
 		fileHint := ""
 		if len(files) > 0 {
 			fileHint = "\n\n请结合上传的图片/视频内容进行分析创作，将素材中的关键信息融入文案。"
@@ -501,7 +519,7 @@ func GenerateContentStream(topic, platform, style string, keywords []string, pla
 正文内容
 
 【标签】
-#标签1 #标签2 #标签3`, platform, platformStyle, keywordsStr, topic, fileHint)
+#标签1 #标签2 #标签3`, platform, platformStyle, keywordsStr, subject, fileHint)
 
 		if len(files) > 0 {
 			imgCount := 0
@@ -586,6 +604,34 @@ func containsString(list []string, target string) bool {
 	for _, s := range list {
 		if s == target {
 			return true
+		}
+	}
+	return false
+}
+
+// ModelSupportsFiles 判断指定模型配置是否支持文件上传（多模态）。
+func ModelSupportsFiles(planID, modelID string) bool {
+	if planID == "" {
+		return false
+	}
+	o := GetOrm()
+	plan := &models.ModelConfig{ID: planID}
+	if err := o.Read(plan); err != nil {
+		return false
+	}
+	for _, e := range parseModelField(plan.Model) {
+		id, _ := e["id"].(string)
+		if id == "" || (modelID != "" && id != modelID) {
+			continue
+		}
+		types, ok := e["types"].([]interface{})
+		if !ok {
+			continue
+		}
+		for _, t := range types {
+			if ts, ok := t.(string); ok && (ts == "vision" || ts == "image" || ts == "video") {
+				return true
+			}
 		}
 	}
 	return false

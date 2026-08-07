@@ -139,7 +139,7 @@ const router = createRouter({
           name: 'TokenPlan',
           component: () => import('@/pages/TokenPlan.vue'),
           meta: {
-            title: 'Token方案',
+            title: 'AI 模型服务商管理',
             permKey: 'token_plan:read',
             sidebarType: 'system',
             sidebarOrder: 0,

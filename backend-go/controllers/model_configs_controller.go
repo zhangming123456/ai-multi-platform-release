@@ -3,11 +3,30 @@ package controllers
 import (
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"ai-multi-platform-release/backend-go/models"
 	"ai-multi-platform-release/backend-go/services"
 )
+
+func maskAPIKey(key string) string {
+	if key == "" {
+		return ""
+	}
+	if strings.Contains(key, "****") {
+		return key
+	}
+	runes := []rune(key)
+	if len(runes) <= 8 {
+		return "******"
+	}
+	return string(runes[:4]) + "****" + string(runes[len(runes)-4:])
+}
+
+func isMaskedAPIKey(key string) bool {
+	return strings.Contains(key, "****")
+}
 
 type ModelConfigsController struct {
 	BaseController
@@ -66,6 +85,9 @@ func (c *ModelConfigsController) List() {
 	if err != nil {
 		c.WriteError(http.StatusInternalServerError, "查询模型配置失败")
 		return
+	}
+	for i := range configs {
+		configs[i].APIKey = maskAPIKey(configs[i].APIKey)
 	}
 	c.OK(map[string]interface{}{"data": configs})
 }
@@ -130,6 +152,7 @@ func (c *ModelConfigsController) Create() {
 		c.WriteError(http.StatusInternalServerError, "创建模型配置失败")
 		return
 	}
+	config.APIKey = maskAPIKey(config.APIKey)
 	c.Created(config)
 }
 
@@ -173,7 +196,7 @@ func (c *ModelConfigsController) Update() {
 	if req.APIFormat != nil {
 		config.APIFormat = *req.APIFormat
 	}
-	if req.APIKey != nil {
+	if req.APIKey != nil && !isMaskedAPIKey(*req.APIKey) {
 		config.APIKey = *req.APIKey
 	}
 	if req.BaseURL != nil {
@@ -213,6 +236,7 @@ func (c *ModelConfigsController) Update() {
 		c.WriteError(http.StatusInternalServerError, "更新模型配置失败")
 		return
 	}
+	config.APIKey = maskAPIKey(config.APIKey)
 	c.OK(config)
 }
 

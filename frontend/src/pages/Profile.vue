@@ -247,7 +247,7 @@ onMounted(async () => {
   }
 
   try {
-    const rolesRes = await api.get<RoleDef[]>('/roles')
+    const rolesRes = await api.get<RoleDef[]>('/v2/roles')
     roleDefs.value = rolesRes.data
   } catch {}
 
