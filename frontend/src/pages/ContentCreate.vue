@@ -220,7 +220,7 @@
 
             <a-textarea
               v-model="promptText"
-              :auto-size="{ minRows: 3, maxRows: 8 }"
+              :auto-size="{ minRows: 3, maxRows: 5 }"
               placeholder="输入创作需求，使用 #标签 添加关键词，例如：写一篇小红书文案 #穿搭 #夏季"
               class="chat-textarea"
               @keydown="handleTextareaKeydown"
@@ -639,10 +639,60 @@ function handleTextareaKeydown(e: KeyboardEvent) {
     target.value = target.value.slice(0, start) + '\n' + target.value.slice(end)
     target.selectionStart = target.selectionEnd = start + 1
     target.dispatchEvent(new Event('input', { bubbles: true }))
+    requestAnimationFrame(() => scrollCaretIntoView(target))
     return
   }
   e.preventDefault()
   generate()
+}
+
+function scrollCaretIntoView(target: HTMLTextAreaElement) {
+  const pos = target.selectionStart
+  if (pos == null) return
+  const cs = getComputedStyle(target)
+  const mirror = document.createElement('div')
+  mirror.style.position = 'absolute'
+  mirror.style.left = '-9999px'
+  mirror.style.top = '0'
+  mirror.style.visibility = 'hidden'
+  mirror.style.pointerEvents = 'none'
+  mirror.style.whiteSpace = 'pre-wrap'
+  mirror.style.overflowWrap = 'break-word'
+  mirror.style.boxSizing = cs.boxSizing
+  mirror.style.width = cs.width
+  mirror.style.fontFamily = cs.fontFamily
+  mirror.style.fontSize = cs.fontSize
+  mirror.style.fontWeight = cs.fontWeight
+  mirror.style.fontStyle = cs.fontStyle
+  mirror.style.lineHeight = cs.lineHeight
+  mirror.style.letterSpacing = cs.letterSpacing
+  mirror.style.wordSpacing = cs.wordSpacing
+  mirror.style.paddingTop = cs.paddingTop
+  mirror.style.paddingRight = cs.paddingRight
+  mirror.style.paddingBottom = cs.paddingBottom
+  mirror.style.paddingLeft = cs.paddingLeft
+  mirror.style.borderTopWidth = cs.borderTopWidth
+  mirror.style.borderRightWidth = cs.borderRightWidth
+  mirror.style.borderBottomWidth = cs.borderBottomWidth
+  mirror.style.borderLeftWidth = cs.borderLeftWidth
+  const before = document.createElement('span')
+  before.textContent = target.value.slice(0, pos)
+  const after = document.createElement('span')
+  after.textContent = target.value.slice(pos) || ' '
+  mirror.appendChild(before)
+  mirror.appendChild(after)
+  document.body.appendChild(mirror)
+  const caretTop = after.getBoundingClientRect().top - mirror.getBoundingClientRect().top
+  document.body.removeChild(mirror)
+
+  const lineHeight = parseFloat(cs.lineHeight) || 20
+  const visibleTop = target.scrollTop
+  const visibleBottom = visibleTop + target.clientHeight
+  if (caretTop < visibleTop + lineHeight) {
+    target.scrollTop = Math.max(0, caretTop - lineHeight)
+  } else if (caretTop + lineHeight > visibleBottom) {
+    target.scrollTop = caretTop + lineHeight - target.clientHeight
+  }
 }
 
 function handleTextareaPaste(e: ClipboardEvent) {
@@ -1589,6 +1639,20 @@ async function copyContent() {
     resize: none;
     box-shadow: none;
     color: #f2f2f7;
+    &::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    &::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    &::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.25);
+      border-radius: 3px;
+    }
+    &::-webkit-scrollbar-thumb:hover {
+      background: rgba(255, 255, 255, 0.4);
+    }
     &::placeholder {
       color: #8e8e93;
     }
