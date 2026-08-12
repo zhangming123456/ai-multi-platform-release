@@ -1,7 +1,7 @@
 <template>
-  <div class="flex flex-col h-full">
+  <div class="page-main h-full">
     <PageHeader title="API文档" subtitle="在线接口调试与文档" />
-    <div class="flex-1 overflow-auto p-6">
+    <div class="px-4 md:px-6 lg:px-8 flex-1 overflow-auto">
       <div
         id="swagger-ui-container"
         class="bg-white rounded-[16px] border border-black/[0.06] shadow-sm"

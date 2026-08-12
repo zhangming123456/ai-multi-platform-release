@@ -14,9 +14,17 @@ import (
 )
 
 var defaultOrm orm.Ormer
+var defaultDBPath string
 
 func GetOrm() orm.Ormer {
 	return defaultOrm
+}
+
+func GetUploadDir() string {
+	if defaultDBPath == "" {
+		return "uploads"
+	}
+	return filepath.Join(filepath.Dir(defaultDBPath), "uploads")
 }
 
 func GetSQLDB() (*sql.DB, error) {
@@ -35,6 +43,7 @@ func InitDatabase(dbPath string) error {
 	if err != nil {
 		return err
 	}
+	defaultDBPath = abs
 	if dir := filepath.Dir(abs); dir != "" {
 		os.MkdirAll(dir, 0o755)
 	}
@@ -46,7 +55,112 @@ func InitDatabase(dbPath string) error {
 		return err
 	}
 	defaultOrm = orm.NewOrm()
+	return migrateSchema()
+}
+
+func migrateSchema() error {
+	db, err := GetSQLDB()
+	if err != nil {
+		return err
+	}
+	type migration struct {
+		table   string
+		column  string
+		ddl     string
+	}
+	migrations := []migration{
+		{"inspections", "template_id", "ALTER TABLE inspections ADD COLUMN template_id varchar(36) DEFAULT ''"},
+		{"inspections", "template_name", "ALTER TABLE inspections ADD COLUMN template_name varchar(200) DEFAULT ''"},
+		{"inspection_scores", "standard", "ALTER TABLE inspection_scores ADD COLUMN standard text"},
+		{"inspection_scores", "standard_image", "ALTER TABLE inspection_scores ADD COLUMN standard_image varchar(500) DEFAULT ''"},
+		{"inspection_scores", "score_type", "ALTER TABLE inspection_scores ADD COLUMN score_type varchar(20) DEFAULT 'score'"},
+		{"inspection_scores", "score_options", "ALTER TABLE inspection_scores ADD COLUMN score_options text"},
+		{"inspection_scores", "require_remark", "ALTER TABLE inspection_scores ADD COLUMN require_remark bool DEFAULT false"},
+		{"inspection_scores", "require_photo", "ALTER TABLE inspection_scores ADD COLUMN require_photo bool DEFAULT false"},
+		{"inspection_scores", "show_remark", "ALTER TABLE inspection_scores ADD COLUMN show_remark bool DEFAULT true"},
+		{"inspection_scores", "show_photo", "ALTER TABLE inspection_scores ADD COLUMN show_photo bool DEFAULT true"},
+		{"inspection_scores", "photos", "ALTER TABLE inspection_scores ADD COLUMN photos text"},
+		{"inspection_template_items", "score_options", "ALTER TABLE inspection_template_items ADD COLUMN score_options text"},
+		{"inspection_template_items", "category", "ALTER TABLE inspection_template_items ADD COLUMN category varchar(100) DEFAULT ''"},
+		{"inspection_template_items", "show_remark", "ALTER TABLE inspection_template_items ADD COLUMN show_remark bool DEFAULT true"},
+		{"inspection_template_items", "show_photo", "ALTER TABLE inspection_template_items ADD COLUMN show_photo bool DEFAULT true"},
+		{"inspection_templates", "scoring_mode", "ALTER TABLE inspection_templates ADD COLUMN scoring_mode varchar(20) DEFAULT 'additive'"},
+		{"inspection_materials", "category", "ALTER TABLE inspection_materials ADD COLUMN category varchar(100) DEFAULT ''"},
+		{"inspection_materials", "title", "ALTER TABLE inspection_materials ADD COLUMN title varchar(200) DEFAULT ''"},
+		{"inspection_materials", "standard", "ALTER TABLE inspection_materials ADD COLUMN standard text"},
+		{"inspection_materials", "standard_image", "ALTER TABLE inspection_materials ADD COLUMN standard_image varchar(500) DEFAULT ''"},
+		{"inspection_materials", "score_type", "ALTER TABLE inspection_materials ADD COLUMN score_type varchar(20) DEFAULT 'score'"},
+		{"inspection_materials", "max_score", "ALTER TABLE inspection_materials ADD COLUMN max_score int DEFAULT 0"},
+		{"inspection_materials", "score_options", "ALTER TABLE inspection_materials ADD COLUMN score_options text"},
+		{"inspection_materials", "is_active", "ALTER TABLE inspection_materials ADD COLUMN is_active bool DEFAULT true"},
+		{"inspection_materials", "created_at", "ALTER TABLE inspection_materials ADD COLUMN created_at datetime"},
+		{"inspection_materials", "updated_at", "ALTER TABLE inspection_materials ADD COLUMN updated_at datetime"},
+		{"materials", "name", "ALTER TABLE materials ADD COLUMN name varchar(200) DEFAULT ''"},
+		{"materials", "url", "ALTER TABLE materials ADD COLUMN url varchar(500) DEFAULT ''"},
+		{"materials", "type", "ALTER TABLE materials ADD COLUMN type varchar(20) DEFAULT 'image'"},
+		{"materials", "category", "ALTER TABLE materials ADD COLUMN category varchar(100) DEFAULT ''"},
+		{"materials", "is_active", "ALTER TABLE materials ADD COLUMN is_active bool DEFAULT true"},
+		{"materials", "created_at", "ALTER TABLE materials ADD COLUMN created_at datetime"},
+		{"materials", "updated_at", "ALTER TABLE materials ADD COLUMN updated_at datetime"},
+	}
+	for _, m := range migrations {
+		exists, err := columnExists(db, m.table, m.column)
+		if err != nil {
+			return err
+		}
+		if exists {
+			continue
+		}
+		if _, err := db.Exec(m.ddl); err != nil {
+			return err
+		}
+	}
+	if err := migrateScoreTenSystem(db); err != nil {
+		return err
+	}
 	return nil
+}
+
+func migrateScoreTenSystem(db *sql.DB) error {
+	statements := []string{
+		"UPDATE inspection_template_items SET max_score = 5 WHERE max_score <> 5 AND max_score > 0",
+		"UPDATE inspection_items SET max_score = 5 WHERE max_score <> 5 AND max_score > 0",
+		"UPDATE inspection_template_items SET score_options = '[{\"score\":0,\"label\":\"0分\"},{\"score\":2,\"label\":\"2分\"},{\"score\":5,\"label\":\"5分\"}]' WHERE score_type = 'score' AND (score_options IS NULL OR score_options = '' OR score_options = 'null')",
+		"UPDATE inspection_template_items SET score_options = '[{\"score\":0,\"label\":\"0分\"},{\"score\":2,\"label\":\"2分\"},{\"score\":5,\"label\":\"5分\"}]' WHERE score_type = 'score' AND score_options LIKE '%\"score\":10%'",
+		"UPDATE inspection_template_items SET score_options = '[{\"score\":1,\"label\":\"合格\"},{\"score\":2,\"label\":\"不合格\"}]' WHERE score_type = 'pass_fail' AND (score_options IS NULL OR score_options = '' OR score_options = 'null')",
+		"UPDATE inspection_template_items SET score_options = '[{\"score\":1,\"label\":\"合格\"},{\"score\":2,\"label\":\"不合格\"}]' WHERE score_type = 'pass_fail' AND score_options NOT LIKE '%\"score\":1%'",
+		"UPDATE inspection_scores SET score_options = '[{\"score\":1,\"label\":\"合格\"},{\"score\":2,\"label\":\"不合格\"}]' WHERE score_type = 'pass_fail' AND (score_options IS NULL OR score_options = '' OR score_options = 'null')",
+		"UPDATE inspection_scores SET score = 1 WHERE score_type = 'pass_fail' AND score = 10",
+		"UPDATE inspection_scores SET score = 2 WHERE score_type = 'pass_fail' AND score = 0",
+	}
+	for _, stmt := range statements {
+		if _, err := db.Exec(stmt); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func columnExists(db *sql.DB, table, column string) (bool, error) {
+	rows, err := db.Query("PRAGMA table_info(" + table + ")")
+	if err != nil {
+		return false, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var cid int
+		var name, ctype string
+		var notnull int
+		var dflt interface{}
+		var pk int
+		if err := rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk); err != nil {
+			return false, err
+		}
+		if name == column {
+			return true, nil
+		}
+	}
+	return false, rows.Err()
 }
 
 func ParseTime(s string) (*time.Time, error) {

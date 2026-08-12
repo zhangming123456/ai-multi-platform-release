@@ -49,6 +49,7 @@ func registerRoutes() {
 
 	modelConfigs := &controllers.ModelConfigsController{}
 	web.Router("/api/model-configs/", modelConfigs, "get:List;post:Create")
+	web.Router("/api/model-configs/reorder", modelConfigs, "put:Reorder")
 	web.Router("/api/model-configs/:config_id", modelConfigs, "put:Update;delete:Delete")
 
 	models := &controllers.ModelsController{}
@@ -83,6 +84,37 @@ func registerRoutes() {
 	templates := &controllers.TemplatesController{}
 	web.Router("/api/templates/", templates, "get:List;post:Create")
 	web.Router("/api/templates/:id", templates, "get:Get;put:Update;delete:Delete")
+
+	stores := &controllers.StoresController{}
+	web.Router("/api/stores/", stores, "get:List;post:Create")
+	web.Router("/api/stores/all", stores, "get:ListAll")
+	web.Router("/api/stores/:store_id", stores, "get:Get;put:Update;delete:Delete")
+
+	inspections := &controllers.InspectionsController{}
+	web.Router("/api/inspections/", inspections, "get:List;post:Create")
+	web.Router("/api/inspections/items", inspections, "get:ListItems")
+	web.Router("/api/inspections/ai-analyze", inspections, "post:AIAnalyze")
+	web.Router("/api/inspections/ai-analyze-stream", inspections, "post:AIAnalyzeStream")
+	web.Router("/api/inspections/ai-analyze-item", inspections, "post:AIAnalyzeItem")
+	web.Router("/api/inspections/ai-analyze-item-stream", inspections, "post:AIAnalyzeItemStream")
+	web.Router("/api/inspections/:inspection_id", inspections, "get:Get;put:Update;delete:Delete")
+
+	inspectionTemplates := &controllers.InspectionTemplatesController{}
+	web.Router("/api/inspection-templates/", inspectionTemplates, "get:List;post:Create")
+	web.Router("/api/inspection-templates/all", inspectionTemplates, "get:ListAll")
+	web.Router("/api/inspection-templates/:template_id", inspectionTemplates, "get:Get;put:Update;delete:Delete")
+
+	inspectionMaterials := &controllers.InspectionMaterialsController{}
+	web.Router("/api/inspection-materials/", inspectionMaterials, "get:List;post:Create")
+	web.Router("/api/inspection-materials/:material_id", inspectionMaterials, "get:Get;put:Update;delete:Delete")
+
+	uploads := &controllers.UploadsController{}
+	web.Router("/api/uploads", uploads, "post:Upload")
+
+	materials := &controllers.MaterialsController{}
+	web.Router("/api/materials/", materials, "get:List;post:Create")
+	web.Router("/api/materials/categories", materials, "get:Categories")
+	web.Router("/api/materials/:material_id", materials, "get:Get;put:Update;delete:Delete")
 
 	db := &controllers.DBController{}
 	web.Router("/api/db/history", db, "get:ListHistory")
@@ -146,7 +178,20 @@ func main() {
 	if err := services.SeedNotificationDict(); err != nil {
 		log.Fatalf("初始化通知字典失败: %v", err)
 	}
+	if err := services.SeedInspectionItems(); err != nil {
+		log.Fatalf("初始化巡店检查项失败: %v", err)
+	}
+	if err := services.SeedInspectionTemplates(); err != nil {
+		log.Fatalf("初始化巡店检查表模板失败: %v", err)
+	}
+	if err := services.SeedInspectionTemplatesBulk(); err != nil {
+		log.Fatalf("批量初始化检查表模板失败: %v", err)
+	}
+	if err := services.SeedInspectionMaterialsBulk(); err != nil {
+		log.Fatalf("批量初始化检查项素材失败: %v", err)
+	}
 
+	web.SetStaticPath("/uploads", services.GetUploadDir())
 	web.InsertFilter("*", web.BeforeRouter, corsFilter)
 	web.InsertFilter("*", web.BeforeRouter, middleware.AuthRequired)
 

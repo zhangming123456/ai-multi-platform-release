@@ -1,39 +1,43 @@
 <template>
-  <div class="user-creation-review-page">
+  <div class="page-main">
     <PageHeader title="用户注册审核" subtitle="审核非管理员提交的账号创建申请" />
 
-    <a-spin :loading="loading" tip="加载中...">
-      <a-table
-        :columns="columns"
-        :data="requests"
-        :bordered="false"
-        :hoverable="true"
-        :pagination="false"
-      >
-        <template #email="{ record }">
-          <span class="text-[13px] text-[#86868b]">{{ record.email || '--' }}</span>
-        </template>
-        <template #role="{ record }">
-          <a-tag size="small" color="arcoblue">
-            {{ roleLabel(record.role) }}
-          </a-tag>
-        </template>
-        <template #createdAt="{ record }">
-          <span class="text-[13px] text-[#86868b]">{{ formatDate(record.created_at) }}</span>
-        </template>
-        <template #actions="{ record }">
-          <a-space :size="6">
-            <a-button type="primary" size="small" @click="approveRequest(record.id)">
-              通过
-            </a-button>
-            <a-button status="danger" size="small" @click="openReject(record.id)"> 驳回 </a-button>
-          </a-space>
-        </template>
-        <template #empty>
-          <a-empty description="暂无待审核的账号创建申请" />
-        </template>
-      </a-table>
-    </a-spin>
+    <div class="px-4 md:px-6 lg:px-8 flex-1">
+      <a-spin :loading="loading" tip="加载中...">
+        <a-table
+          :columns="columns"
+          :data="requests"
+          :bordered="false"
+          :hoverable="true"
+          :pagination="false"
+        >
+          <template #email="{ record }">
+            <span class="text-[13px] text-[#86868b]">{{ record.email || '--' }}</span>
+          </template>
+          <template #role="{ record }">
+            <a-tag size="small" color="arcoblue">
+              {{ roleLabel(record.role) }}
+            </a-tag>
+          </template>
+          <template #createdAt="{ record }">
+            <span class="text-[13px] text-[#86868b]">{{ formatDate(record.created_at) }}</span>
+          </template>
+          <template #actions="{ record }">
+            <a-space :size="6">
+              <a-button type="primary" size="small" @click="approveRequest(record.id)">
+                通过
+              </a-button>
+              <a-button status="danger" size="small" @click="openReject(record.id)">
+                驳回
+              </a-button>
+            </a-space>
+          </template>
+          <template #empty>
+            <a-empty description="暂无待审核的账号创建申请" />
+          </template>
+        </a-table>
+      </a-spin>
+    </div>
 
     <a-modal
       v-model:visible="rejectVisible"

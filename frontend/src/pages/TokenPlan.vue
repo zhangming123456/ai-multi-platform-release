@@ -18,167 +18,178 @@
       </template>
     </PageHeader>
 
-    <a-row :gutter="[24, 10]" class="mb-6">
-      <a-col :xs="24" :lg="16">
-        <a-space direction="vertical" :size="14" fill>
-          <div
-            v-for="plan in store.plans"
-            :key="plan.id"
-            class="plan-card"
-            :class="{ active: store.activePlanId === plan.id && plan.enabled }"
-          >
-            <span class="plan-accent" :style="{ background: providerColor(plan.provider) }" />
-            <div class="plan-top">
-              <div class="plan-badge" :style="{ background: providerColor(plan.provider) }">
-                {{ providerLetter(plan.provider) }}
-              </div>
-              <div class="plan-meta">
-                <div class="plan-title">
-                  {{ plan.displayName || plan.name || '未命名模型' }}
-                  <span v-if="store.activePlanId === plan.id && plan.enabled" class="plan-live"
-                    >生效中</span
-                  >
-                </div>
-                <div class="plan-sub">
-                  <span>{{ providerLabel(plan.provider) }}</span>
-                  <span class="dot">·</span>
-                  <span>{{ plan.mode === 'custom' ? '自定义接入' : '官方服务商' }}</span>
-                  <span v-if="plan.multimodal" class="chip-mm">多模态</span>
-                </div>
-              </div>
-              <div class="plan-acts">
-                <a-switch
-                  :model-value="plan.enabled"
-                  @change="(v: unknown) => toggleEnabled(plan.id, v)"
-                />
-                <button class="icon-btn" title="编辑" @click="openEdit(plan.id)">
-                  <IconEdit />
-                </button>
-                <button
-                  class="icon-btn danger"
-                  title="删除"
-                  :disabled="store.plans.length <= 1"
-                  @click="removePlan(plan.id)"
-                >
-                  <IconDelete />
-                </button>
-              </div>
-            </div>
-            <div class="plan-info">
-              <span class="info-chip info-chip--models">
-                <b>模型</b>
-                <template v-for="m in parseModelField(plan.model)" :key="m.id">
-                  <span
-                    class="model-tag"
-                    :style="{
-                      background:
-                        (m.types && m.types[0]
-                          ? MODEL_TYPE_COLORS[m.types[0]] || '#007AFF'
-                          : '#007AFF') + '15',
-                      color:
-                        m.types && m.types[0]
-                          ? MODEL_TYPE_COLORS[m.types[0]] || '#0062CC'
-                          : '#0062CC',
-                    }"
-                  >
-                    <span v-if="m.types && m.types.length" class="model-tag__icons">
-                      <component
-                        v-for="t in m.types"
-                        :key="t"
-                        :is="modelTypeIcon(t)"
-                        :size="11"
-                        :style="{ color: MODEL_TYPE_COLORS[t] || '#007AFF' }"
-                      />
-                    </span>
-                    {{ m.id }}
-                  </span>
-                </template>
-                <span v-if="!plan.model">—</span>
-              </span>
-              <span class="info-chip"
-                ><b>上下文</b>{{ fmtK(plan.contextInput) }} / {{ fmtK(plan.contextOutput) }}</span
+    <div class="px-4 md:px-6 lg:px-8 flex-1">
+      <a-row :gutter="[24, 10]" class="mb-6">
+        <a-col :xs="24" :lg="16">
+          <div ref="planListRef">
+            <a-space direction="vertical" :size="14" fill>
+              <div
+                v-for="(plan, index) in store.plans"
+                :key="plan.id"
+                class="plan-card"
+                :class="{ active: store.activePlanId === plan.id && plan.enabled }"
               >
-              <span class="info-chip"><b>工具轮次</b>{{ plan.toolCallRounds }}</span>
-              <span class="info-chip right">
-                <b>配额</b>
-                <em :class="{ warn: getUsagePercent(plan) > 80 }">{{ getUsagePercent(plan) }}%</em>
-              </span>
-            </div>
-            <div class="plan-bar">
-              <span
-                :style="{ width: getUsagePercent(plan) + '%' }"
-                :class="{ warn: getUsagePercent(plan) > 80 }"
-              />
-            </div>
+                <div class="drag-handle">
+                  <span class="drag-dots">⋮⋮</span>
+                </div>
+                <span class="plan-accent" :style="{ background: providerColor(plan.provider) }" />
+                <div class="plan-top">
+                  <div class="plan-badge" :style="{ background: providerColor(plan.provider) }">
+                    {{ providerLetter(plan.provider) }}
+                  </div>
+                  <div class="plan-meta">
+                    <div class="plan-title">
+                      {{ plan.displayName || plan.name || '未命名模型' }}
+                      <span v-if="store.activePlanId === plan.id && plan.enabled" class="plan-live"
+                        >生效中</span
+                      >
+                    </div>
+                    <div class="plan-sub">
+                      <span>{{ providerLabel(plan.provider) }}</span>
+                      <span class="dot">·</span>
+                      <span>{{ plan.mode === 'custom' ? '自定义接入' : '官方服务商' }}</span>
+                      <span v-if="plan.multimodal" class="chip-mm">多模态</span>
+                    </div>
+                  </div>
+                  <div class="plan-acts">
+                    <a-switch
+                      :model-value="plan.enabled"
+                      @change="(v: unknown) => toggleEnabled(plan.id, v)"
+                    />
+                    <button class="icon-btn" title="编辑" @click="openEdit(plan.id)">
+                      <IconEdit />
+                    </button>
+                    <button
+                      class="icon-btn danger"
+                      title="删除"
+                      :disabled="store.plans.length <= 1"
+                      @click="removePlan(plan.id)"
+                    >
+                      <IconDelete />
+                    </button>
+                  </div>
+                </div>
+                <div class="plan-info">
+                  <span class="info-chip info-chip--models">
+                    <b>模型</b>
+                    <template v-for="m in parseModelField(plan.model)" :key="m.id">
+                      <span
+                        class="model-tag"
+                        :style="{
+                          background:
+                            (m.types && m.types[0]
+                              ? MODEL_TYPE_COLORS[m.types[0]] || '#007AFF'
+                              : '#007AFF') + '15',
+                          color:
+                            m.types && m.types[0]
+                              ? MODEL_TYPE_COLORS[m.types[0]] || '#0062CC'
+                              : '#0062CC',
+                        }"
+                      >
+                        <span v-if="m.types && m.types.length" class="model-tag__icons">
+                          <component
+                            v-for="t in m.types"
+                            :key="t"
+                            :is="modelTypeIcon(t)"
+                            :size="11"
+                            :style="{ color: MODEL_TYPE_COLORS[t] || '#007AFF' }"
+                          />
+                        </span>
+                        {{ m.id }}
+                      </span>
+                    </template>
+                    <span v-if="!plan.model">—</span>
+                  </span>
+                  <span class="info-chip"
+                    ><b>上下文</b>{{ fmtK(plan.contextInput) }} /
+                    {{ fmtK(plan.contextOutput) }}</span
+                  >
+                  <span class="info-chip"><b>工具轮次</b>{{ plan.toolCallRounds }}</span>
+                  <span class="info-chip right">
+                    <b>配额</b>
+                    <em :class="{ warn: getUsagePercent(plan) > 80 }"
+                      >{{ getUsagePercent(plan) }}%</em
+                    >
+                  </span>
+                </div>
+                <div class="plan-bar">
+                  <span
+                    :style="{ width: getUsagePercent(plan) + '%' }"
+                    :class="{ warn: getUsagePercent(plan) > 80 }"
+                  />
+                </div>
+              </div>
+
+              <div v-if="store.plans.length === 0" class="empty-card">
+                <div class="empty-glyph">＋</div>
+                <p>还没有配置任何模型</p>
+                <a-button type="primary" size="small" @click="openAdd">
+                  <template #icon><IconPlus /></template>添加第一个模型
+                </a-button>
+              </div>
+            </a-space>
           </div>
+        </a-col>
 
-          <div v-if="store.plans.length === 0" class="empty-card">
-            <div class="empty-glyph">＋</div>
-            <p>还没有配置任何模型</p>
-            <a-button type="primary" size="small" @click="openAdd">
-              <template #icon><IconPlus /></template>添加第一个模型
-            </a-button>
-          </div>
-        </a-space>
-      </a-col>
+        <a-col :xs="24" :lg="8">
+          <a-card :bordered="false" title="用量总览" style="padding: 20px">
+            <a-space direction="vertical" :size="16" fill>
+              <div v-for="plan in store.plans" :key="plan.id">
+                <div class="flex items-center justify-between mb-2">
+                  <a-typography-text class="text-[13px]">{{
+                    plan.displayName || plan.name
+                  }}</a-typography-text>
+                  <a-typography-text
+                    class="text-[12px]"
+                    :type="getUsagePercent(plan) > 80 ? 'danger' : 'secondary'"
+                  >
+                    {{ getUsagePercent(plan) }}%
+                  </a-typography-text>
+                </div>
+                <a-progress
+                  :percent="getUsagePercent(plan)"
+                  :show-text="false"
+                  size="small"
+                  :color="getUsagePercent(plan) > 80 ? '#FF3B30' : '#34C759'"
+                />
+                <div class="flex justify-between mt-1">
+                  <a-typography-text type="disabled" class="text-[11px]">
+                    {{ plan.usedTokens.toLocaleString() }} /
+                    {{ plan.monthlyQuota.toLocaleString() }}
+                  </a-typography-text>
+                  <a-typography-text type="secondary" class="text-[11px]">
+                    剩余 {{ (plan.monthlyQuota - plan.usedTokens).toLocaleString() }}
+                  </a-typography-text>
+                </div>
+              </div>
 
-      <a-col :xs="24" :lg="8">
-        <a-card :bordered="false" title="用量总览" style="padding: 20px">
-          <a-space direction="vertical" :size="16" fill>
-            <div v-for="plan in store.plans" :key="plan.id">
-              <div class="flex items-center justify-between mb-2">
-                <a-typography-text class="text-[13px]">{{
-                  plan.displayName || plan.name
-                }}</a-typography-text>
-                <a-typography-text
-                  class="text-[12px]"
-                  :type="getUsagePercent(plan) > 80 ? 'danger' : 'secondary'"
-                >
-                  {{ getUsagePercent(plan) }}%
+              <a-divider v-if="store.plans.length > 0" style="margin: 12px 0" />
+
+              <div v-if="store.activePlan" class="bg-[#34C759]/10 rounded-[12px] p-4">
+                <div class="flex items-center gap-2 mb-2">
+                  <IconBarChart :size="16" style="color: #34c759" />
+                  <a-typography-text bold class="text-[13px]" style="color: #248a3d"
+                    >当前生效模型</a-typography-text
+                  >
+                </div>
+                <a-typography-text class="text-[12px]" style="color: #34c759">
+                  {{ store.activePlan.displayName || store.activePlan.name }} ·
+                  {{ providerLabel(store.activePlan.provider) }}
+                </a-typography-text>
+                <a-typography-text type="secondary" class="text-[11px] block mt-1">
+                  本月剩余配额：{{ store.getRemainingQuota().toLocaleString() }} tokens
                 </a-typography-text>
               </div>
-              <a-progress
-                :percent="getUsagePercent(plan)"
-                :show-text="false"
-                size="small"
-                :color="getUsagePercent(plan) > 80 ? '#FF3B30' : '#34C759'"
-              />
-              <div class="flex justify-between mt-1">
-                <a-typography-text type="disabled" class="text-[11px]">
-                  {{ plan.usedTokens.toLocaleString() }} / {{ plan.monthlyQuota.toLocaleString() }}
-                </a-typography-text>
-                <a-typography-text type="secondary" class="text-[11px]">
-                  剩余 {{ (plan.monthlyQuota - plan.usedTokens).toLocaleString() }}
+              <div v-else class="bg-[#FF9500]/10 rounded-[12px] p-4">
+                <a-typography-text class="text-[12px]" style="color: #ff9500">
+                  未启用任何模型，请在卡片右侧打开开关并设为默认。
                 </a-typography-text>
               </div>
-            </div>
-
-            <a-divider v-if="store.plans.length > 0" style="margin: 12px 0" />
-
-            <div v-if="store.activePlan" class="bg-[#34C759]/10 rounded-[12px] p-4">
-              <div class="flex items-center gap-2 mb-2">
-                <IconBarChart :size="16" style="color: #34c759" />
-                <a-typography-text bold class="text-[13px]" style="color: #248a3d"
-                  >当前生效模型</a-typography-text
-                >
-              </div>
-              <a-typography-text class="text-[12px]" style="color: #34c759">
-                {{ store.activePlan.displayName || store.activePlan.name }} ·
-                {{ providerLabel(store.activePlan.provider) }}
-              </a-typography-text>
-              <a-typography-text type="secondary" class="text-[11px] block mt-1">
-                本月剩余配额：{{ store.getRemainingQuota().toLocaleString() }} tokens
-              </a-typography-text>
-            </div>
-            <div v-else class="bg-[#FF9500]/10 rounded-[12px] p-4">
-              <a-typography-text class="text-[12px]" style="color: #ff9500">
-                未启用任何模型，请在卡片右侧打开开关并设为默认。
-              </a-typography-text>
-            </div>
-          </a-space>
-        </a-card>
-      </a-col>
-    </a-row>
+            </a-space>
+          </a-card>
+        </a-col>
+      </a-row>
+    </div>
 
     <a-modal
       v-model:visible="showModal"
@@ -269,13 +280,27 @@
             type="password"
             :placeholder="isEdit ? '已保存的密钥已隐式化，输入新密钥可替换' : '输入 API 密钥'"
           />
-          <p v-if="isEdit && isMaskedApiKey(form.apiKey)" class="tp-hint">
+          <p v-if="isEdit && isMaskedApiKey(form.apiKey)" class="tp-aux tp-hint">
             密钥不会明文回显；保持掩码值不变即可保留原密钥，输入新密钥后将覆盖保存。连通测试与拉取模型列表将使用已保存的密钥执行。
           </p>
         </div>
 
         <div class="tp-row">
           <label class="tp-label"><i class="tp-req">*</i>模型列表</label>
+          <div class="tp-hint tp-aux">
+            <span class="tp-aux-hint"
+              >每个模型可配置多个类型与独立上下文窗口，留空则使用高级配置中的默认值</span
+            >
+            <button
+              v-if="form.mode === 'provider' || form.baseUrl"
+              type="button"
+              class="tp-aux-link"
+              :disabled="fetching || !form.apiKey || (!isEdit && isMaskedApiKey(form.apiKey))"
+              @click="form.mode === 'provider' ? fetchProviderModels() : fetchCustomModels()"
+            >
+              <IconRefresh :class="{ 'tp-spin': fetching }" />{{ fetching ? '拉取中' : '拉取列表' }}
+            </button>
+          </div>
           <div class="model-list">
             <div
               v-for="(entry, idx) in form.models"
@@ -396,20 +421,6 @@
           <button type="button" class="model-add-btn" @click="addModelEntry">
             <IconPlus :size="14" /> 添加模型
           </button>
-          <div class="tp-aux">
-            <span class="tp-aux-hint"
-              >每个模型可配置多个类型与独立上下文窗口，留空则使用高级配置中的默认值</span
-            >
-            <button
-              v-if="form.mode === 'provider' || form.baseUrl"
-              type="button"
-              class="tp-aux-link"
-              :disabled="fetching || !form.apiKey || (!isEdit && isMaskedApiKey(form.apiKey))"
-              @click="form.mode === 'provider' ? fetchProviderModels() : fetchCustomModels()"
-            >
-              <IconRefresh :class="{ 'tp-spin': fetching }" />{{ fetching ? '拉取中' : '拉取列表' }}
-            </button>
-          </div>
         </div>
 
         <button type="button" class="tp-collapse-hd" @click="advanced = !advanced">
@@ -476,7 +487,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onBeforeUnmount, onMounted } from 'vue'
+import { ref, computed, watch, onBeforeUnmount, onMounted, nextTick } from 'vue'
+import Sortable from 'sortablejs'
 import {
   useTokenPlanStore,
   providerLabel,
@@ -876,7 +888,11 @@ async function testModel(idx: number) {
     })
     testStates.value[idx] = 'ok'
     autoFillModelConfig(idx)
-    Message.success(`连通正常（${res.data?.latency_ms ?? '-'}ms），已自动填充模型配置`)
+    if (res.data?.supports_vision && !entry.types.includes('vision')) {
+      entry.types = [...entry.types, 'vision']
+    }
+    const visionMsg = res.data?.supports_vision ? '，视觉理解已启用' : ''
+    Message.success(`连通正常（${res.data?.latency_ms ?? '-'}ms）${visionMsg}，已自动填充模型配置`)
   } catch (e: unknown) {
     testStates.value[idx] = 'fail'
     const msg =
@@ -928,6 +944,9 @@ function addModelEntry() {
 function removeModelEntry(idx: number) {
   form.value.models.splice(idx, 1)
 }
+
+const planListRef = ref<HTMLElement | null>(null)
+let planSortable: Sortable | null = null
 
 const dragIndex = ref<number | null>(null)
 const dragOverIndex = ref<number | null>(null)
@@ -1075,6 +1094,59 @@ function toggleEnabled(id: string, enabled: unknown) {
 function removePlan(id: string) {
   store.removePlan(id)
 }
+
+function initPlanSortable() {
+  if (!planListRef.value) return
+  planSortable = new Sortable(
+    planListRef.value.querySelector('.arco-space-vertical') as HTMLElement,
+    {
+      handle: '.drag-handle',
+      animation: 200,
+      ghostClass: 'dragging',
+      chosenClass: 'drag-chosen',
+      onEnd: async (evt) => {
+        if (evt.oldIndex === undefined || evt.newIndex === undefined) return
+        if (evt.oldIndex === evt.newIndex) return
+        const plans = [...store.plans]
+        const [removed] = plans.splice(evt.oldIndex, 1)
+        plans.splice(evt.newIndex, 0, removed)
+        store.plans = plans
+        try {
+          await api.put('/model-configs/reorder', { ids: plans.map((p) => p.id) })
+        } catch {
+          Message.warning('排序同步失败，刷新页面后恢复')
+        }
+      },
+    },
+  )
+}
+
+function destroyPlanSortable() {
+  if (planSortable) {
+    planSortable.destroy()
+    planSortable = null
+  }
+}
+
+onMounted(async () => {
+  store.loadPlans()
+})
+
+onBeforeUnmount(() => {
+  document.body.classList.remove('tp-cabin-open')
+  destroyPlanSortable()
+})
+
+watch(
+  () => store.plans,
+  () => {
+    nextTick(() => {
+      destroyPlanSortable()
+      initPlanSortable()
+    })
+  },
+  { deep: false },
+)
 
 function getUsagePercent(p: (typeof store.plans)[0]) {
   return Math.min(100, Math.round((p.usedTokens / p.monthlyQuota) * 100))
@@ -1629,6 +1701,39 @@ body.tp-cabin-open .tp-opt-meta {
   width: 4px;
   height: 100%;
   opacity: 0.85;
+}
+.plan-card.dragging {
+  opacity: 0.5;
+  transform: scale(0.97);
+}
+.drag-handle {
+  position: absolute;
+  left: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  cursor: grab;
+  color: #c7c7cc;
+  user-select: none;
+  opacity: 0;
+  transition:
+    opacity 0.15s,
+    color 0.15s;
+}
+.drag-handle:active {
+  cursor: grabbing;
+  color: #007aff;
+}
+.drag-handle.active {
+  opacity: 1;
+  color: #007aff;
+}
+.plan-card:hover .drag-handle {
+  opacity: 1;
+}
+.drag-dots {
+  font-size: 18px;
+  letter-spacing: -2px;
+  line-height: 1;
 }
 .plan-top {
   display: flex;

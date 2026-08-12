@@ -27,5 +27,13 @@ func InitModels() {
 		new(RBACUserPermissionOverride),
 		new(RBACConstraint),
 		new(RBACConstraintRoleAssociation),
+		new(Store),
+		new(InspectionItem),
+		new(Inspection),
+		new(InspectionScore),
+		new(InspectionTemplate),
+		new(InspectionTemplateItem),
+		new(InspectionMaterial),
+		new(Material),
 	)
 }

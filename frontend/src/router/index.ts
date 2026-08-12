@@ -5,7 +5,7 @@ import { usePermissionStore } from '@/stores/permission'
 
 declare module 'vue-router' {
   interface RouteMeta {
-    sidebarType?: 'top' | 'content' | 'review' | 'platforms' | 'rbac' | 'system'
+    sidebarType?: 'top' | 'content' | 'review' | 'inspection' | 'platforms' | 'rbac' | 'system'
     sidebarOrder?: number
     icon?: string
   }
@@ -135,6 +135,18 @@ const router = createRouter({
           },
         },
         {
+          path: 'materials/images',
+          name: 'MaterialImageList',
+          component: () => import('@/pages/MaterialList.vue'),
+          meta: {
+            title: '图片素材',
+            permKey: 'material:read',
+            sidebarType: 'material',
+            sidebarOrder: 0,
+            icon: 'image',
+          },
+        },
+        {
           path: 'settings/token-plan',
           name: 'TokenPlan',
           component: () => import('@/pages/TokenPlan.vue'),
@@ -145,6 +157,96 @@ const router = createRouter({
             sidebarOrder: 0,
             icon: 'settings',
           },
+        },
+        {
+          path: 'stores',
+          name: 'StoreManage',
+          component: () => import('@/pages/StoreManage.vue'),
+          meta: {
+            title: '门店管理',
+            permKey: 'stores:read',
+            sidebarType: 'inspection',
+            sidebarOrder: 0,
+            icon: 'apps',
+          },
+        },
+        {
+          path: 'inspection',
+          name: 'InspectionList',
+          component: () => import('@/pages/InspectionList.vue'),
+          meta: {
+            title: '巡店检查',
+            permKey: 'inspection:read',
+            sidebarType: 'inspection',
+            sidebarOrder: 1,
+            icon: 'check',
+          },
+        },
+        {
+          path: 'inspection/templates',
+          name: 'InspectionTemplateList',
+          component: () => import('@/pages/InspectionTemplateList.vue'),
+          meta: {
+            title: '检查表模板',
+            permKey: 'inspection:template:read',
+            sidebarType: 'inspection',
+            sidebarOrder: 2,
+            icon: 'edit',
+          },
+        },
+        {
+          path: 'inspection/templates/create',
+          name: 'InspectionTemplateCreate',
+          component: () => import('@/pages/InspectionTemplateEdit.vue'),
+          meta: { title: '新建检查表模板', permKey: 'inspection:template:create:write' },
+        },
+        {
+          path: 'inspection/templates/:id/edit',
+          name: 'InspectionTemplateEdit',
+          component: () => import('@/pages/InspectionTemplateEdit.vue'),
+          meta: { title: '编辑检查表模板', permKey: 'inspection:template:update:write' },
+        },
+        {
+          path: 'inspection/materials',
+          name: 'InspectionMaterialList',
+          component: () => import('@/pages/InspectionMaterialList.vue'),
+          meta: {
+            title: '素材管理',
+            permKey: 'inspection:material:read',
+            sidebarType: 'inspection',
+            sidebarOrder: 3,
+            icon: 'file',
+          },
+        },
+        {
+          path: 'inspection/materials/create',
+          name: 'InspectionMaterialCreate',
+          component: () => import('@/pages/InspectionMaterialEdit.vue'),
+          meta: { title: '新建素材', permKey: 'inspection:material:create:write' },
+        },
+        {
+          path: 'inspection/materials/:id/edit',
+          name: 'InspectionMaterialEdit',
+          component: () => import('@/pages/InspectionMaterialEdit.vue'),
+          meta: { title: '编辑素材', permKey: 'inspection:material:update:write' },
+        },
+        {
+          path: 'inspection/create',
+          name: 'InspectionCreate',
+          component: () => import('@/pages/InspectionEdit.vue'),
+          meta: { title: '发起巡店', permKey: 'inspection:create:write' },
+        },
+        {
+          path: 'inspection/:id',
+          name: 'InspectionDetail',
+          component: () => import('@/pages/InspectionDetail.vue'),
+          meta: { title: '巡店详情', permKey: 'inspection:read' },
+        },
+        {
+          path: 'inspection/:id/edit',
+          name: 'InspectionEdit',
+          component: () => import('@/pages/InspectionEdit.vue'),
+          meta: { title: '编辑巡店', permKey: 'inspection:update:write' },
         },
         {
           path: 'developer/docs',

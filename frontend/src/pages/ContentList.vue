@@ -1,5 +1,5 @@
 <template>
-  <div class="content-list">
+  <div class="page-main">
     <PageHeader title="内容列表" subtitle="创作并管理适配各平台的内容">
       <template #actions>
         <a-button
@@ -14,90 +14,92 @@
       </template>
     </PageHeader>
 
-    <a-space wrap :size="12" class="mb-5">
-      <a-input-search
-        v-model="searchQuery"
-        placeholder="搜索内容标题"
-        allow-clear
-        style="width: 260px"
-      />
-      <a-select v-model="platformFilter" placeholder="全部平台" style="width: 140px">
-        <a-option value="all">全部平台</a-option>
-        <a-option value="wechat_mp">微信公众号</a-option>
-        <a-option value="xiaohongshu">小红书</a-option>
-        <a-option value="douyin">抖音</a-option>
-        <a-option value="wechat_video">视频号</a-option>
-      </a-select>
-      <a-select v-model="statusFilter" placeholder="全部状态" style="width: 120px">
-        <a-option value="all">全部状态</a-option>
-        <a-option value="draft">草稿</a-option>
-        <a-option value="ready">待发布</a-option>
-        <a-option value="published">已发布</a-option>
-      </a-select>
-    </a-space>
+    <div class="px-4 md:px-6 lg:px-8 flex-1">
+      <a-space wrap :size="12" class="mb-5">
+        <a-input-search
+          v-model="searchQuery"
+          placeholder="搜索内容标题"
+          allow-clear
+          style="width: 260px"
+        />
+        <a-select v-model="platformFilter" placeholder="全部平台" style="width: 140px">
+          <a-option value="all">全部平台</a-option>
+          <a-option value="wechat_mp">微信公众号</a-option>
+          <a-option value="xiaohongshu">小红书</a-option>
+          <a-option value="douyin">抖音</a-option>
+          <a-option value="wechat_video">视频号</a-option>
+        </a-select>
+        <a-select v-model="statusFilter" placeholder="全部状态" style="width: 120px">
+          <a-option value="all">全部状态</a-option>
+          <a-option value="draft">草稿</a-option>
+          <a-option value="ready">待发布</a-option>
+          <a-option value="published">已发布</a-option>
+        </a-select>
+      </a-space>
 
-    <a-spin :loading="loading" tip="加载中...">
-      <a-table
-        :columns="columns"
-        :data="filteredContents"
-        :bordered="false"
-        :hoverable="true"
-        :pagination="false"
-      >
-        <template #title="{ record }">
-          <a-space :size="8" align="center">
-            <span>{{ record.title }}</span>
-            <a-tag v-if="record.ai_generated" color="purple" size="small">
-              <template #icon><IconStar /></template>
-              AI
-            </a-tag>
-          </a-space>
-        </template>
-        <template #platform="{ record }">
-          <PlatformIcon :platform="record.platform" size="sm" />
-        </template>
-        <template #status="{ record }">
-          <StatusBadge :status="record.status" />
-        </template>
-        <template #createdAt="{ record }">
-          {{ formatDate(record.created_at) }}
-        </template>
-        <template #actions="{ record }">
-          <a-space :size="4">
-            <a-button type="text" size="small" title="查看" @click="openDetail(record)">
-              <template #icon><IconEye /></template>
-            </a-button>
-            <a-button type="text" size="small" title="复制" @click="copyContent(record)">
-              <template #icon><IconCopy /></template>
-            </a-button>
-            <a-button type="text" size="small" title="编辑" @click="openEdit(record)">
-              <template #icon><IconEdit /></template>
-            </a-button>
-            <a-button
-              v-if="['draft', 'rejected'].includes(record.status)"
-              type="text"
-              size="small"
-              title="提交审核"
-              @click="submitForReview(record.id)"
-            >
-              <template #icon><IconSend /></template>
-            </a-button>
-            <a-button
-              type="text"
-              status="danger"
-              size="small"
-              title="删除"
-              @click="removeContent(record.id)"
-            >
-              <template #icon><IconDelete /></template>
-            </a-button>
-          </a-space>
-        </template>
-        <template #empty>
-          <a-empty description="暂无内容" />
-        </template>
-      </a-table>
-    </a-spin>
+      <a-spin :loading="loading" tip="加载中...">
+        <a-table
+          :columns="columns"
+          :data="filteredContents"
+          :bordered="false"
+          :hoverable="true"
+          :pagination="false"
+        >
+          <template #title="{ record }">
+            <a-space :size="8" align="center">
+              <span>{{ record.title }}</span>
+              <a-tag v-if="record.ai_generated" color="purple" size="small">
+                <template #icon><IconStar /></template>
+                AI
+              </a-tag>
+            </a-space>
+          </template>
+          <template #platform="{ record }">
+            <PlatformIcon :platform="record.platform" size="sm" />
+          </template>
+          <template #status="{ record }">
+            <StatusBadge :status="record.status" />
+          </template>
+          <template #createdAt="{ record }">
+            {{ formatDate(record.created_at) }}
+          </template>
+          <template #actions="{ record }">
+            <a-space :size="4">
+              <a-button type="text" size="small" title="查看" @click="openDetail(record)">
+                <template #icon><IconEye /></template>
+              </a-button>
+              <a-button type="text" size="small" title="复制" @click="copyContent(record)">
+                <template #icon><IconCopy /></template>
+              </a-button>
+              <a-button type="text" size="small" title="编辑" @click="openEdit(record)">
+                <template #icon><IconEdit /></template>
+              </a-button>
+              <a-button
+                v-if="['draft', 'rejected'].includes(record.status)"
+                type="text"
+                size="small"
+                title="提交审核"
+                @click="submitForReview(record.id)"
+              >
+                <template #icon><IconSend /></template>
+              </a-button>
+              <a-button
+                type="text"
+                status="danger"
+                size="small"
+                title="删除"
+                @click="removeContent(record.id)"
+              >
+                <template #icon><IconDelete /></template>
+              </a-button>
+            </a-space>
+          </template>
+          <template #empty>
+            <a-empty description="暂无内容" />
+          </template>
+        </a-table>
+      </a-spin>
+    </div>
 
     <a-modal
       v-model:visible="editVisible"

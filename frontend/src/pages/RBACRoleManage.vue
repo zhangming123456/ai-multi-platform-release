@@ -15,423 +15,436 @@
       </template>
     </PageHeader>
 
-    <div class="view-mode-toggle mb-5">
-      <button
-        class="toggle-btn"
-        :class="{ active: viewMode === 'card' }"
-        @click="viewMode = 'card'"
-      >
-        <IconApps :size="14" /> 卡片
-      </button>
-      <button
-        class="toggle-btn"
-        :class="{ active: viewMode === 'table' }"
-        @click="viewMode = 'table'"
-      >
-        <IconList :size="14" /> 列表
-      </button>
-    </div>
+    <div class="px-4 md:px-6 lg:px-8 flex-1">
+      <div class="view-mode-toggle mb-5">
+        <button
+          class="toggle-btn"
+          :class="{ active: viewMode === 'card' }"
+          @click="viewMode = 'card'"
+        >
+          <IconApps :size="14" /> 卡片
+        </button>
+        <button
+          class="toggle-btn"
+          :class="{ active: viewMode === 'table' }"
+          @click="viewMode = 'table'"
+        >
+          <IconList :size="14" /> 列表
+        </button>
+      </div>
 
-    <div class="inherit-panel-wrapper" :class="{ 'panel-open': inheritanceRole && !isMobile }">
-      <div class="inherit-main-content">
-        <a-spin :loading="loading" tip="加载中..." class="w-full">
-          <!-- 卡片模式 -->
-          <div
-            v-if="viewMode === 'card'"
-            class="grid gap-4"
-            :class="[
-              inheritanceRole && !isMobile
-                ? 'grid-cols-1 md:grid-cols-2'
-                : 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3',
-            ]"
-          >
-            <div v-for="role in sortedRoles" :key="role.id" class="role-card">
-              <div class="p-4 md:p-5">
-                <div class="flex items-start justify-between mb-3 gap-2">
-                  <div class="flex items-center gap-2 min-w-0 flex-1">
-                    <a-tag :color="roleColor(role)" size="small" class="!m-0 truncate max-w-full">
-                      {{ role.display_name }}
-                    </a-tag>
-                    <IconSafe
-                      v-if="role.is_super_admin"
-                      :size="14"
-                      class="text-[#ff9500] shrink-0"
-                    />
-                  </div>
-                  <div class="flex items-center gap-1 shrink-0">
-                    <a-button
-                      v-perm="'roles:manage:write'"
-                      type="text"
-                      size="mini"
-                      :disabled="role.is_super_admin"
-                      @click="openEdit(role)"
-                    >
-                      <template #icon><IconEdit :size="14" /></template>
-                    </a-button>
-                    <a-button
-                      v-perm="'roles:manage:write'"
-                      type="text"
-                      size="mini"
-                      status="danger"
-                      :disabled="role.is_builtin"
-                      @click="deleteRole(role)"
-                    >
-                      <template #icon><IconDelete :size="14" /></template>
-                    </a-button>
-                  </div>
-                </div>
-
-                <p class="text-[13px] text-[#86868B] leading-relaxed mb-4">
-                  {{ role.description || '暂无描述' }}
-                </p>
-
-                <div class="flex flex-wrap items-center gap-1.5 mb-3">
-                  <code class="role-code">{{ role.name }}</code>
-                  <a-tag v-if="role.is_super_admin" size="small" color="orangered" class="!m-0"
-                    >超级</a-tag
-                  >
-                  <a-tag v-else-if="role.is_builtin" size="small" color="gray" class="!m-0"
-                    >内置</a-tag
-                  >
-                  <a-tag v-else size="small" color="arcoblue" class="!m-0">自定义</a-tag>
-                  <a-tag
-                    v-if="role.role_type === 'admin'"
-                    size="small"
-                    color="orangered"
-                    class="!m-0"
-                    >管理类型</a-tag
-                  >
-                  <a-tag v-else size="small" color="gray" class="!m-0">普通类型</a-tag>
-                </div>
-
-                <div class="space-y-2">
-                  <div v-if="role.parent_roles.length > 0" class="flex items-start gap-2">
-                    <span class="text-[11px] text-[#86868B] shrink-0 mt-0.5">继承自</span>
-                    <div class="flex flex-wrap gap-1.5">
-                      <a-tag
-                        v-for="parent in role.parent_roles"
-                        :key="parent.id"
-                        size="small"
-                        :color="roleColorById(parent.id)"
-                        class="!m-0"
-                      >
-                        {{ parent.display_name }}
+      <div class="inherit-panel-wrapper" :class="{ 'panel-open': inheritanceRole && !isMobile }">
+        <div class="inherit-main-content">
+          <a-spin :loading="loading" tip="加载中..." class="w-full">
+            <!-- 卡片模式 -->
+            <div
+              v-if="viewMode === 'card'"
+              class="grid gap-4"
+              :class="[
+                inheritanceRole && !isMobile
+                  ? 'grid-cols-1 md:grid-cols-2'
+                  : 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3',
+              ]"
+            >
+              <div v-for="role in sortedRoles" :key="role.id" class="role-card">
+                <div class="p-4 md:p-5">
+                  <div class="flex items-start justify-between mb-3 gap-2">
+                    <div class="flex items-center gap-2 min-w-0 flex-1">
+                      <a-tag :color="roleColor(role)" size="small" class="!m-0 truncate max-w-full">
+                        {{ role.display_name }}
                       </a-tag>
+                      <IconSafe
+                        v-if="role.is_super_admin"
+                        :size="14"
+                        class="text-[#ff9500] shrink-0"
+                      />
                     </div>
-                  </div>
-
-                  <div v-if="role.child_roles.length > 0" class="flex items-start gap-2">
-                    <span class="text-[11px] text-[#86868B] shrink-0 mt-0.5">被继承</span>
-                    <div class="flex flex-wrap gap-1.5">
-                      <a-tag
-                        v-for="child in role.child_roles"
-                        :key="child.id"
-                        size="small"
-                        :color="roleColorById(child.id)"
-                        class="!m-0"
+                    <div class="flex items-center gap-1 shrink-0">
+                      <a-button
+                        v-perm="'roles:manage:write'"
+                        type="text"
+                        size="mini"
+                        :disabled="role.is_super_admin"
+                        @click="openEdit(role)"
                       >
-                        {{ child.display_name }}
-                      </a-tag>
+                        <template #icon><IconEdit :size="14" /></template>
+                      </a-button>
+                      <a-button
+                        v-perm="'roles:manage:write'"
+                        type="text"
+                        size="mini"
+                        status="danger"
+                        :disabled="role.is_builtin"
+                        @click="deleteRole(role)"
+                      >
+                        <template #icon><IconDelete :size="14" /></template>
+                      </a-button>
                     </div>
                   </div>
 
-                  <div v-if="hasIndirectRelations(role)" class="pt-1">
-                    <a-button
-                      type="text"
-                      size="mini"
-                      class="!text-[#007AFF] !text-[11px] !px-1 !h-auto"
-                      @click="toggleExpand(role.id)"
+                  <p class="text-[13px] text-[#86868B] leading-relaxed mb-4">
+                    {{ role.description || '暂无描述' }}
+                  </p>
+
+                  <div class="flex flex-wrap items-center gap-1.5 mb-3">
+                    <code class="role-code">{{ role.name }}</code>
+                    <a-tag v-if="role.is_super_admin" size="small" color="orangered" class="!m-0"
+                      >超级</a-tag
                     >
-                      <template #icon>
-                        <IconDown v-if="isExpanded(role.id)" :size="10" />
-                        <IconRight v-else :size="10" />
-                      </template>
-                      {{ isExpanded(role.id) ? '收起继承链' : '展开继承链' }}
-                    </a-button>
+                    <a-tag v-else-if="role.is_builtin" size="small" color="gray" class="!m-0"
+                      >内置</a-tag
+                    >
+                    <a-tag v-else size="small" color="arcoblue" class="!m-0">自定义</a-tag>
+                    <a-tag
+                      v-if="role.role_type === 'admin'"
+                      size="small"
+                      color="orangered"
+                      class="!m-0"
+                      >管理类型</a-tag
+                    >
+                    <a-tag v-else size="small" color="gray" class="!m-0">普通类型</a-tag>
                   </div>
 
-                  <div v-if="isExpanded(role.id) && hasIndirectRelations(role)" class="chain-view">
-                    <div v-if="indirectAncestors(role).length > 0" class="chain-chunk">
-                      <div class="chain-label">间接祖先</div>
-                      <div class="chain-flow">
-                        <div
-                          v-for="(ancestor, idx) in indirectAncestors(role)"
-                          :key="ancestor.id"
-                          class="chain-node"
-                        >
-                          <span class="chain-arrow" v-if="idx > 0 || role.parent_roles.length > 0"
-                            >←</span
-                          >
-                          <a-tag size="small" :color="roleColorById(ancestor.id)" class="!m-0">
-                            {{ ancestor.display_name }}
-                          </a-tag>
-                        </div>
-                        <span class="chain-arrow" v-if="role.parent_roles.length > 0"> ← </span>
-                        <span class="chain-current" v-if="role.parent_roles.length > 0">
-                          {{ role.display_name }}
-                        </span>
-                      </div>
-                    </div>
-
-                    <div v-if="indirectDescendants(role).length > 0" class="chain-chunk">
-                      <div class="chain-label">间接后代</div>
-                      <div class="chain-flow">
-                        <span class="chain-current" v-if="role.child_roles.length > 0">
-                          {{ role.display_name }}
-                        </span>
-                        <span class="chain-arrow" v-if="role.child_roles.length > 0">→</span>
-                        <div
-                          v-for="(descendant, idx) in indirectDescendants(role)"
-                          :key="descendant.id"
-                          class="chain-node"
-                        >
-                          <span class="chain-arrow" v-if="idx > 0 || role.child_roles.length > 0"
-                            >→</span
-                          >
-                          <a-tag size="small" :color="roleColorById(descendant.id)" class="!m-0">
-                            {{ descendant.display_name }}
-                          </a-tag>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div
-                    v-if="constraintsForRole(role.id).length > 0"
-                    class="pt-2 mt-2 border-t border-black/[0.04]"
-                  >
-                    <div class="flex items-center gap-1.5 mb-1.5">
-                      <IconExclamationCircle :size="12" class="text-[#ff9500]" />
-                      <span class="text-[11px] text-[#86868B]">相关约束</span>
-                    </div>
-                    <div class="flex flex-col gap-1">
-                      <div
-                        v-for="c in constraintsForRole(role.id)"
-                        :key="c.id"
-                        class="flex items-center gap-2"
-                      >
+                  <div class="space-y-2">
+                    <div v-if="role.parent_roles.length > 0" class="flex items-start gap-2">
+                      <span class="text-[11px] text-[#86868B] shrink-0 mt-0.5">继承自</span>
+                      <div class="flex flex-wrap gap-1.5">
                         <a-tag
+                          v-for="parent in role.parent_roles"
+                          :key="parent.id"
+                          size="small"
+                          :color="roleColorById(parent.id)"
+                          class="!m-0"
+                        >
+                          {{ parent.display_name }}
+                        </a-tag>
+                      </div>
+                    </div>
+
+                    <div v-if="role.child_roles.length > 0" class="flex items-start gap-2">
+                      <span class="text-[11px] text-[#86868B] shrink-0 mt-0.5">被继承</span>
+                      <div class="flex flex-wrap gap-1.5">
+                        <a-tag
+                          v-for="child in role.child_roles"
+                          :key="child.id"
+                          size="small"
+                          :color="roleColorById(child.id)"
+                          class="!m-0"
+                        >
+                          {{ child.display_name }}
+                        </a-tag>
+                      </div>
+                    </div>
+
+                    <div v-if="hasIndirectRelations(role)" class="pt-1">
+                      <a-button
+                        type="text"
+                        size="mini"
+                        class="!text-[#007AFF] !text-[11px] !px-1 !h-auto"
+                        @click="toggleExpand(role.id)"
+                      >
+                        <template #icon>
+                          <IconDown v-if="isExpanded(role.id)" :size="10" />
+                          <IconRight v-else :size="10" />
+                        </template>
+                        {{ isExpanded(role.id) ? '收起继承链' : '展开继承链' }}
+                      </a-button>
+                    </div>
+
+                    <div
+                      v-if="isExpanded(role.id) && hasIndirectRelations(role)"
+                      class="chain-view"
+                    >
+                      <div v-if="indirectAncestors(role).length > 0" class="chain-chunk">
+                        <div class="chain-label">间接祖先</div>
+                        <div class="chain-flow">
+                          <div
+                            v-for="(ancestor, idx) in indirectAncestors(role)"
+                            :key="ancestor.id"
+                            class="chain-node"
+                          >
+                            <span class="chain-arrow" v-if="idx > 0 || role.parent_roles.length > 0"
+                              >←</span
+                            >
+                            <a-tag size="small" :color="roleColorById(ancestor.id)" class="!m-0">
+                              {{ ancestor.display_name }}
+                            </a-tag>
+                          </div>
+                          <span class="chain-arrow" v-if="role.parent_roles.length > 0"> ← </span>
+                          <span class="chain-current" v-if="role.parent_roles.length > 0">
+                            {{ role.display_name }}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div v-if="indirectDescendants(role).length > 0" class="chain-chunk">
+                        <div class="chain-label">间接后代</div>
+                        <div class="chain-flow">
+                          <span class="chain-current" v-if="role.child_roles.length > 0">
+                            {{ role.display_name }}
+                          </span>
+                          <span class="chain-arrow" v-if="role.child_roles.length > 0">→</span>
+                          <div
+                            v-for="(descendant, idx) in indirectDescendants(role)"
+                            :key="descendant.id"
+                            class="chain-node"
+                          >
+                            <span class="chain-arrow" v-if="idx > 0 || role.child_roles.length > 0"
+                              >→</span
+                            >
+                            <a-tag size="small" :color="roleColorById(descendant.id)" class="!m-0">
+                              {{ descendant.display_name }}
+                            </a-tag>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div
+                      v-if="constraintsForRole(role.id).length > 0"
+                      class="pt-2 mt-2 border-t border-black/[0.04]"
+                    >
+                      <div class="flex items-center gap-1.5 mb-1.5">
+                        <IconExclamationCircle :size="12" class="text-[#ff9500]" />
+                        <span class="text-[11px] text-[#86868B]">相关约束</span>
+                      </div>
+                      <div class="flex flex-col gap-1">
+                        <div
+                          v-for="c in constraintsForRole(role.id)"
+                          :key="c.id"
+                          class="flex items-center gap-2"
+                        >
+                          <a-tag
+                            size="small"
+                            :color="constraintTypeColor(c.constraint_type)"
+                            class="!m-0"
+                          >
+                            {{ constraintTypeLabel(c.constraint_type) }}
+                          </a-tag>
+                          <span class="text-[11px] text-[#86868B] truncate">
+                            {{ formatConstraintRoles(c, role.id) }}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="role-footer px-4 md:px-5">
+                  <div class="flex items-center gap-2">
+                    <a-tooltip content="查看继承关系" mini>
+                      <a-button
+                        v-perm="'roles:read'"
+                        type="text"
+                        size="small"
+                        @click="isMobile ? openInheritanceDrawer(role) : openInheritance(role)"
+                      >
+                        <template #icon><IconEye :size="15" /></template>
+                      </a-button>
+                    </a-tooltip>
+                    <a-tooltip content="配置继承" mini>
+                      <a-button
+                        v-perm="'roles:manage:write'"
+                        type="text"
+                        size="small"
+                        :disabled="role.is_super_admin"
+                        @click="openParents(role)"
+                      >
+                        <template #icon><IconLink :size="15" /></template>
+                      </a-button>
+                    </a-tooltip>
+                    <a-tooltip content="权限配置" mini>
+                      <a-button
+                        v-perm="'roles:manage:write'"
+                        type="text"
+                        size="small"
+                        @click="$router.push(`/rbac/permissions?role=${role.id}`)"
+                      >
+                        <template #icon><IconSettings :size="15" /></template>
+                      </a-button>
+                    </a-tooltip>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 表格模式 -->
+            <div v-if="viewMode === 'table'" class="role-table-wrap">
+              <a-table :data="sortedRoles" :pagination="false" :bordered="false" :stripe="true">
+                <template #columns>
+                  <a-table-column
+                    title="角色"
+                    data-index="display_name"
+                    :width="140"
+                    :min-width="100"
+                  >
+                    <template #cell="{ record }">
+                      <div class="flex items-center gap-2">
+                        <a-tag :color="roleColor(record)" size="small" class="!m-0">
+                          {{ record.display_name }}
+                        </a-tag>
+                        <IconSafe
+                          v-if="record.is_super_admin"
+                          :size="13"
+                          class="text-[#ff9500] shrink-0"
+                        />
+                      </div>
+                    </template>
+                  </a-table-column>
+                  <a-table-column title="标识" data-index="name" :width="120" :min-width="100">
+                    <template #cell="{ record }">
+                      <code class="role-code">{{ record.name }}</code>
+                    </template>
+                  </a-table-column>
+                  <a-table-column
+                    title="描述"
+                    data-index="description"
+                    :ellipsis="true"
+                    :min-width="100"
+                  >
+                    <template #cell="{ record }">
+                      <span class="text-[13px] text-[#86868B]">
+                        {{ record.description || '—' }}
+                      </span>
+                    </template>
+                  </a-table-column>
+                  <a-table-column title="类型" :width="100" :min-width="100">
+                    <template #cell="{ record }">
+                      <a-tag
+                        v-if="record.is_super_admin"
+                        size="small"
+                        color="orangered"
+                        class="!m-0"
+                        >超级</a-tag
+                      >
+                      <a-tag v-else-if="record.is_builtin" size="small" color="gray" class="!m-0"
+                        >内置</a-tag
+                      >
+                      <a-tag v-else size="small" color="arcoblue" class="!m-0">自定义</a-tag>
+                    </template>
+                  </a-table-column>
+                  <a-table-column title="继承" :width="180" :min-width="100">
+                    <template #cell="{ record }">
+                      <div class="flex flex-wrap gap-1">
+                        <a-tag
+                          v-for="parent in record.parent_roles"
+                          :key="parent.id"
+                          size="small"
+                          :color="roleColorById(parent.id)"
+                          class="!m-0"
+                        >
+                          {{ parent.display_name }}
+                        </a-tag>
+                        <span
+                          v-if="record.parent_roles.length === 0"
+                          class="text-[12px] text-[#c9c9cc]"
+                          >—</span
+                        >
+                      </div>
+                    </template>
+                  </a-table-column>
+                  <a-table-column title="约束" :width="140" :min-width="100">
+                    <template #cell="{ record }">
+                      <div class="flex flex-wrap gap-1">
+                        <a-tag
+                          v-for="c in constraintsForRole(record.id)"
+                          :key="c.id"
                           size="small"
                           :color="constraintTypeColor(c.constraint_type)"
                           class="!m-0"
                         >
                           {{ constraintTypeLabel(c.constraint_type) }}
                         </a-tag>
-                        <span class="text-[11px] text-[#86868B] truncate">
-                          {{ formatConstraintRoles(c, role.id) }}
-                        </span>
+                        <span
+                          v-if="constraintsForRole(record.id).length === 0"
+                          class="text-[12px] text-[#c9c9cc]"
+                          >—</span
+                        >
                       </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div class="role-footer px-4 md:px-5">
-                <div class="flex items-center gap-2">
-                  <a-tooltip content="查看继承关系" mini>
-                    <a-button
-                      v-perm="'roles:read'"
-                      type="text"
-                      size="small"
-                      @click="isMobile ? openInheritanceDrawer(role) : openInheritance(role)"
-                    >
-                      <template #icon><IconEye :size="15" /></template>
-                    </a-button>
-                  </a-tooltip>
-                  <a-tooltip content="配置继承" mini>
-                    <a-button
-                      v-perm="'roles:manage:write'"
-                      type="text"
-                      size="small"
-                      :disabled="role.is_super_admin"
-                      @click="openParents(role)"
-                    >
-                      <template #icon><IconLink :size="15" /></template>
-                    </a-button>
-                  </a-tooltip>
-                  <a-tooltip content="权限配置" mini>
-                    <a-button
-                      v-perm="'roles:manage:write'"
-                      type="text"
-                      size="small"
-                      @click="$router.push(`/rbac/permissions?role=${role.id}`)"
-                    >
-                      <template #icon><IconSettings :size="15" /></template>
-                    </a-button>
-                  </a-tooltip>
-                </div>
-              </div>
+                    </template>
+                  </a-table-column>
+                  <a-table-column title="操作" :width="120" :min-width="100" fixed="right">
+                    <template #cell="{ record }">
+                      <div class="flex items-center gap-1">
+                        <a-tooltip content="查看继承关系" mini>
+                          <a-button
+                            v-perm="'roles:read'"
+                            type="text"
+                            size="small"
+                            @click="
+                              isMobile ? openInheritanceDrawer(record) : openInheritance(record)
+                            "
+                          >
+                            <template #icon><IconEye :size="15" /></template>
+                          </a-button>
+                        </a-tooltip>
+                        <a-tooltip content="配置继承" mini>
+                          <a-button
+                            v-perm="'roles:manage:write'"
+                            type="text"
+                            size="small"
+                            :disabled="record.is_super_admin"
+                            @click="openParents(record)"
+                          >
+                            <template #icon><IconLink :size="15" /></template>
+                          </a-button>
+                        </a-tooltip>
+                        <a-tooltip content="权限配置" mini>
+                          <a-button
+                            v-perm="'roles:manage:write'"
+                            type="text"
+                            size="small"
+                            @click="$router.push(`/rbac/permissions?role=${record.id}`)"
+                          >
+                            <template #icon><IconSettings :size="15" /></template>
+                          </a-button>
+                        </a-tooltip>
+                        <a-tooltip content="编辑" mini>
+                          <a-button
+                            v-perm="'roles:manage:write'"
+                            type="text"
+                            size="small"
+                            :disabled="record.is_super_admin"
+                            @click="openEdit(record)"
+                          >
+                            <template #icon><IconEdit :size="15" /></template>
+                          </a-button>
+                        </a-tooltip>
+                        <a-tooltip content="删除" mini>
+                          <a-button
+                            v-perm="'roles:manage:write'"
+                            type="text"
+                            size="small"
+                            status="danger"
+                            :disabled="record.is_builtin"
+                            @click="deleteRole(record)"
+                          >
+                            <template #icon><IconDelete :size="15" /></template>
+                          </a-button>
+                        </a-tooltip>
+                      </div>
+                    </template>
+                  </a-table-column>
+                </template>
+              </a-table>
             </div>
-          </div>
 
-          <!-- 表格模式 -->
-          <div v-if="viewMode === 'table'" class="role-table-wrap">
-            <a-table :data="sortedRoles" :pagination="false" :bordered="false" :stripe="true">
-              <template #columns>
-                <a-table-column
-                  title="角色"
-                  data-index="display_name"
-                  :width="140"
-                  :min-width="100"
-                >
-                  <template #cell="{ record }">
-                    <div class="flex items-center gap-2">
-                      <a-tag :color="roleColor(record)" size="small" class="!m-0">
-                        {{ record.display_name }}
-                      </a-tag>
-                      <IconSafe
-                        v-if="record.is_super_admin"
-                        :size="13"
-                        class="text-[#ff9500] shrink-0"
-                      />
-                    </div>
-                  </template>
-                </a-table-column>
-                <a-table-column title="标识" data-index="name" :width="120" :min-width="100">
-                  <template #cell="{ record }">
-                    <code class="role-code">{{ record.name }}</code>
-                  </template>
-                </a-table-column>
-                <a-table-column
-                  title="描述"
-                  data-index="description"
-                  :ellipsis="true"
-                  :min-width="100"
-                >
-                  <template #cell="{ record }">
-                    <span class="text-[13px] text-[#86868B]">
-                      {{ record.description || '—' }}
-                    </span>
-                  </template>
-                </a-table-column>
-                <a-table-column title="类型" :width="100" :min-width="100">
-                  <template #cell="{ record }">
-                    <a-tag v-if="record.is_super_admin" size="small" color="orangered" class="!m-0"
-                      >超级</a-tag
-                    >
-                    <a-tag v-else-if="record.is_builtin" size="small" color="gray" class="!m-0"
-                      >内置</a-tag
-                    >
-                    <a-tag v-else size="small" color="arcoblue" class="!m-0">自定义</a-tag>
-                  </template>
-                </a-table-column>
-                <a-table-column title="继承" :width="180" :min-width="100">
-                  <template #cell="{ record }">
-                    <div class="flex flex-wrap gap-1">
-                      <a-tag
-                        v-for="parent in record.parent_roles"
-                        :key="parent.id"
-                        size="small"
-                        :color="roleColorById(parent.id)"
-                        class="!m-0"
-                      >
-                        {{ parent.display_name }}
-                      </a-tag>
-                      <span
-                        v-if="record.parent_roles.length === 0"
-                        class="text-[12px] text-[#c9c9cc]"
-                        >—</span
-                      >
-                    </div>
-                  </template>
-                </a-table-column>
-                <a-table-column title="约束" :width="140" :min-width="100">
-                  <template #cell="{ record }">
-                    <div class="flex flex-wrap gap-1">
-                      <a-tag
-                        v-for="c in constraintsForRole(record.id)"
-                        :key="c.id"
-                        size="small"
-                        :color="constraintTypeColor(c.constraint_type)"
-                        class="!m-0"
-                      >
-                        {{ constraintTypeLabel(c.constraint_type) }}
-                      </a-tag>
-                      <span
-                        v-if="constraintsForRole(record.id).length === 0"
-                        class="text-[12px] text-[#c9c9cc]"
-                        >—</span
-                      >
-                    </div>
-                  </template>
-                </a-table-column>
-                <a-table-column title="操作" :width="120" :min-width="100" fixed="right">
-                  <template #cell="{ record }">
-                    <div class="flex items-center gap-1">
-                      <a-tooltip content="查看继承关系" mini>
-                        <a-button
-                          v-perm="'roles:read'"
-                          type="text"
-                          size="small"
-                          @click="
-                            isMobile ? openInheritanceDrawer(record) : openInheritance(record)
-                          "
-                        >
-                          <template #icon><IconEye :size="15" /></template>
-                        </a-button>
-                      </a-tooltip>
-                      <a-tooltip content="配置继承" mini>
-                        <a-button
-                          v-perm="'roles:manage:write'"
-                          type="text"
-                          size="small"
-                          :disabled="record.is_super_admin"
-                          @click="openParents(record)"
-                        >
-                          <template #icon><IconLink :size="15" /></template>
-                        </a-button>
-                      </a-tooltip>
-                      <a-tooltip content="权限配置" mini>
-                        <a-button
-                          v-perm="'roles:manage:write'"
-                          type="text"
-                          size="small"
-                          @click="$router.push(`/rbac/permissions?role=${record.id}`)"
-                        >
-                          <template #icon><IconSettings :size="15" /></template>
-                        </a-button>
-                      </a-tooltip>
-                      <a-tooltip content="编辑" mini>
-                        <a-button
-                          v-perm="'roles:manage:write'"
-                          type="text"
-                          size="small"
-                          :disabled="record.is_super_admin"
-                          @click="openEdit(record)"
-                        >
-                          <template #icon><IconEdit :size="15" /></template>
-                        </a-button>
-                      </a-tooltip>
-                      <a-tooltip content="删除" mini>
-                        <a-button
-                          v-perm="'roles:manage:write'"
-                          type="text"
-                          size="small"
-                          status="danger"
-                          :disabled="record.is_builtin"
-                          @click="deleteRole(record)"
-                        >
-                          <template #icon><IconDelete :size="15" /></template>
-                        </a-button>
-                      </a-tooltip>
-                    </div>
-                  </template>
-                </a-table-column>
-              </template>
-            </a-table>
-          </div>
+            <a-empty
+              v-if="!loading && roles.length === 0"
+              description="暂无角色数据"
+              class="mt-20"
+            />
+          </a-spin>
+        </div>
 
-          <a-empty v-if="!loading && roles.length === 0" description="暂无角色数据" class="mt-20" />
-        </a-spin>
-      </div>
-
-      <div v-if="inheritanceRole && !isMobile" class="inherit-panel">
-        <RoleInheritanceTree
-          :role-id="inheritanceRole.id"
-          :role-name="inheritanceRole.name"
-          :role-display-name="inheritanceRole.display_name"
-          @close="closeInheritancePanel"
-        />
+        <div v-if="inheritanceRole && !isMobile" class="inherit-panel">
+          <RoleInheritanceTree
+            :role-id="inheritanceRole.id"
+            :role-name="inheritanceRole.name"
+            :role-display-name="inheritanceRole.display_name"
+            @close="closeInheritancePanel"
+          />
+        </div>
       </div>
     </div>
 

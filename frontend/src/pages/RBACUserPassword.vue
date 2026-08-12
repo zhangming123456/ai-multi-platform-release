@@ -12,54 +12,55 @@
       </template>
     </PageHeader>
 
-    <a-spin :loading="loading" class="w-full">
-      <div class="max-w-[480px]">
-        <a-card :bordered="false" class="!rounded-xl">
-          <a-form layout="vertical" class="!max-w-[400px]">
-            <a-form-item label="用户">
-              <a-input
-                :model-value="`${user?.nickname || '...'}  (${user?.username || '...'})`"
-                disabled
-              />
-            </a-form-item>
+    <div class="px-4 md:px-6 lg:px-8 flex-1">
+      <a-spin :loading="loading" class="w-full">
+        <div class="max-w-[480px]">
+          <a-card :bordered="false" class="!rounded-xl">
+            <a-form layout="vertical" class="!max-w-[400px]">
+              <a-form-item label="用户">
+                <a-input
+                  :model-value="`${user?.nickname || '...'}  (${user?.username || '...'})`"
+                  disabled
+                />
+              </a-form-item>
 
-            <div v-if="isDefaultPwd" class="mb-4">
-              <div
-                class="flex items-center gap-2 px-4 py-3 rounded-lg bg-[#30d158]/[0.06] border border-[#30d158]/[0.15]"
-              >
-                <IconSafe :size="16" class="text-[#30d158] shrink-0" />
-                <span class="text-[13px] text-[#30d158] font-medium"
-                  >当前为默认密码或管理员重置，可直接设置新密码</span
+              <div v-if="isDefaultPwd" class="mb-4">
+                <div
+                  class="flex items-center gap-2 px-4 py-3 rounded-lg bg-[#30d158]/[0.06] border border-[#30d158]/[0.15]"
                 >
+                  <IconSafe :size="16" class="text-[#30d158] shrink-0" />
+                  <span class="text-[13px] text-[#30d158] font-medium"
+                    >当前为默认密码或管理员重置，可直接设置新密码</span
+                  >
+                </div>
               </div>
-            </div>
 
-            <a-form-item v-else label="旧密码" required>
-              <a-input-password v-model="oldPassword" placeholder="请输入当前密码" />
-            </a-form-item>
+              <a-form-item v-else label="旧密码" required>
+                <a-input-password v-model="oldPassword" placeholder="请输入当前密码" />
+              </a-form-item>
 
-            <a-form-item label="新密码" required>
-              <a-input-password v-model="newPassword" placeholder="输入新密码" />
-              <template #extra>
-                <span class="text-[11px] text-[#86868b]"
-                  >首字符须为字母，支持大小写字母、数字及 . _ @ $</span
-                >
-              </template>
-            </a-form-item>
-
-            <a-form-item>
-              <a-space>
-                <a-button type="primary" :loading="saving" @click="changePassword">
-                  <template #icon><IconLock /></template>
-                  确认修改
-                </a-button>
-                <a-button @click="goBack">取消</a-button>
-              </a-space>
-            </a-form-item>
-          </a-form>
-        </a-card>
-      </div>
-    </a-spin>
+              <a-form-item label="新密码" required>
+                <a-input-password v-model="newPassword" placeholder="输入新密码" />
+                <template #extra>
+                  <span class="text-[11px] text-[#86868b]"
+                    >首字符须为字母，支持大小写字母、数字及 . _ @ $</span
+                  >
+                </template>
+              </a-form-item>
+            </a-form>
+          </a-card>
+        </div>
+      </a-spin>
+    </div>
+    <div
+      class="sticky bottom-0 z-30 border-t border-[#E5E5EA] bg-white/90 backdrop-blur-xl px-4 md:px-6 lg:px-8 py-3 flex items-center justify-between"
+    >
+      <a-button @click="goBack">取消</a-button>
+      <a-button type="primary" :loading="saving" @click="changePassword">
+        <template #icon><IconLock /></template>
+        确认修改
+      </a-button>
+    </div>
   </div>
 </template>
 

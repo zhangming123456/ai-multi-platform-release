@@ -35,6 +35,7 @@ type AIVariant struct {
 type UploadedFile struct {
 	Data     string `json:"data"`
 	MimeType string `json:"mime_type"`
+	URL      string `json:"url,omitempty"`
 }
 
 var platformStyleMap = map[string]string{
@@ -131,13 +132,14 @@ func parseModelField(raw string) []map[string]interface{} {
 	return result
 }
 
-// ResolveModelConfig 解析模型配置，返回 (api_key, base_url, model, plan_name)。
+// ResolveModelConfig 解析模型配置，返回 (api_key, base_url, model, plan_name, supports_vision)。
 // 失败时返回 *AIGenerationError。
-func ResolveModelConfig(planID, modelID string) (string, string, string, string, error) {
+func ResolveModelConfig(planID, modelID string) (string, string, string, string, bool, error) {
 	apiKey := getAIAPIKey()
 	baseURL := getAIBaseURL()
 	model := getAIModel()
 	planName := "默认配置"
+	supportsVision := false
 
 	if planID != "" {
 		o := GetOrm()
@@ -161,6 +163,22 @@ func ResolveModelConfig(planID, modelID string) (string, string, string, string,
 			} else if len(modelIDs) > 0 {
 				model = modelIDs[0]
 			}
+			for _, e := range entries {
+				id, _ := e["id"].(string)
+				if id == model {
+					types, _ := e["types"].([]interface{})
+					for _, t := range types {
+						if ts, ok := t.(string); ok && ts == "vision" {
+							supportsVision = true
+							break
+						}
+					}
+					break
+				}
+			}
+			if !supportsVision {
+				supportsVision = plan.Multimodal
+			}
 			if plan.Name != "" {
 				planName = plan.Name
 			} else {
@@ -169,9 +187,9 @@ func ResolveModelConfig(planID, modelID string) (string, string, string, string,
 		} else {
 			available, aerr := getAvailablePlans()
 			if aerr != nil {
-				return "", "", "", "", aerr
+				return "", "", "", "", false, aerr
 			}
-			return "", "", "", "", &AIGenerationError{
+			return "", "", "", "", false, &AIGenerationError{
 				Message:        fmt.Sprintf("未找到指定的模型配置（plan_id=%s），请切换到可用的模型配置。", planID),
 				AvailablePlans: available,
 			}
@@ -181,15 +199,15 @@ func ResolveModelConfig(planID, modelID string) (string, string, string, string,
 	if apiKey == "" {
 		available, aerr := getAvailablePlans()
 		if aerr != nil {
-			return "", "", "", "", aerr
+			return "", "", "", "", false, aerr
 		}
-		return "", "", "", "", &AIGenerationError{
+		return "", "", "", "", false, &AIGenerationError{
 			Message:        "未配置 API Key，请在模型配置中添加有效的 API 密钥后重试。",
 			AvailablePlans: available,
 		}
 	}
 
-	return apiKey, baseURL, model, planName, nil
+	return apiKey, baseURL, model, planName, supportsVision, nil
 }
 
 type chatMessage struct {
@@ -228,9 +246,99 @@ func callChatCompletions(apiKey, baseURL, model string, messages []chatMessage, 
 	return client.Do(req)
 }
 
+// toolDefinition 描述一个 function calling 工具（OpenAI 兼容格式）。
+type toolDefinition struct {
+	Type     string             `json:"type"` // 固定 "function"
+	Function toolFunctionSpec   `json:"function"`
+}
+
+// toolFunctionSpec 工具的函数签名。
+type toolFunctionSpec struct {
+	Name        string                 `json:"name"`
+	Description string                 `json:"description"`
+	Parameters  map[string]interface{} `json:"parameters"`
+}
+
+// toolCallResult 模型返回的工具调用。
+type toolCallResult struct {
+	ID       string `json:"id"`
+	Type     string `json:"type"`
+	Function struct {
+		Name      string `json:"name"`
+		Arguments string `json:"arguments"`
+	} `json:"function"`
+}
+
+// callChatCompletionsWithTools 调用 chat completions，支持 tools/function calling。
+// tools 为空时等价于普通调用；toolChoice 为 "auto"/"none"/{"type":"function","function":{"name":"xxx"}}。
+func callChatCompletionsWithTools(apiKey, baseURL, model string, messages []chatMessage, tools []toolDefinition, toolChoice interface{}) (*http.Response, error) {
+	payload := map[string]interface{}{
+		"model":       model,
+		"messages":    messages,
+		"temperature": 0.4,
+		"max_tokens":  4000,
+		"stream":      false,
+	}
+	if len(tools) > 0 {
+		payload["tools"] = tools
+		if toolChoice != nil {
+			payload["tool_choice"] = toolChoice
+		} else {
+			payload["tool_choice"] = "auto"
+		}
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return nil, err
+	}
+	url := strings.TrimRight(baseURL, "/") + "/chat/completions"
+	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+	client := &http.Client{Timeout: 120 * time.Second}
+	return client.Do(req)
+}
+
+// callChatCompletionsStreamWithTools 流式调用 chat completions，支持 tools/function calling。
+// 返回的 Response.Body 需要调用方自行关闭。
+func callChatCompletionsStreamWithTools(apiKey, baseURL, model string, messages []chatMessage, tools []toolDefinition, toolChoice interface{}) (*http.Response, error) {
+	payload := map[string]interface{}{
+		"model":       model,
+		"messages":    messages,
+		"temperature": 0.4,
+		"max_tokens":  4000,
+		"stream":      true,
+	}
+	if len(tools) > 0 {
+		payload["tools"] = tools
+		if toolChoice != nil {
+			payload["tool_choice"] = toolChoice
+		} else {
+			payload["tool_choice"] = "auto"
+		}
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return nil, err
+	}
+	url := strings.TrimRight(baseURL, "/") + "/chat/completions"
+	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+	req.Header.Set("Accept", "text/event-stream")
+	client := &http.Client{Timeout: 120 * time.Second}
+	return client.Do(req)
+}
+
 // GenerateContentVariants 生成多个内容变体。
 func GenerateContentVariants(topic, platform, style string, keywords []string, count int, planID, modelID string) ([]AIVariant, error) {
-	apiKey, baseURL, model, planName, err := ResolveModelConfig(planID, modelID)
+	apiKey, baseURL, model, planName, _, err := ResolveModelConfig(planID, modelID)
 	if err != nil {
 		return nil, err
 	}
@@ -264,7 +372,7 @@ func GenerateContentVariants(topic, platform, style string, keywords []string, c
 直接返回 JSON，不要包含其他说明文字。`, count, platform, platformStyle, keywordsStr, subject)
 
 	resp, err := callChatCompletions(apiKey, baseURL, model, []chatMessage{
-		{Role: "system", Content: "你是一个专业的社交媒体内容创作助手，擅长为不同平台生成适配的优质内容。"},
+		{Role: "system", Content: "你是一个专业的社交媒体内容创作助手，擅长为不同平台生成适配的优质内容。使用中文回复。"},
 		{Role: "user", Content: prompt},
 	}, false)
 	if err != nil {
@@ -429,13 +537,15 @@ func ParseStreamedContent(content string) AIVariant {
 	return AIVariant{Title: title, Body: body, Hashtags: hashtags}
 }
 
-// AIStreamEvent 流式生成事件。事件类型: log / chunk / done / error。
+// AIStreamEvent 流式生成事件。事件类型: log / chunk / done / error / result / request_data / response_data。
 type AIStreamEvent struct {
 	Event          string                   `json:"event"`
 	Level          string                   `json:"level,omitempty"`
 	Message        string                   `json:"message,omitempty"`
 	Text           string                   `json:"text,omitempty"`
 	Variant        *AIVariant               `json:"variant,omitempty"`
+	Data           interface{}              `json:"data,omitempty"`
+	Detail         string                   `json:"detail,omitempty"`
 	Model          string                   `json:"model,omitempty"`
 	PlanName       string                   `json:"plan_name,omitempty"`
 	AvailablePlans []map[string]interface{} `json:"available_plans,omitempty"`
@@ -445,16 +555,35 @@ func buildVisionContent(prompt string, files []UploadedFile) []interface{} {
 	parts := make([]interface{}, 0, len(files)+1)
 	parts = append(parts, map[string]interface{}{"type": "text", "text": prompt})
 	for _, f := range files {
-		if strings.HasPrefix(f.MimeType, "video/") {
-			parts = append(parts, map[string]interface{}{
-				"type":      "video_url",
-				"video_url": map[string]interface{}{"url": "data:" + f.MimeType + ";base64," + f.Data},
-			})
+		imgURL := f.URL
+		if imgURL == "" {
+			imgURL = f.Data
+		}
+		if strings.HasPrefix(imgURL, "http://") || strings.HasPrefix(imgURL, "https://") {
+			if strings.HasPrefix(f.MimeType, "video/") {
+				parts = append(parts, map[string]interface{}{
+					"type":      "video_url",
+					"video_url": map[string]interface{}{"url": imgURL},
+				})
+			} else {
+				parts = append(parts, map[string]interface{}{
+					"type":      "image_url",
+					"image_url": map[string]interface{}{"url": imgURL},
+				})
+			}
 		} else {
-			parts = append(parts, map[string]interface{}{
-				"type":      "image_url",
-				"image_url": map[string]interface{}{"url": "data:" + f.MimeType + ";base64," + f.Data},
-			})
+			dataURL := "data:" + f.MimeType + ";base64," + f.Data
+			if strings.HasPrefix(f.MimeType, "video/") {
+				parts = append(parts, map[string]interface{}{
+					"type":      "video_url",
+					"video_url": map[string]interface{}{"url": dataURL},
+				})
+			} else {
+				parts = append(parts, map[string]interface{}{
+					"type":      "image_url",
+					"image_url": map[string]interface{}{"url": dataURL},
+				})
+			}
 		}
 	}
 	return parts
@@ -464,7 +593,7 @@ func buildVisionContent(prompt string, files []UploadedFile) []interface{} {
 func GenerateContentStream(topic, platform, style string, keywords []string, planID, modelID string, files []UploadedFile) (<-chan AIStreamEvent, error) {
 	events := make(chan AIStreamEvent, 16)
 
-	apiKey, baseURL, model, planName, err := ResolveModelConfig(planID, modelID)
+	apiKey, baseURL, model, planName, _, err := ResolveModelConfig(planID, modelID)
 	if err != nil {
 		if aiErr, ok := err.(*AIGenerationError); ok {
 			go func() {
@@ -541,7 +670,7 @@ func GenerateContentStream(topic, platform, style string, keywords []string, pla
 			events <- AIStreamEvent{Event: "log", Level: "info", Message: fmt.Sprintf("附带 %s（多模态分析）", strings.Join(parts, "、"))}
 		}
 
-		messages := []chatMessage{{Role: "system", Content: "你是一个专业的社交媒体内容创作助手，擅长为不同平台生成适配的优质内容。"}}
+		messages := []chatMessage{{Role: "system", Content: "你是一个专业的社交媒体内容创作助手，擅长为不同平台生成适配的优质内容。使用中文回复。"}}
 		if len(files) > 0 {
 			messages = append(messages, chatMessage{Role: "user", Content: buildVisionContent(prompt, files)})
 		} else {

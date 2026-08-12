@@ -1,0 +1,1241 @@
+package services
+
+import (
+	"bufio"
+	"encoding/base64"
+	"encoding/json"
+	"fmt"
+	"io"
+	"mime"
+	"net/http"
+	"net/url"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
+
+	"github.com/google/uuid"
+
+	"ai-multi-platform-release/backend-go/models"
+)
+
+var builtinInspectionItems = []struct {
+	Name     string
+	Category string
+	MaxScore int
+}{
+	{Name: "环境卫生", Category: "卫生", MaxScore: 10},
+	{Name: "商品陈列", Category: "陈列", MaxScore: 10},
+	{Name: "服务规范", Category: "服务", MaxScore: 10},
+	{Name: "消防安全", Category: "安全", MaxScore: 10},
+	{Name: "设备设施", Category: "设施", MaxScore: 10},
+}
+
+func SeedInspectionItems() error {
+	o := GetOrm()
+	count, err := o.QueryTable(new(models.InspectionItem)).Count()
+	if err != nil {
+		return err
+	}
+	if count > 0 {
+		return nil
+	}
+	for i, item := range builtinInspectionItems {
+		entry := &models.InspectionItem{
+			ID:        uuid.NewString(),
+			Name:      item.Name,
+			Category:  item.Category,
+			MaxScore:  item.MaxScore,
+			SortOrder: i,
+			IsActive:  true,
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
+		}
+		if _, err := o.Insert(entry); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func GetActiveInspectionItems() ([]models.InspectionItem, error) {
+	var items []models.InspectionItem
+	_, err := GetOrm().QueryTable(new(models.InspectionItem)).
+		Filter("is_active", true).
+		OrderBy("sort_order").
+		All(&items)
+	if err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+type InspectionAIResult struct {
+	Scores     map[string]float64 `json:"scores"`
+	Comments   map[string]string  `json:"comments"`
+	Issues     string             `json:"issues"`
+	Suggestion string             `json:"suggestion"`
+	Report     string             `json:"report"`
+}
+
+type InspectionAIItem struct {
+	ID           string
+	Name         string
+	Standard     string
+	ScoreType    string
+	MaxScore     int
+	ScoreOptions []models.ScoreOption
+}
+
+// InspectionSkill 前端组装的检查项技能规范，用于向 AI 明确定义巡店标准与评分规则。
+type InspectionSkill struct {
+	ItemID        string               `json:"item_id"`
+	Name          string               `json:"name"`
+	Category      string               `json:"category"`
+	Standard      string               `json:"standard"`
+	StandardImage string               `json:"standard_image"`
+	ScoreType     string               `json:"score_type"`
+	MaxScore      int                  `json:"max_score"`
+	ScoreOptions  []models.ScoreOption `json:"score_options"`
+	RequireRemark bool                 `json:"require_remark"`
+	RequirePhoto  bool                 `json:"require_photo"`
+}
+
+// InspectionSkillSpec 巡店 AI 技能规范：检查项标准 + 返回格式 schema。
+type InspectionSkillSpec struct {
+	Skills         []InspectionSkill      `json:"skills"`
+	ResponseSchema map[string]interface{} `json:"response_schema"`
+}
+
+// defaultInspectionResponseSchema 默认返回格式 schema，规范 AI 输出结构。
+func defaultInspectionResponseSchema() map[string]interface{} {
+	return map[string]interface{}{
+		"type": "object",
+		"properties": map[string]interface{}{
+			"scores": map[string]interface{}{
+				"type":        "array",
+				"description": "仅包含与巡店关键词/图片有关联的检查项评分，无关项不返回",
+				"items": map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"item_id": map[string]interface{}{"type": "string", "description": "检查项 ID"},
+						"score":   map[string]interface{}{"type": "number", "description": "得分，必须在允许的分值范围内"},
+						"comment": map[string]interface{}{"type": "string", "description": "该检查项的反馈问题说明"},
+					},
+					"required": []string{"item_id", "score", "comment"},
+				},
+			},
+			"issues":     map[string]interface{}{"type": "string", "description": "问题与备注：按检查项分条列出发现的问题与现场备注，覆盖所有不达标项"},
+			"suggestion": map[string]interface{}{"type": "string", "description": "AI 整改建议：针对每个问题给出具体、可执行的整改措施与提升建议"},
+			"report":     map[string]interface{}{"type": "string", "description": "完整的巡店分析报告，包含每个检查项的评估详情、标准图与现场图对比分析、评分理由、改进建议"},
+		},
+		"required": []string{"scores", "issues", "suggestion", "report"},
+	}
+}
+
+// buildInspectionSkillsPrompt 将检查项技能规范拼装为结构化文本，作为 AI 的巡店标准与规范。
+func buildInspectionSkillsPrompt(skills []InspectionSkill) string {
+	var b strings.Builder
+	b.WriteString("【巡店检查项标准与评分规范】\n")
+	b.WriteString("请严格按照以下每个检查项的 ID、标准、评分规则进行客观评分，score 必须落在该检查项允许的分值范围内。\n\n")
+	for i, s := range skills {
+		b.WriteString(fmt.Sprintf("%d. item_id=%s\n", i+1, s.ItemID))
+		b.WriteString(fmt.Sprintf("   名称：%s\n", s.Name))
+		if s.Category != "" {
+			b.WriteString(fmt.Sprintf("   分类：%s\n", s.Category))
+		}
+		if s.Standard != "" {
+			b.WriteString(fmt.Sprintf("   检查标准：%s\n", s.Standard))
+		}
+		if s.StandardImage != "" {
+			b.WriteString(fmt.Sprintf("   标准图参考：%s\n", s.StandardImage))
+		}
+		if s.ScoreType == "pass_fail" {
+			labels := make([]string, 0, len(s.ScoreOptions))
+			for _, opt := range s.ScoreOptions {
+				labels = append(labels, fmt.Sprintf("%s(%.1f分)", opt.Label, opt.Score))
+			}
+			b.WriteString(fmt.Sprintf("   评分方式：选项评分，可选项：%s\n", strings.Join(labels, " / ")))
+		} else {
+			allowed := make([]string, 0, len(s.ScoreOptions))
+			for _, opt := range s.ScoreOptions {
+				allowed = append(allowed, strings.TrimRight(strings.TrimRight(fmt.Sprintf("%.1f", opt.Score), "0"), "."))
+			}
+			if len(allowed) > 0 {
+				b.WriteString(fmt.Sprintf("   评分方式：分值评分，允许分值：%s（满分 %d 分）\n", strings.Join(allowed, " / "), s.MaxScore))
+			} else {
+				b.WriteString(fmt.Sprintf("   评分方式：分值评分，0 ~ %d 分\n", s.MaxScore))
+			}
+		}
+		if s.RequireRemark {
+			b.WriteString("   反馈问题：必填\n")
+		}
+		if s.RequirePhoto {
+			b.WriteString("   巡店图片：必填\n")
+		}
+		b.WriteString("\n")
+	}
+	return b.String()
+}
+
+// buildInspectionInputHints 根据巡店图片与关键词生成对应的 prompt 提示段。
+// 返回 (photoHint, keywordsHint)，二者均可为空字符串。
+func buildInspectionInputHints(photos []UploadedFile, keywords string) (string, string) {
+	photoHint := ""
+	switch {
+	case len(photos) > 0:
+		photoHint = "\n请优先基于上传的巡店照片进行客观判断，照片中可见的问题要在问题描述中指出。"
+	case strings.TrimSpace(keywords) != "":
+		photoHint = "\n本次未提供巡店照片，请基于巡店关键词信息并结合通用门店运营规范给出检查结果。"
+	default:
+		photoHint = "\n本次未提供照片，请基于通用门店运营规范给出建议性检查结果。"
+	}
+	keywordsHint := ""
+	if kw := strings.TrimSpace(keywords); kw != "" {
+		keywordsHint = fmt.Sprintf("\n巡店补充信息（关键词/现场描述）：%s\n请结合以上信息进行客观判断——仅对关键词/图片明确涉及的检查项进行评分与分析，无关的检查项不需要返回评分。", kw)
+	}
+	return photoHint, keywordsHint
+}
+
+// loadImageAsUploadedFile 将图片 URL（支持 http/https 完整 URL 或 /uploads/ 相对路径）加载为 UploadedFile。
+// 相对路径会读取本地上传目录并转为 base64 data URL，便于 vision 模型识别。
+func loadImageAsUploadedFile(imageURL string) (*UploadedFile, error) {
+	imageURL = strings.TrimSpace(imageURL)
+	if imageURL == "" {
+		return nil, fmt.Errorf("图片 URL 为空")
+	}
+
+	// 完整 URL：直接透传，让模型端自行拉取
+	if strings.HasPrefix(imageURL, "http://") || strings.HasPrefix(imageURL, "https://") {
+		return &UploadedFile{URL: imageURL}, nil
+	}
+
+	// 解析 /uploads/ 相对路径
+	u, err := url.Parse(imageURL)
+	if err != nil {
+		return nil, err
+	}
+	cleanPath := filepath.Clean(u.Path)
+	if !strings.HasPrefix(cleanPath, "/uploads/") {
+		return nil, fmt.Errorf("不支持的图片路径: %s", imageURL)
+	}
+	filename := strings.TrimPrefix(cleanPath, "/uploads/")
+	filename = strings.TrimPrefix(filename, "/")
+	localPath := filepath.Join(GetUploadDir(), filename)
+
+	data, err := os.ReadFile(localPath)
+	if err != nil {
+		return nil, fmt.Errorf("读取上传图片失败 %s: %w", localPath, err)
+	}
+
+	ext := strings.ToLower(filepath.Ext(filename))
+	mimeType := mime.TypeByExtension(ext)
+	if mimeType == "" {
+		mimeType = "image/png"
+	}
+
+	return &UploadedFile{
+		Data:     base64.StdEncoding.EncodeToString(data),
+		MimeType: mimeType,
+		URL:      imageURL,
+	}, nil
+}
+
+// collectStandardImages 从检查项技能规范中提取所有标准图并加载为 UploadedFile。
+func collectStandardImages(skills []InspectionSkill) []UploadedFile {
+	var images []UploadedFile
+	seen := make(map[string]bool)
+	for _, s := range skills {
+		if s.StandardImage == "" || seen[s.StandardImage] {
+			continue
+		}
+		seen[s.StandardImage] = true
+		if f, err := loadImageAsUploadedFile(s.StandardImage); err == nil {
+			images = append(images, *f)
+		}
+	}
+	return images
+}
+
+// buildInspectionVisionContent 构建包含标准图与现场图的 vision content。
+// 标准图在前并附带说明文本，现场图在后并附带说明文本，便于模型区分对比。
+func buildInspectionVisionContent(prompt string, standardImages []UploadedFile, photos []UploadedFile) []interface{} {
+	parts := make([]interface{}, 0, 1+len(standardImages)+len(photos)+2)
+	parts = append(parts, map[string]interface{}{"type": "text", "text": prompt})
+
+	if len(standardImages) > 0 {
+		parts = append(parts, map[string]interface{}{"type": "text", "text": fmt.Sprintf("【检查标准参照图】共 %d 张，请作为评分基准：", len(standardImages))})
+		for _, f := range standardImages {
+			parts = append(parts, visionPartFromFile(f))
+		}
+	}
+
+	if len(photos) > 0 {
+		parts = append(parts, map[string]interface{}{"type": "text", "text": fmt.Sprintf("【巡店现场图】共 %d 张，请与标准图进行对比分析：", len(photos))})
+		for _, f := range photos {
+			parts = append(parts, visionPartFromFile(f))
+		}
+	}
+
+	return parts
+}
+
+// visionPartFromFile 将 UploadedFile 转换为 vision API 所需的 image_url / video_url 部分。
+func visionPartFromFile(f UploadedFile) interface{} {
+	imgURL := f.URL
+	if imgURL == "" {
+		imgURL = f.Data
+	}
+	if strings.HasPrefix(imgURL, "http://") || strings.HasPrefix(imgURL, "https://") {
+		return map[string]interface{}{
+			"type":      "image_url",
+			"image_url": map[string]interface{}{"url": imgURL},
+		}
+	}
+	dataURL := "data:" + f.MimeType + ";base64," + f.Data
+	return map[string]interface{}{
+		"type":      "image_url",
+		"image_url": map[string]interface{}{"url": dataURL},
+	}
+}
+
+// AnalyzeInspection 分析门店巡店情况并生成检查报告，返回每个检查项得分、问题与建议。
+// keywords 为巡店关键词/现场描述补充信息（可为空）；photos 为巡店图片（可选，可为空）。
+// 当 skillSpec 非空时，使用前端组装的检查项技能规范，并通过 function calling 规范返回格式。
+func AnalyzeInspection(storeName string, items []InspectionAIItem, photos []UploadedFile, keywords, planID, modelID string, skillSpec *InspectionSkillSpec) (*InspectionAIResult, error) {
+	apiKey, baseURL, model, planName, supportsVision, err := ResolveModelConfig(planID, modelID)
+	if err != nil {
+		return nil, err
+	}
+
+	storeDesc := storeName
+	if storeDesc == "" {
+		storeDesc = "该门店"
+	}
+
+	photoHint, keywordsHint := buildInspectionInputHints(photos, keywords)
+
+	// 分支：前端传入了 skills 技能规范，使用 function calling 严格规范返回格式
+	if skillSpec != nil && len(skillSpec.Skills) > 0 {
+		skillsPrompt := buildInspectionSkillsPrompt(skillSpec.Skills)
+		prompt := fmt.Sprintf(`你是一名专业的连锁门店巡店督导。请对「%s」进行巡店检查。
+%s
+请基于以上检查项标准与巡店信息，客观评估每个检查项的达标情况，重点输出两大部分：
+1. issues（问题与备注）：按检查项分条列出发现的问题与现场备注，覆盖所有不达标项；
+2. suggestion（AI 整改建议）：针对每个问题给出具体、可执行的整改措施与提升建议。
+%s
+%s
+
+请调用 submit_inspection_result 工具提交结果。scores 仅包含与巡店关键词/图片有关联的检查项，每项的 item_id 与上面给出的 item_id 一致，score 必须落在该检查项允许的分值范围内；无关的检查项不要返回评分；issues 与 suggestion 必须详尽充实。`, storeDesc, skillsPrompt, keywordsHint, photoHint)
+
+		messages := []chatMessage{{
+			Role:    "system",
+			Content: "你是专业的连锁门店巡店督导专家，擅长门店标准化检查，输出问题与整改建议。使用中文回复。必须生成一份完整的巡店分析报告，包含每个检查项的评估结果（含标准图与现场图对比分析）。必须通过调用 submit_inspection_result 工具返回结构化结果。",
+		}}
+		if supportsVision && len(photos) > 0 {
+			messages = append(messages, chatMessage{Role: "user", Content: buildVisionContent(prompt, photos)})
+		} else {
+			messages = append(messages, chatMessage{Role: "user", Content: prompt})
+		}
+
+		schema := skillSpec.ResponseSchema
+		if schema == nil {
+			schema = defaultInspectionResponseSchema()
+		}
+		tools := []toolDefinition{{
+			Type: "function",
+			Function: toolFunctionSpec{
+				Name:        "submit_inspection_result",
+				Description: "提交巡店检查评分结果，包括每个检查项的得分、反馈问题、整体问题与整改建议",
+				Parameters:  schema,
+			},
+		}}
+		toolChoice := "auto"
+
+		resp, err := callChatCompletionsWithTools(apiKey, baseURL, model, messages, tools, toolChoice)
+		if err != nil {
+			return nil, aiCallError(planName, err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
+			return nil, aiCallError(planName, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(bodyBytes)))
+		}
+
+		var raw struct {
+			Choices []struct {
+				Message struct {
+					Content   string           `json:"content"`
+					ToolCalls []toolCallResult `json:"tool_calls"`
+				} `json:"message"`
+			} `json:"choices"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
+			return nil, aiCallError(planName, err)
+		}
+		if len(raw.Choices) == 0 {
+			return nil, aiCallError(planName, fmt.Errorf("模型无返回内容"))
+		}
+
+		// 优先解析 tool_calls
+		choice := raw.Choices[0]
+		if len(choice.Message.ToolCalls) > 0 {
+			args := strings.TrimSpace(choice.Message.ToolCalls[0].Function.Arguments)
+			if parsed, perr := parseInspectionToolArgs(args); perr == nil {
+				return parsed, nil
+			}
+		}
+		// 回退：解析 content 为 JSON
+		content := strings.TrimSpace(choice.Message.Content)
+		if strings.HasPrefix(content, "```") {
+			parts := strings.Split(content, "```")
+			if len(parts) > 1 {
+				content = strings.TrimSpace(parts[1])
+				content = strings.TrimPrefix(content, "json")
+				content = strings.TrimSpace(content)
+			}
+		}
+		parsed, perr := parseInspectionContentJSON(content)
+		if perr != nil {
+			available, aerr := getAvailablePlans()
+			if aerr != nil {
+				return nil, aerr
+			}
+			return nil, &AIGenerationError{
+				Message:        fmt.Sprintf("模型「%s」返回的巡店报告格式异常，无法解析。请尝试切换到其他模型配置后重试。", planName),
+				AvailablePlans: available,
+			}
+		}
+		return parsed, nil
+	}
+
+	// 兼容分支：未传 skills，维持原有 prompt + JSON 返回逻辑
+	itemLines := make([]string, 0, len(items))
+	for _, it := range items {
+		scoreDesc := fmt.Sprintf("满分 %d 分", it.MaxScore)
+		if len(it.ScoreOptions) > 0 {
+			labels := make([]string, 0, len(it.ScoreOptions))
+			allowed := make([]string, 0, len(it.ScoreOptions))
+			for _, opt := range it.ScoreOptions {
+				labels = append(labels, fmt.Sprintf("%s(%.1f分)", opt.Label, opt.Score))
+				allowed = append(allowed, strings.TrimRight(strings.TrimRight(fmt.Sprintf("%.1f", opt.Score), "0"), "."))
+			}
+			if it.ScoreType == "pass_fail" {
+				scoreDesc = strings.Join(labels, " / ") + "，请从以上选项中选择"
+			} else {
+				scoreDesc = "分值评分，可选分值：" + strings.Join(allowed, " / ") + " 分（满分 " + fmt.Sprintf("%d", it.MaxScore) + " 分）"
+			}
+		}
+		line := fmt.Sprintf("  - %s（%s）", it.Name, scoreDesc)
+		if it.Standard != "" {
+			line += fmt.Sprintf("；检查标准：%s", it.Standard)
+		}
+		itemLines = append(itemLines, line)
+	}
+
+	prompt := fmt.Sprintf(`你是一名专业的连锁门店巡店督导。请对「%s」进行巡店检查。
+检查项及评分标准如下：
+%s
+
+请基于以上检查项标准与巡店信息，客观评估每个检查项的达标情况，重点输出：
+1. scores：每个检查项的得分；
+2. issues（问题与备注）：按检查项分条列出发现的问题与现场备注，覆盖所有不达标项；
+3. suggestion（AI 整改建议）：针对每个问题给出具体、可执行的整改措施与提升建议；
+4. report（巡店分析报告）：完整的巡店分析报告，包含每个检查项的评估详情、标准图与现场图对比分析（如有）、评分理由、改进建议。
+%s
+%s
+
+请严格以 JSON 格式返回（不要输出其他内容）：
+{
+  "scores": {"检查项名称": 得分（仅包含有针对性分析的项）, ...},
+  "issues": "问题与备注，按检查项分条列出",
+  "suggestion": "AI 整改建议，具体可执行",
+  "report": "完整的巡店分析报告文本，按检查项分章节"
+}`, storeDesc, strings.Join(itemLines, "\n"), keywordsHint, photoHint)
+
+	messages := []chatMessage{{
+		Role:    "system",
+		Content: "你是专业的连锁门店巡店督导专家，擅长门店标准化检查，输出问题与整改建议。使用中文回复。必须生成一份完整的巡店分析报告，包含每个检查项的评估结果（含标准图与现场图对比分析）。",
+	}}
+	if supportsVision && len(photos) > 0 {
+		messages = append(messages, chatMessage{Role: "user", Content: buildVisionContent(prompt, photos)})
+	} else {
+		messages = append(messages, chatMessage{Role: "user", Content: prompt})
+	}
+
+	resp, err := callChatCompletions(apiKey, baseURL, model, messages, false)
+	if err != nil {
+		return nil, aiCallError(planName, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, aiCallError(planName, fmt.Errorf("HTTP %d", resp.StatusCode))
+	}
+
+	var result struct {
+		Choices []struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+		} `json:"choices"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, aiCallError(planName, err)
+	}
+	if len(result.Choices) == 0 {
+		return nil, aiCallError(planName, fmt.Errorf("模型无返回内容"))
+	}
+
+	content := strings.TrimSpace(result.Choices[0].Message.Content)
+	if strings.HasPrefix(content, "```") {
+		parts := strings.Split(content, "```")
+		if len(parts) > 1 {
+			content = strings.TrimSpace(parts[1])
+			content = strings.TrimPrefix(content, "json")
+			content = strings.TrimSpace(content)
+		}
+	}
+
+	var parsed struct {
+		Scores     map[string]float64 `json:"scores"`
+		Issues     string             `json:"issues"`
+		Suggestion string             `json:"suggestion"`
+		Report     string             `json:"report"`
+	}
+	if err := json.Unmarshal([]byte(content), &parsed); err != nil {
+		available, aerr := getAvailablePlans()
+		if aerr != nil {
+			return nil, aerr
+		}
+		return nil, &AIGenerationError{
+			Message:        fmt.Sprintf("模型「%s」返回的巡店报告格式异常，无法解析。请尝试切换到其他模型配置后重试。", planName),
+			AvailablePlans: available,
+		}
+	}
+	if parsed.Scores == nil {
+		parsed.Scores = map[string]float64{}
+	}
+	return &InspectionAIResult{
+		Scores:     parsed.Scores,
+		Issues:     parsed.Issues,
+		Suggestion: parsed.Suggestion,
+		Report:     parsed.Report,
+	}, nil
+}
+
+// parseInspectionToolArgs 解析 submit_inspection_result 工具调用的 arguments JSON。
+func parseInspectionToolArgs(args string) (*InspectionAIResult, error) {
+	if args == "" {
+		return nil, fmt.Errorf("empty tool arguments")
+	}
+	args = stripCodeFence(args)
+	var obj struct {
+		Scores []struct {
+			ItemID  string  `json:"item_id"`
+			Score   float64 `json:"score"`
+			Comment string  `json:"comment"`
+		} `json:"scores"`
+		Issues     string `json:"issues"`
+		Suggestion string `json:"suggestion"`
+		Report     string `json:"report"`
+	}
+	if err := json.Unmarshal([]byte(args), &obj); err != nil {
+		return nil, err
+	}
+	scores := make(map[string]float64, len(obj.Scores))
+	comments := make(map[string]string, len(obj.Scores))
+	for _, s := range obj.Scores {
+		if s.ItemID == "" {
+			continue
+		}
+		scores[s.ItemID] = s.Score
+		comments[s.ItemID] = s.Comment
+	}
+	return &InspectionAIResult{
+		Scores:     scores,
+		Comments:   comments,
+		Issues:     obj.Issues,
+		Suggestion: obj.Suggestion,
+		Report:     obj.Report,
+	}, nil
+}
+
+// parseInspectionContentJSON 解析回退场景下的 content JSON（兼容对象型 scores 与数组型 scores）。
+func parseInspectionContentJSON(content string) (*InspectionAIResult, error) {
+	if content == "" {
+		return nil, fmt.Errorf("empty content")
+	}
+	content = stripCodeFence(content)
+	// 尝试数组型 scores
+	var arr struct {
+		Scores []struct {
+			ItemID  string  `json:"item_id"`
+			Score   float64 `json:"score"`
+			Comment string  `json:"comment"`
+		} `json:"scores"`
+		Issues     string `json:"issues"`
+		Suggestion string `json:"suggestion"`
+		Report     string `json:"report"`
+	}
+	if err := json.Unmarshal([]byte(content), &arr); err == nil && len(arr.Scores) > 0 {
+		scores := make(map[string]float64, len(arr.Scores))
+		comments := make(map[string]string, len(arr.Scores))
+		for _, s := range arr.Scores {
+			if s.ItemID == "" {
+				continue
+			}
+			scores[s.ItemID] = s.Score
+			comments[s.ItemID] = s.Comment
+		}
+		return &InspectionAIResult{
+			Scores:     scores,
+			Comments:   comments,
+			Issues:     arr.Issues,
+			Suggestion: arr.Suggestion,
+			Report:     arr.Report,
+		}, nil
+	}
+	// 回退到对象型 scores
+	var obj struct {
+		Scores     map[string]float64 `json:"scores"`
+		Issues     string             `json:"issues"`
+		Suggestion string             `json:"suggestion"`
+		Report     string             `json:"report"`
+	}
+	if err := json.Unmarshal([]byte(content), &obj); err != nil {
+		return nil, err
+	}
+	if obj.Scores == nil {
+		obj.Scores = map[string]float64{}
+	}
+	return &InspectionAIResult{
+		Scores:     obj.Scores,
+		Issues:     obj.Issues,
+		Suggestion: obj.Suggestion,
+		Report:     obj.Report,
+	}, nil
+}
+
+// AnalyzeInspectionStream 流式分析门店巡店情况并生成检查报告，通过 channel 发送事件。
+// keywords 为巡店关键词/现场描述补充信息（可为空）；photos 为巡店图片（可选，可为空）。
+// 事件类型：log / chunk / result / error。
+func AnalyzeInspectionStream(storeName string, items []InspectionAIItem, photos []UploadedFile, keywords, planID, modelID string, skillSpec *InspectionSkillSpec) (<-chan AIStreamEvent, error) {
+	apiKey, baseURL, model, planName, supportsVision, err := ResolveModelConfig(planID, modelID)
+	if err != nil {
+		return nil, err
+	}
+
+	events := make(chan AIStreamEvent, 32)
+	go func() {
+		defer close(events)
+
+		storeDesc := storeName
+		if storeDesc == "" {
+			storeDesc = "该门店"
+		}
+		photoHint, keywordsHint := buildInspectionInputHints(photos, keywords)
+
+		var messages []chatMessage
+		var schema map[string]interface{}
+		var tools []toolDefinition
+
+		if skillSpec != nil && len(skillSpec.Skills) > 0 {
+			skillsPrompt := buildInspectionSkillsPrompt(skillSpec.Skills)
+			prompt := fmt.Sprintf(`你是一名专业的连锁门店巡店督导。请对「%s」进行巡店检查。
+%s
+请基于以上检查项标准与巡店信息，客观评估每个检查项的达标情况，重点输出两大部分：
+1. issues（问题与备注）：按检查项分条列出发现的问题与现场备注，覆盖所有不达标项；
+2. suggestion（AI 整改建议）：针对每个问题给出具体、可执行的整改措施与提升建议。
+%s
+%s
+
+请调用 submit_inspection_result 工具提交结果。scores 仅包含与巡店关键词/图片有关联的检查项，每项的 item_id 与上面给出的 item_id 一致，score 必须落在该检查项允许的分值范围内；无关的检查项不要返回评分；issues 与 suggestion 必须详尽充实。`, storeDesc, skillsPrompt, keywordsHint, photoHint)
+			messages = []chatMessage{{
+				Role:    "system",
+				Content: "你是专业的连锁门店巡店督导专家，擅长门店标准化检查，输出问题与整改建议。使用中文回复。必须通过调用 submit_inspection_result 工具返回结构化结果。",
+			}}
+		if supportsVision && len(photos) > 0 {
+				messages = append(messages, chatMessage{Role: "user", Content: buildVisionContent(prompt, photos)})
+			} else {
+				messages = append(messages, chatMessage{Role: "user", Content: prompt})
+			}
+			schema = skillSpec.ResponseSchema
+			if schema == nil {
+				schema = defaultInspectionResponseSchema()
+			}
+			tools = []toolDefinition{{
+				Type: "function",
+				Function: toolFunctionSpec{
+					Name:        "submit_inspection_result",
+					Description: "提交巡店检查评分结果，包括每个检查项的得分、反馈问题、整体问题与整改建议",
+					Parameters:  schema,
+				},
+			}}
+		} else {
+			itemLines := make([]string, 0, len(items))
+			for _, it := range items {
+				scoreDesc := fmt.Sprintf("满分 %d 分", it.MaxScore)
+				if len(it.ScoreOptions) > 0 {
+					labels := make([]string, 0, len(it.ScoreOptions))
+					allowed := make([]string, 0, len(it.ScoreOptions))
+					for _, opt := range it.ScoreOptions {
+						labels = append(labels, fmt.Sprintf("%s(%.1f分)", opt.Label, opt.Score))
+						allowed = append(allowed, strings.TrimRight(strings.TrimRight(fmt.Sprintf("%.1f", opt.Score), "0"), "."))
+					}
+					if it.ScoreType == "pass_fail" {
+						scoreDesc = strings.Join(labels, " / ") + "，请从以上选项中选择"
+					} else {
+						scoreDesc = "分值评分，可选分值：" + strings.Join(allowed, " / ") + " 分（满分 " + fmt.Sprintf("%d", it.MaxScore) + " 分）"
+					}
+				}
+				line := fmt.Sprintf("  - %s（%s）", it.Name, scoreDesc)
+				if it.Standard != "" {
+					line += fmt.Sprintf("；检查标准：%s", it.Standard)
+				}
+				itemLines = append(itemLines, line)
+			}
+			prompt := fmt.Sprintf(`你是一名专业的连锁门店巡店督导。请对「%s」进行巡店检查。
+检查项及评分标准如下：
+%s
+
+请基于以上检查项标准与巡店信息，客观评估每个检查项的达标情况，重点输出：
+1. scores：每个检查项的得分；
+2. issues（问题与备注）：按检查项分条列出发现的问题与现场备注，覆盖所有不达标项；
+3. suggestion（AI 整改建议）：针对每个问题给出具体、可执行的整改措施与提升建议；
+4. report（巡店分析报告）：完整的巡店分析报告，包含每个检查项的评估详情、标准图与现场图对比分析（如有）、评分理由、改进建议。
+%s
+%s
+
+请严格以 JSON 格式返回（不要输出其他内容）：
+{
+  "scores": {"检查项名称": 得分（仅包含有针对性分析的项）, ...},
+  "issues": "问题与备注，按检查项分条列出",
+  "suggestion": "AI 整改建议，具体可执行",
+  "report": "完整的巡店分析报告文本，按检查项分章节"
+}`, storeDesc, strings.Join(itemLines, "\n"), keywordsHint, photoHint)
+			messages = []chatMessage{{
+				Role:    "system",
+				Content: "你是专业的连锁门店巡店督导专家，擅长门店标准化检查，输出问题与整改建议。使用中文回复。",
+			}}
+		if supportsVision && len(photos) > 0 {
+				messages = append(messages, chatMessage{Role: "user", Content: buildVisionContent(prompt, photos)})
+			} else {
+				messages = append(messages, chatMessage{Role: "user", Content: prompt})
+			}
+		}
+
+		events <- AIStreamEvent{Event: "log", Level: "info", Message: fmt.Sprintf("使用模型配置 %s（%s）", planName, model)}
+		if kw := strings.TrimSpace(keywords); kw != "" {
+			events <- AIStreamEvent{Event: "log", Level: "info", Message: fmt.Sprintf("携带巡店关键词：%s", kw)}
+		}
+		if len(photos) > 0 {
+			events <- AIStreamEvent{Event: "log", Level: "info", Message: fmt.Sprintf("附带 %d 张图片（多模态分析）", len(photos))}
+		}
+
+		reqSummary := map[string]interface{}{
+			"model":      model,
+			"baseURL":    baseURL,
+			"tool_choice": len(tools) > 0,
+		}
+		msgSummaries := make([]map[string]interface{}, 0, len(messages))
+		for _, m := range messages {
+			content := m.Content
+			if vc, ok := content.([]interface{}); ok {
+				content = fmt.Sprintf("[vision content, %d parts]", len(vc))
+			}
+			if s, ok := content.(string); ok {
+				if len(s) > 500 {
+					content = s[:500] + "..."
+				}
+			}
+			msgSummaries = append(msgSummaries, map[string]interface{}{
+				"role":    m.Role,
+				"content": content,
+			})
+		}
+		reqSummary["messages"] = msgSummaries
+		reqDetailBytes, _ := json.MarshalIndent(reqSummary, "", "  ")
+		events <- AIStreamEvent{Event: "request_data", Message: fmt.Sprintf("向模型 %s 发送请求", model), Detail: string(reqDetailBytes)}
+
+		var resp *http.Response
+		if len(tools) > 0 {
+			resp, err = callChatCompletionsStreamWithTools(apiKey, baseURL, model, messages, tools, "auto")
+		} else {
+			resp, err = callChatCompletions(apiKey, baseURL, model, messages, true)
+		}
+		if err != nil {
+			events <- AIStreamEvent{Event: "error", Message: fmt.Sprintf("模型「%s」调用失败：%s", planName, err)}
+			return
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
+			events <- AIStreamEvent{Event: "error", Message: fmt.Sprintf("模型「%s」调用失败：HTTP %d: %s", planName, resp.StatusCode, string(bodyBytes))}
+			return
+		}
+
+		respSummary := map[string]interface{}{
+			"status":     resp.StatusCode,
+			"model":      model,
+			"stream":     true,
+		}
+		respDetailBytes, _ := json.MarshalIndent(respSummary, "", "  ")
+		events <- AIStreamEvent{Event: "response_data", Message: "收到模型响应", Detail: string(respDetailBytes)}
+
+		events <- AIStreamEvent{Event: "log", Level: "req", Message: "POST /chat/completions → SSE 连接已建立"}
+
+		scanner := bufio.NewScanner(resp.Body)
+		fullContent := ""
+		// 流式工具调用参数累加：key 为 call index
+		accumulatedArgs := make(map[int]string)
+		accumulatedName := make(map[int]string)
+		accumulatedID := make(map[int]string)
+		for scanner.Scan() {
+			line := strings.TrimSpace(scanner.Text())
+			if !strings.HasPrefix(line, "data:") {
+				continue
+			}
+			data := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+			if data == "[DONE]" {
+				break
+			}
+			var chunk struct {
+				Choices []struct {
+					Delta struct {
+						Content   string           `json:"content"`
+						ToolCalls []toolCallResult `json:"tool_calls"`
+					} `json:"delta"`
+				} `json:"choices"`
+			}
+			if err := json.Unmarshal([]byte(data), &chunk); err != nil {
+				continue
+			}
+			if len(chunk.Choices) == 0 {
+				continue
+			}
+			delta := chunk.Choices[0].Delta
+
+			// 处理普通 content 增量
+			if delta.Content != "" {
+				fullContent += delta.Content
+				events <- AIStreamEvent{Event: "chunk", Text: delta.Content}
+			}
+
+			// 处理流式 tool_calls 增量
+			for _, tc := range delta.ToolCalls {
+				idx := 0
+				// toolCalls 数组通常按顺序出现；若不存在 index，则按 0 累加
+				if tc.ID != "" {
+					accumulatedID[idx] = tc.ID
+				}
+				if tc.Function.Name != "" {
+					accumulatedName[idx] = tc.Function.Name
+				}
+				if tc.Function.Arguments != "" {
+					accumulatedArgs[idx] += tc.Function.Arguments
+				}
+			}
+		}
+
+		// 优先从流式工具调用结果解析
+		var result *InspectionAIResult
+		for idx, args := range accumulatedArgs {
+			if accumulatedName[idx] != "submit_inspection_result" {
+				continue
+			}
+			args = strings.TrimSpace(args)
+			if args == "" {
+				continue
+			}
+			if parsed, perr := parseInspectionToolArgs(args); perr == nil {
+				result = parsed
+				events <- AIStreamEvent{Event: "log", Level: "ok", Message: "已解析 submit_inspection_result 工具调用结果"}
+				break
+			}
+		}
+
+		// 未解析到 tool_calls，回退解析 content JSON
+		if result == nil {
+			if parsed, perr := parseInspectionContentJSON(fullContent); perr == nil {
+				result = parsed
+				events <- AIStreamEvent{Event: "log", Level: "ok", Message: "已从 content 回退解析 JSON 结果"}
+			}
+		}
+
+		if result == nil {
+			available, aerr := getAvailablePlans()
+			if aerr != nil {
+				events <- AIStreamEvent{Event: "error", Message: "获取可用模型配置失败"}
+				return
+			}
+			events <- AIStreamEvent{Event: "error", Message: fmt.Sprintf("模型「%s」返回的巡店报告格式异常，无法解析。请尝试切换到其他模型配置后重试。", planName), AvailablePlans: available}
+			return
+		}
+
+		resultScores := make([]map[string]interface{}, 0, len(result.Scores))
+		for itemID, score := range result.Scores {
+			resultScores = append(resultScores, map[string]interface{}{
+				"item_id": itemID,
+				"score":   score,
+				"comment": result.Comments[itemID],
+			})
+		}
+		events <- AIStreamEvent{
+			Event:   "result",
+			Message: "AI 巡店分析完成",
+			Data: map[string]interface{}{
+				"scores":     resultScores,
+				"issues":     result.Issues,
+				"suggestion": result.Suggestion,
+				"report":     result.Report,
+			},
+		}
+	}()
+
+	return events, nil
+}
+
+func stripCodeFence(s string) string {
+	s = strings.TrimSpace(s)
+	if strings.HasPrefix(s, "```json") {
+		s = strings.TrimPrefix(s, "```json")
+	} else if strings.HasPrefix(s, "```") {
+		s = strings.TrimPrefix(s, "```")
+	}
+	if strings.HasSuffix(s, "```") {
+		s = strings.TrimSuffix(s, "```")
+	}
+	return strings.TrimSpace(s)
+}
+
+type SingleItemAnalysisRequest struct {
+	ItemName      string               `json:"item_name"`
+	ItemID        string               `json:"item_id"`
+	Standard      string               `json:"standard"`
+	StandardImage string               `json:"standard_image"`
+	ScoreType     string               `json:"score_type"`
+	MaxScore      int                  `json:"max_score"`
+	ScoreOptions  []models.ScoreOption `json:"score_options"`
+	Comment       string               `json:"comment"`
+	CurrentScore  float64              `json:"current_score"`
+	Photos        []UploadedFile       `json:"photos"`
+	Keywords      string               `json:"keywords"`
+	PlanID        string               `json:"plan_id"`
+	ModelID       string               `json:"model_id"`
+}
+
+type SingleItemAnalysisResult struct {
+	Score          float64 `json:"score"`
+	Comment        string  `json:"comment"`
+	Suggestion     string  `json:"suggestion"`
+	PhotoRelevance *bool   `json:"photo_relevance,omitempty"`
+}
+
+func AnalyzeSingleInspectionItem(req SingleItemAnalysisRequest) (*SingleItemAnalysisResult, error) {
+	apiKey, baseURL, model, planName, _, err := ResolveModelConfig(req.PlanID, req.ModelID)
+	if err != nil {
+		return nil, err
+	}
+
+	scoreDesc := ""
+	if req.ScoreType == "pass_fail" {
+		labels := make([]string, 0, len(req.ScoreOptions))
+		for _, opt := range req.ScoreOptions {
+			labels = append(labels, fmt.Sprintf("%s(%.1f分)", opt.Label, opt.Score))
+		}
+		scoreDesc = strings.Join(labels, " / ") + "，请从以上选项中选择"
+	} else {
+		allowed := make([]string, 0, len(req.ScoreOptions))
+		for _, opt := range req.ScoreOptions {
+			allowed = append(allowed, strings.TrimRight(strings.TrimRight(fmt.Sprintf("%.1f", opt.Score), "0"), "."))
+		}
+		if len(allowed) > 0 {
+			scoreDesc = "分值评分，可选分值：" + strings.Join(allowed, " / ") + " 分（满分 " + fmt.Sprintf("%d", req.MaxScore) + " 分）"
+		} else {
+			scoreDesc = fmt.Sprintf("分值评分，0 ~ %d 分", req.MaxScore)
+		}
+	}
+
+	standardLine := ""
+	if req.Standard != "" {
+		standardLine = fmt.Sprintf("检查标准：%s\n", req.Standard)
+	}
+
+	feedbackLine := ""
+	if req.Comment != "" {
+		feedbackLine = fmt.Sprintf("巡店人员现场反馈：%s\n", req.Comment)
+	}
+
+	scoreLine := ""
+	if req.CurrentScore > 0 {
+		scoreLine = fmt.Sprintf("巡店人员当前评分：%.1f 分\n", req.CurrentScore)
+	}
+
+	standardImageLine := ""
+	if req.StandardImage != "" {
+		standardImageLine = fmt.Sprintf("附带 1 张检查标准图（标准参照图），请对比标准图检查现场情况。")
+	}
+
+	photoDesc := ""
+	if len(req.Photos) > 0 {
+		photoDesc = fmt.Sprintf("附带 %d 张巡店现场图片，请结合图片内容进行客观判断。", len(req.Photos))
+	}
+
+	keywordsHint := ""
+	if kw := strings.TrimSpace(req.Keywords); kw != "" {
+		keywordsHint = fmt.Sprintf("巡店补充信息：%s\n", kw)
+	}
+
+	prompt := fmt.Sprintf(`你是一名专业的连锁门店巡店督导。请对以下单个检查项进行独立评分分析。
+
+检查项：%s
+%s评分方式：%s
+%s%s%s%s%s
+
+请综合标题、检查标准、标准参照图、巡店人员当前评分与反馈、现场图片等信息，客观评估该项的达标情况，生成更合理的评分与反馈问题。注意：如果提供了现场图片，需要判断图片内容是否与当前检查项相关（例如图片是否确实展示了该检查项对应的场景），并严格的仅返回 JSON（不要输出其他内容）：
+{
+  "score": 得分,
+  "comment": "问题与备注",
+  "suggestion": "整改建议",
+  "photo_relevance": true或false（仅当有现场图片时返回，图片内容是否与当前检查项匹配）
+}`, req.ItemName, standardLine, scoreDesc, scoreLine, feedbackLine, standardImageLine, photoDesc, keywordsHint)
+
+	messages := []chatMessage{{
+		Role:    "system",
+		Content: "你是专业的连锁门店巡店督导专家，擅长门店标准化检查，输出问题与整改建议。使用中文回复。",
+	}}
+
+	messages = append(messages, chatMessage{Role: "user", Content: prompt})
+
+	resp, err := callChatCompletions(apiKey, baseURL, model, messages, false)
+	if err != nil {
+		return nil, aiCallError(planName, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
+		return nil, aiCallError(planName, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(bodyBytes)))
+	}
+
+	var raw struct {
+		Choices []struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+		} `json:"choices"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
+		return nil, aiCallError(planName, err)
+	}
+	if len(raw.Choices) == 0 {
+		return nil, aiCallError(planName, fmt.Errorf("模型无返回内容"))
+	}
+
+	content := strings.TrimSpace(raw.Choices[0].Message.Content)
+	if strings.HasPrefix(content, "```") {
+		parts := strings.Split(content, "```")
+		if len(parts) > 1 {
+			content = strings.TrimSpace(parts[1])
+			content = strings.TrimPrefix(content, "json")
+			content = strings.TrimSpace(content)
+		}
+	}
+
+	var result SingleItemAnalysisResult
+	if err := json.Unmarshal([]byte(content), &result); err != nil {
+		return nil, aiCallError(planName, fmt.Errorf("模型返回格式异常，无法解析"))
+	}
+
+	return &result, nil
+}
+
+func AnalyzeSingleInspectionItemStream(req SingleItemAnalysisRequest) (<-chan AIStreamEvent, error) {
+	apiKey, baseURL, model, planName, _, err := ResolveModelConfig(req.PlanID, req.ModelID)
+	if err != nil {
+		return nil, err
+	}
+
+	events := make(chan AIStreamEvent, 32)
+	go func() {
+		defer close(events)
+
+		scoreDesc := ""
+		if req.ScoreType == "pass_fail" {
+			labels := make([]string, 0, len(req.ScoreOptions))
+			for _, opt := range req.ScoreOptions {
+				labels = append(labels, fmt.Sprintf("%s(%.1f分)", opt.Label, opt.Score))
+			}
+			scoreDesc = strings.Join(labels, " / ") + "，请从以上选项中选择"
+		} else {
+			allowed := make([]string, 0, len(req.ScoreOptions))
+			for _, opt := range req.ScoreOptions {
+				allowed = append(allowed, strings.TrimRight(strings.TrimRight(fmt.Sprintf("%.1f", opt.Score), "0"), "."))
+			}
+			if len(allowed) > 0 {
+				scoreDesc = "分值评分，可选分值：" + strings.Join(allowed, " / ") + " 分（满分 " + fmt.Sprintf("%d", req.MaxScore) + " 分）"
+			} else {
+				scoreDesc = fmt.Sprintf("分值评分，0 ~ %d 分", req.MaxScore)
+			}
+		}
+
+		standardLine := ""
+		if req.Standard != "" {
+			standardLine = fmt.Sprintf("检查标准：%s\n", req.Standard)
+		}
+
+		feedbackLine := ""
+		if req.Comment != "" {
+			feedbackLine = fmt.Sprintf("巡店人员现场反馈：%s\n", req.Comment)
+		}
+
+		scoreLine := ""
+		if req.CurrentScore > 0 {
+			scoreLine = fmt.Sprintf("巡店人员当前评分：%.1f 分\n", req.CurrentScore)
+		}
+
+		standardImageLine := ""
+		if req.StandardImage != "" {
+			standardImageLine = fmt.Sprintf("附带 1 张检查标准图（标准参照图），请对比标准图检查现场情况。")
+		}
+
+		photoDesc := ""
+		if len(req.Photos) > 0 {
+			photoDesc = fmt.Sprintf("附带 %d 张巡店现场图片，请结合图片内容进行客观判断。", len(req.Photos))
+		}
+
+		keywordsHint := ""
+		if kw := strings.TrimSpace(req.Keywords); kw != "" {
+			keywordsHint = fmt.Sprintf("巡店补充信息：%s\n", kw)
+		}
+
+		prompt := fmt.Sprintf(`你是一名专业的连锁门店巡店督导。请对以下单个检查项进行独立评分分析。
+
+检查项：%s
+%s评分方式：%s
+%s%s%s%s%s
+
+请综合标题、检查标准、标准参照图、巡店人员当前评分与反馈、现场图片等信息，客观评估该项的达标情况，生成更合理的评分与反馈问题。注意：如果提供了现场图片，需要判断图片内容是否与当前检查项相关（例如图片是否确实展示了该检查项对应的场景），并严格的仅返回 JSON（不要输出其他内容）：
+{
+  "score": 得分,
+  "comment": "问题与备注",
+  "suggestion": "整改建议",
+  "photo_relevance": true或false（仅当有现场图片时返回，图片内容是否与当前检查项匹配）
+}`, req.ItemName, standardLine, scoreDesc, scoreLine, feedbackLine, standardImageLine, photoDesc, keywordsHint)
+
+		messages := []chatMessage{{
+			Role:    "system",
+			Content: "你是专业的连锁门店巡店督导专家，擅长门店标准化检查，输出问题与整改建议。使用中文回复。",
+		}}
+
+		messages = append(messages, chatMessage{Role: "user", Content: prompt})
+
+		events <- AIStreamEvent{Event: "log", Level: "info", Message: fmt.Sprintf("使用模型配置 %s（%s）", planName, model)}
+
+		reqSummary := map[string]interface{}{
+			"model":      model,
+			"baseURL":    baseURL,
+			"item":       req.ItemName,
+			"score_type": req.ScoreType,
+			"max_score":  req.MaxScore,
+		}
+		msgSummaries := make([]map[string]interface{}, 0, len(messages))
+		for _, m := range messages {
+			content := m.Content
+			if vc, ok := content.([]interface{}); ok {
+				content = fmt.Sprintf("[vision content, %d parts]", len(vc))
+			}
+			if s, ok := content.(string); ok {
+				if len(s) > 500 {
+					content = s[:500] + "..."
+				}
+			}
+			msgSummaries = append(msgSummaries, map[string]interface{}{
+				"role":    m.Role,
+				"content": content,
+			})
+		}
+		reqSummary["messages"] = msgSummaries
+		reqDetailBytes, _ := json.MarshalIndent(reqSummary, "", "  ")
+		events <- AIStreamEvent{Event: "request_data", Message: fmt.Sprintf("向模型 %s 发送请求", model), Detail: string(reqDetailBytes)}
+
+		resp, err := callChatCompletions(apiKey, baseURL, model, messages, true)
+		if err != nil {
+			events <- AIStreamEvent{Event: "error", Message: fmt.Sprintf("模型「%s」调用失败：%s", planName, err)}
+			return
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
+			events <- AIStreamEvent{Event: "error", Message: fmt.Sprintf("模型「%s」调用失败：HTTP %d: %s", planName, resp.StatusCode, string(bodyBytes))}
+			return
+		}
+
+		respSummary := map[string]interface{}{
+			"status": resp.StatusCode,
+			"model":  model,
+			"stream": true,
+		}
+		respDetailBytes, _ := json.MarshalIndent(respSummary, "", "  ")
+		events <- AIStreamEvent{Event: "response_data", Message: "收到模型响应", Detail: string(respDetailBytes)}
+
+		scanner := bufio.NewScanner(resp.Body)
+		fullContent := ""
+		for scanner.Scan() {
+			line := strings.TrimSpace(scanner.Text())
+			if !strings.HasPrefix(line, "data:") {
+				continue
+			}
+			data := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+			if data == "[DONE]" {
+				break
+			}
+			var chunk struct {
+				Choices []struct {
+					Delta struct {
+						Content string `json:"content"`
+					} `json:"delta"`
+				} `json:"choices"`
+			}
+			if err := json.Unmarshal([]byte(data), &chunk); err != nil {
+				continue
+			}
+			if len(chunk.Choices) == 0 {
+				continue
+			}
+			delta := chunk.Choices[0].Delta
+			if delta.Content != "" {
+				fullContent += delta.Content
+				events <- AIStreamEvent{Event: "chunk", Text: delta.Content}
+			}
+		}
+
+		content := strings.TrimSpace(fullContent)
+		if strings.HasPrefix(content, "```") {
+			parts := strings.Split(content, "```")
+			if len(parts) > 1 {
+				content = strings.TrimSpace(parts[1])
+				content = strings.TrimPrefix(content, "json")
+				content = strings.TrimSpace(content)
+			}
+		}
+
+		var result SingleItemAnalysisResult
+		if err := json.Unmarshal([]byte(content), &result); err != nil {
+			events <- AIStreamEvent{Event: "error", Message: "模型返回格式异常，无法解析"}
+			return
+		}
+
+		events <- AIStreamEvent{
+			Event:   "result",
+			Message: "AI 分析完成",
+			Data: map[string]interface{}{
+				"score":           result.Score,
+				"comment":         result.Comment,
+				"suggestion":      result.Suggestion,
+				"photo_relevance": result.PhotoRelevance,
+			},
+		}
+	}()
+
+	return events, nil
+}

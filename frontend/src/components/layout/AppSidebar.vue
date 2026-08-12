@@ -141,10 +141,12 @@ interface SidebarGroupConfig {
 const SIDEBAR_GROUPS: Record<string, SidebarGroupConfig> = {
   top: { name: '', icon: '', order: 0, wrapGroup: false },
   content: { name: '内容管理', icon: 'file', order: 1, wrapGroup: true },
-  review: { name: '审核管理', icon: 'check', order: 2, wrapGroup: true },
-  platforms: { name: '平台管理', icon: 'apps', order: 3, wrapGroup: false },
-  rbac: { name: '权限管理', icon: 'safe', order: 4, wrapGroup: true },
-  system: { name: '系统管理', icon: 'tool', order: 5, wrapGroup: true },
+  material: { name: '素材管理', icon: 'image', order: 2, wrapGroup: true },
+  review: { name: '审核管理', icon: 'check', order: 3, wrapGroup: true },
+  inspection: { name: '巡店管理', icon: 'check', order: 4, wrapGroup: true },
+  platforms: { name: '平台管理', icon: 'apps', order: 5, wrapGroup: false },
+  rbac: { name: '权限管理', icon: 'safe', order: 6, wrapGroup: true },
+  system: { name: '系统管理', icon: 'tool', order: 7, wrapGroup: true },
 }
 
 interface MenuEntry {
@@ -159,7 +161,7 @@ interface MenuGroup {
   key: string
   name: string
   icon?: Component
-  children?: MenuEntry[]
+  children: MenuEntry[]
 }
 
 type MenuItem = MenuEntry | MenuGroup

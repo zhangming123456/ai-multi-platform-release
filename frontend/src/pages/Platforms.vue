@@ -1,5 +1,5 @@
 <template>
-  <div>
+  <div class="page-main">
     <PageHeader title="平台管理" subtitle="统一管理您在各平台的账号矩阵">
       <template #actions>
         <a-button type="primary" @click="showAddModal = true">
@@ -11,64 +11,66 @@
       </template>
     </PageHeader>
 
-    <div class="mb-5">
-      <SegmentedControl v-model="platformFilter" :options="platformOptions" />
-    </div>
+    <div class="px-4 md:px-6 lg:px-8 flex-1">
+      <div class="mb-5">
+        <SegmentedControl v-model="platformFilter" :options="platformOptions" />
+      </div>
 
-    <a-spin :loading="loading" tip="加载中..." style="display: block; width: 100%">
-      <a-empty v-if="!loading && filteredAccounts.length === 0" description="暂无账号" />
-      <a-row v-else :gutter="[16, 20]">
-        <a-col v-for="account in filteredAccounts" :key="account.id" :xs="24" :md="12" :lg="8">
-          <a-card :bordered="false" hoverable style="padding: 20px">
-            <a-space :size="12" align="start" fill>
-              <PlatformIcon :platform="account.platform" size="lg" />
-              <div style="flex: 1; min-width: 0">
-                <div style="display: flex; align-items: center; justify-content: space-between">
-                  <a-typography-text bold style="font-size: 15px">{{
-                    account.nickname
-                  }}</a-typography-text>
-                  <StatusBadge :status="account.status" />
+      <a-spin :loading="loading" tip="加载中..." style="display: block; width: 100%">
+        <a-empty v-if="!loading && filteredAccounts.length === 0" description="暂无账号" />
+        <a-row v-else :gutter="[16, 20]">
+          <a-col v-for="account in filteredAccounts" :key="account.id" :xs="24" :md="12" :lg="8">
+            <a-card :bordered="false" hoverable style="padding: 20px">
+              <a-space :size="12" align="start" fill>
+                <PlatformIcon :platform="account.platform" size="lg" />
+                <div style="flex: 1; min-width: 0">
+                  <div style="display: flex; align-items: center; justify-content: space-between">
+                    <a-typography-text bold style="font-size: 15px">{{
+                      account.nickname
+                    }}</a-typography-text>
+                    <StatusBadge :status="account.status" />
+                  </div>
+                  <a-typography-text type="secondary" style="font-size: 12px"
+                    >粉丝 --</a-typography-text
+                  >
                 </div>
-                <a-typography-text type="secondary" style="font-size: 12px"
-                  >粉丝 --</a-typography-text
-                >
-              </div>
-            </a-space>
-            <a-divider style="margin: 12px 0" />
-            <div style="display: flex; align-items: center; justify-content: space-between">
-              <a-typography-text type="disabled" style="font-size: 11px"
-                >最近检查 {{ formatRelativeTime(account.last_check_at) }}</a-typography-text
-              >
-              <a-space :size="4">
-                <a-button
-                  type="text"
-                  size="mini"
-                  title="刷新状态"
-                  :loading="checkingId === account.id"
-                  @click="checkStatus(account.id)"
-                >
-                  <template #icon>
-                    <IconRefresh />
-                  </template>
-                </a-button>
-                <a-button
-                  type="text"
-                  size="mini"
-                  status="danger"
-                  title="移除账号"
-                  :loading="deletingId === account.id"
-                  @click="deleteAccount(account.id)"
-                >
-                  <template #icon>
-                    <IconDelete />
-                  </template>
-                </a-button>
               </a-space>
-            </div>
-          </a-card>
-        </a-col>
-      </a-row>
-    </a-spin>
+              <a-divider style="margin: 12px 0" />
+              <div style="display: flex; align-items: center; justify-content: space-between">
+                <a-typography-text type="disabled" style="font-size: 11px"
+                  >最近检查 {{ formatRelativeTime(account.last_check_at) }}</a-typography-text
+                >
+                <a-space :size="4">
+                  <a-button
+                    type="text"
+                    size="mini"
+                    title="刷新状态"
+                    :loading="checkingId === account.id"
+                    @click="checkStatus(account.id)"
+                  >
+                    <template #icon>
+                      <IconRefresh />
+                    </template>
+                  </a-button>
+                  <a-button
+                    type="text"
+                    size="mini"
+                    status="danger"
+                    title="移除账号"
+                    :loading="deletingId === account.id"
+                    @click="deleteAccount(account.id)"
+                  >
+                    <template #icon>
+                      <IconDelete />
+                    </template>
+                  </a-button>
+                </a-space>
+              </div>
+            </a-card>
+          </a-col>
+        </a-row>
+      </a-spin>
+    </div>
 
     <Modal v-model:visible="showAddModal" title="添加平台账号" width="480px">
       <a-form :model="newAccount" layout="vertical">

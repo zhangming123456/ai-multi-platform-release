@@ -15,115 +15,117 @@
       </template>
     </PageHeader>
 
-    <a-spin :loading="loading" tip="加载中..." class="w-full">
-      <div
-        v-if="constraints.length > 0"
-        class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
-      >
+    <div class="px-4 md:px-6 lg:px-8 flex-1">
+      <a-spin :loading="loading" tip="加载中..." class="w-full">
         <div
-          v-for="constraint in constraints"
-          :key="constraint.id"
-          class="constraint-card"
-          :class="{ 'opacity-70': !constraint.is_active }"
+          v-if="constraints.length > 0"
+          class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
         >
-          <div class="p-5">
-            <div class="flex items-start justify-between mb-3">
-              <div class="flex items-center gap-2.5 min-w-0">
-                <a-tag
-                  :color="typeColor(constraint.constraint_type)"
-                  size="small"
-                  class="!m-0 shrink-0"
-                >
-                  {{ typeLabel(constraint.constraint_type) }}
-                </a-tag>
-                <span class="text-[14px] font-semibold text-[#1D1D1F] truncate">
-                  {{ constraint.name }}
+          <div
+            v-for="constraint in constraints"
+            :key="constraint.id"
+            class="constraint-card"
+            :class="{ 'opacity-70': !constraint.is_active }"
+          >
+            <div class="p-5">
+              <div class="flex items-start justify-between mb-3">
+                <div class="flex items-center gap-2.5 min-w-0">
+                  <a-tag
+                    :color="typeColor(constraint.constraint_type)"
+                    size="small"
+                    class="!m-0 shrink-0"
+                  >
+                    {{ typeLabel(constraint.constraint_type) }}
+                  </a-tag>
+                  <span class="text-[14px] font-semibold text-[#1D1D1F] truncate">
+                    {{ constraint.name }}
+                  </span>
+                </div>
+                <div class="flex items-center gap-1 shrink-0">
+                  <a-button
+                    v-perm="'constraints:manage:write'"
+                    type="text"
+                    size="mini"
+                    @click="openEdit(constraint)"
+                  >
+                    <template #icon><IconEdit :size="14" /></template>
+                  </a-button>
+                  <a-button
+                    v-perm="'constraints:manage:write'"
+                    type="text"
+                    size="mini"
+                    status="danger"
+                    @click="removeConstraint(constraint)"
+                  >
+                    <template #icon><IconDelete :size="14" /></template>
+                  </a-button>
+                </div>
+              </div>
+
+              <p class="text-[13px] text-[#86868B] leading-relaxed mb-4 min-h-[20px]">
+                {{ constraint.description || '暂无描述' }}
+              </p>
+
+              <div class="space-y-3">
+                <div class="flex items-start gap-2">
+                  <IconExclamationCircle :size="14" class="text-[#86868B] mt-0.5 shrink-0" />
+                  <span class="text-[12px] text-[#86868B]">{{ formatConfig(constraint) }}</span>
+                </div>
+
+                <div class="flex items-start gap-2">
+                  <IconLink :size="14" class="text-[#86868B] mt-0.5 shrink-0" />
+                  <div class="flex flex-wrap gap-1.5">
+                    <a-tag
+                      v-for="assoc in subjectRoles(constraint)"
+                      :key="assoc.id"
+                      :color="roleColor(assoc.role_id)"
+                      size="small"
+                      class="!m-0"
+                    >
+                      {{ assoc.role_display_name || assoc.role_name }}
+                    </a-tag>
+                  </div>
+                </div>
+
+                <div v-if="prerequisiteRoles(constraint).length > 0" class="flex items-start gap-2">
+                  <IconUser :size="14" class="text-[#86868B] mt-0.5 shrink-0" />
+                  <div class="flex flex-wrap gap-1.5">
+                    <a-tag
+                      v-for="assoc in prerequisiteRoles(constraint)"
+                      :key="assoc.id"
+                      :color="roleColor(assoc.role_id)"
+                      size="small"
+                      class="!m-0"
+                    >
+                      先决：{{ assoc.role_display_name || assoc.role_name }}
+                    </a-tag>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="constraint-footer">
+              <div class="flex items-center justify-between">
+                <span class="text-[12px] text-[#86868B]">
+                  创建于 {{ formatDateTime(constraint.created_at) }}
                 </span>
-              </div>
-              <div class="flex items-center gap-1 shrink-0">
-                <a-button
+                <a-switch
                   v-perm="'constraints:manage:write'"
-                  type="text"
-                  size="mini"
-                  @click="openEdit(constraint)"
-                >
-                  <template #icon><IconEdit :size="14" /></template>
-                </a-button>
-                <a-button
-                  v-perm="'constraints:manage:write'"
-                  type="text"
-                  size="mini"
-                  status="danger"
-                  @click="removeConstraint(constraint)"
-                >
-                  <template #icon><IconDelete :size="14" /></template>
-                </a-button>
+                  :model-value="constraint.is_active"
+                  size="small"
+                  @change="(v: boolean | string | number) => toggleActive(constraint, Boolean(v))"
+                />
+                <a-tag size="small" :color="constraint.is_active ? 'green' : 'gray'" class="!m-0">
+                  {{ constraint.is_active ? '启用' : '停用' }}
+                </a-tag>
               </div>
-            </div>
-
-            <p class="text-[13px] text-[#86868B] leading-relaxed mb-4 min-h-[20px]">
-              {{ constraint.description || '暂无描述' }}
-            </p>
-
-            <div class="space-y-3">
-              <div class="flex items-start gap-2">
-                <IconExclamationCircle :size="14" class="text-[#86868B] mt-0.5 shrink-0" />
-                <span class="text-[12px] text-[#86868B]">{{ formatConfig(constraint) }}</span>
-              </div>
-
-              <div class="flex items-start gap-2">
-                <IconLink :size="14" class="text-[#86868B] mt-0.5 shrink-0" />
-                <div class="flex flex-wrap gap-1.5">
-                  <a-tag
-                    v-for="assoc in subjectRoles(constraint)"
-                    :key="assoc.id"
-                    :color="roleColor(assoc.role_id)"
-                    size="small"
-                    class="!m-0"
-                  >
-                    {{ assoc.role_display_name || assoc.role_name }}
-                  </a-tag>
-                </div>
-              </div>
-
-              <div v-if="prerequisiteRoles(constraint).length > 0" class="flex items-start gap-2">
-                <IconUser :size="14" class="text-[#86868B] mt-0.5 shrink-0" />
-                <div class="flex flex-wrap gap-1.5">
-                  <a-tag
-                    v-for="assoc in prerequisiteRoles(constraint)"
-                    :key="assoc.id"
-                    :color="roleColor(assoc.role_id)"
-                    size="small"
-                    class="!m-0"
-                  >
-                    先决：{{ assoc.role_display_name || assoc.role_name }}
-                  </a-tag>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div class="constraint-footer">
-            <div class="flex items-center justify-between">
-              <span class="text-[12px] text-[#86868B]">
-                创建于 {{ formatDateTime(constraint.created_at) }}
-              </span>
-              <a-switch
-                v-perm="'constraints:manage:write'"
-                :model-value="constraint.is_active"
-                size="small"
-                @change="(v: boolean | string | number) => toggleActive(constraint, Boolean(v))"
-              />
-              <a-tag size="small" :color="constraint.is_active ? 'green' : 'gray'" class="!m-0">
-                {{ constraint.is_active ? '启用' : '停用' }}
-              </a-tag>
             </div>
           </div>
         </div>
-      </div>
 
-      <a-empty v-else description="暂无约束配置" class="mt-20" />
-    </a-spin>
+        <a-empty v-else description="暂无约束配置" class="mt-20" />
+      </a-spin>
+    </div>
 
     <a-modal
       v-model:visible="modalVisible"

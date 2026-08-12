@@ -1,161 +1,167 @@
 <template>
-  <div class="profile-page">
+  <div class="page-main">
     <PageHeader title="个人中心" subtitle="管理您的账户信息与安全设置" />
 
-    <a-spin :loading="loading" tip="加载中...">
-      <div v-if="user" class="profile-content">
-        <a-card :bordered="false" class="profile-info-card">
-          <template #title>
-            <span class="text-[16px] font-semibold">基本信息</span>
-          </template>
-          <template #extra>
-            <a-button v-if="!profileEditing" type="text" size="small" @click="startEditProfile">
-              <template #icon><IconEdit /></template>
-              编辑
-            </a-button>
-          </template>
+    <div class="px-4 md:px-6 lg:px-8 flex-1">
+      <div class="max-w-[680px] mx-auto">
+        <a-spin :loading="loading" tip="加载中...">
+          <div v-if="user" class="profile-content">
+            <a-card :bordered="false" class="profile-info-card">
+              <template #title>
+                <span class="text-[16px] font-semibold">基本信息</span>
+              </template>
+              <template #extra>
+                <a-button v-if="!profileEditing" type="text" size="small" @click="startEditProfile">
+                  <template #icon><IconEdit /></template>
+                  编辑
+                </a-button>
+              </template>
 
-          <template v-if="!profileEditing">
-            <div class="flex items-center gap-5 mb-6">
-              <a-avatar
-                v-if="user.avatar_url"
-                :size="64"
-                :image-url="user.avatar_url"
-                class="shrink-0"
-              />
-              <a-avatar
-                v-else
-                :size="64"
-                class="shrink-0"
-                :style="{ background: 'linear-gradient(135deg, #30d158 0%, #007aff 100%)' }"
-              >
-                {{ user.nickname.charAt(0).toUpperCase() }}
-              </a-avatar>
-              <div>
-                <p class="text-[18px] font-bold text-[#1d1d1f]">{{ user.nickname }}</p>
-                <p class="text-[13px] text-[#86868b] mt-0.5">
-                  {{ rLabel(user.role) }}
-                </p>
+              <template v-if="!profileEditing">
+                <div class="flex items-center gap-5 mb-6">
+                  <a-avatar
+                    v-if="user.avatar_url"
+                    :size="64"
+                    :image-url="user.avatar_url"
+                    class="shrink-0"
+                  />
+                  <a-avatar
+                    v-else
+                    :size="64"
+                    class="shrink-0"
+                    :style="{ background: 'linear-gradient(135deg, #30d158 0%, #007aff 100%)' }"
+                  >
+                    {{ user.nickname.charAt(0).toUpperCase() }}
+                  </a-avatar>
+                  <div>
+                    <p class="text-[18px] font-bold text-[#1d1d1f]">{{ user.nickname }}</p>
+                    <p class="text-[13px] text-[#86868b] mt-0.5">
+                      {{ rLabel(user.role) }}
+                    </p>
+                  </div>
+                </div>
+                <a-descriptions :column="1" bordered size="small">
+                  <a-descriptions-item label="用户名">{{ user.username }}</a-descriptions-item>
+                  <a-descriptions-item label="邮箱">{{
+                    user.email || '未绑定'
+                  }}</a-descriptions-item>
+                  <a-descriptions-item label="昵称">{{ user.nickname }}</a-descriptions-item>
+                  <a-descriptions-item label="角色">
+                    {{ rLabel(user.role) }}
+                  </a-descriptions-item>
+                  <a-descriptions-item label="注册时间">
+                    {{ formatDate(user.created_at) }}
+                  </a-descriptions-item>
+                </a-descriptions>
+              </template>
+
+              <template v-else>
+                <a-form :model="profileForm" layout="vertical">
+                  <a-form-item label="昵称">
+                    <a-input v-model="profileForm.nickname" placeholder="请输入昵称" />
+                  </a-form-item>
+                  <a-form-item label="头像链接">
+                    <a-input
+                      v-model="profileForm.avatar_url"
+                      placeholder="https://example.com/avatar.png"
+                    />
+                  </a-form-item>
+                </a-form>
+                <div class="flex justify-end gap-2 mt-2">
+                  <a-button @click="cancelEditProfile">取消</a-button>
+                  <a-button type="primary" :loading="profileSaving" @click="saveProfile">
+                    保存修改
+                  </a-button>
+                </div>
+              </template>
+            </a-card>
+
+            <a-card :bordered="false" title="安全设置" class="profile-security-card">
+              <div class="security-item">
+                <div class="flex items-center gap-3">
+                  <div class="security-item__icon">
+                    <IconLock :size="18" />
+                  </div>
+                  <div class="flex-1">
+                    <p class="text-[14px] font-medium text-[#1d1d1f]">登录密码</p>
+                    <p class="text-[12px] text-[#86868b] mt-0.5">定期更换密码可以保护账户安全</p>
+                  </div>
+                </div>
+                <a-button type="outline" size="small" @click="openPwdModal">修改密码</a-button>
               </div>
-            </div>
-            <a-descriptions :column="1" bordered size="small">
-              <a-descriptions-item label="用户名">{{ user.username }}</a-descriptions-item>
-              <a-descriptions-item label="邮箱">{{ user.email || '未绑定' }}</a-descriptions-item>
-              <a-descriptions-item label="昵称">{{ user.nickname }}</a-descriptions-item>
-              <a-descriptions-item label="角色">
-                {{ rLabel(user.role) }}
-              </a-descriptions-item>
-              <a-descriptions-item label="注册时间">
-                {{ formatDate(user.created_at) }}
-              </a-descriptions-item>
-            </a-descriptions>
-          </template>
+            </a-card>
 
-          <template v-else>
-            <a-form :model="profileForm" layout="vertical">
-              <a-form-item label="昵称">
-                <a-input v-model="profileForm.nickname" placeholder="请输入昵称" />
-              </a-form-item>
-              <a-form-item label="头像链接">
-                <a-input
-                  v-model="profileForm.avatar_url"
-                  placeholder="https://example.com/avatar.png"
-                />
-              </a-form-item>
-            </a-form>
-            <div class="flex justify-end gap-2 mt-2">
-              <a-button @click="cancelEditProfile">取消</a-button>
-              <a-button type="primary" :loading="profileSaving" @click="saveProfile">
-                保存修改
-              </a-button>
-            </div>
-          </template>
-        </a-card>
-
-        <a-card :bordered="false" title="安全设置" class="profile-security-card">
-          <div class="security-item">
-            <div class="flex items-center gap-3">
-              <div class="security-item__icon">
-                <IconLock :size="18" />
+            <a-card :bordered="false" title="账户操作" class="profile-danger-card">
+              <div class="security-item">
+                <div class="flex items-center gap-3">
+                  <div class="security-item__icon security-item__icon--danger">
+                    <IconExport :size="18" />
+                  </div>
+                  <div class="flex-1">
+                    <p class="text-[14px] font-medium text-[#1d1d1f]">退出登录</p>
+                    <p class="text-[12px] text-[#86868b] mt-0.5">退出当前账户，返回到登录页面</p>
+                  </div>
+                </div>
+                <a-button type="outline" status="danger" size="small" @click="handleLogout">
+                  退出登录
+                </a-button>
               </div>
-              <div class="flex-1">
-                <p class="text-[14px] font-medium text-[#1d1d1f]">登录密码</p>
-                <p class="text-[12px] text-[#86868b] mt-0.5">定期更换密码可以保护账户安全</p>
+            </a-card>
+
+            <a-card :bordered="false" class="profile-notify-card">
+              <template #title>
+                <span class="text-[16px] font-semibold">通知记录</span>
+              </template>
+              <template #extra>
+                <a-space :size="8">
+                  <a-button
+                    v-if="notifyStore.unreadCount > 0"
+                    type="text"
+                    size="mini"
+                    @click="handleMarkAllRead"
+                  >
+                    全部已读
+                  </a-button>
+                  <a-button type="text" size="mini" @click="router.push('/notifications')">
+                    查看全部
+                    <template #icon><IconRight :size="12" /></template>
+                  </a-button>
+                </a-space>
+              </template>
+
+              <div v-if="recentNotifications.length === 0" class="py-6">
+                <a-empty description="暂无通知" />
               </div>
-            </div>
-            <a-button type="outline" size="small" @click="openPwdModal">修改密码</a-button>
-          </div>
-        </a-card>
 
-        <a-card :bordered="false" title="账户操作" class="profile-danger-card">
-          <div class="security-item">
-            <div class="flex items-center gap-3">
-              <div class="security-item__icon security-item__icon--danger">
-                <IconExport :size="18" />
-              </div>
-              <div class="flex-1">
-                <p class="text-[14px] font-medium text-[#1d1d1f]">退出登录</p>
-                <p class="text-[12px] text-[#86868b] mt-0.5">退出当前账户，返回到登录页面</p>
-              </div>
-            </div>
-            <a-button type="outline" status="danger" size="small" @click="handleLogout">
-              退出登录
-            </a-button>
-          </div>
-        </a-card>
-
-        <a-card :bordered="false" class="profile-notify-card">
-          <template #title>
-            <span class="text-[16px] font-semibold">通知记录</span>
-          </template>
-          <template #extra>
-            <a-space :size="8">
-              <a-button
-                v-if="notifyStore.unreadCount > 0"
-                type="text"
-                size="mini"
-                @click="handleMarkAllRead"
-              >
-                全部已读
-              </a-button>
-              <a-button type="text" size="mini" @click="router.push('/notifications')">
-                查看全部
-                <template #icon><IconRight :size="12" /></template>
-              </a-button>
-            </a-space>
-          </template>
-
-          <div v-if="recentNotifications.length === 0" class="py-6">
-            <a-empty description="暂无通知" />
-          </div>
-
-          <div v-else class="space-y-2">
-            <div
-              v-for="item in recentNotifications"
-              :key="item.id"
-              class="notify-item"
-              :class="{ 'notify-item--unread': !item.is_read }"
-              @click="handleNotifyClick(item)"
-            >
-              <div class="flex items-start gap-3">
-                <div class="notify-dot" :class="{ 'notify-dot--unread': !item.is_read }" />
-                <div class="flex-1 min-w-0">
-                  <p class="text-[13px] font-medium text-[#1d1d1f] truncate">
-                    {{ item.title }}
-                  </p>
-                  <p class="text-[12px] text-[#86868b] mt-0.5 line-clamp-2">
-                    {{ item.content }}
-                  </p>
-                  <p class="text-[11px] text-[#aeaeb2] mt-1">
-                    {{ formatDate(item.created_at) }}
-                  </p>
+              <div v-else class="space-y-2">
+                <div
+                  v-for="item in recentNotifications"
+                  :key="item.id"
+                  class="notify-item"
+                  :class="{ 'notify-item--unread': !item.is_read }"
+                  @click="handleNotifyClick(item)"
+                >
+                  <div class="flex items-start gap-3">
+                    <div class="notify-dot" :class="{ 'notify-dot--unread': !item.is_read }" />
+                    <div class="flex-1 min-w-0">
+                      <p class="text-[13px] font-medium text-[#1d1d1f] truncate">
+                        {{ item.title }}
+                      </p>
+                      <p class="text-[12px] text-[#86868b] mt-0.5 line-clamp-2">
+                        {{ item.content }}
+                      </p>
+                      <p class="text-[11px] text-[#aeaeb2] mt-1">
+                        {{ formatDate(item.created_at) }}
+                      </p>
+                    </div>
+                  </div>
                 </div>
               </div>
-            </div>
+            </a-card>
           </div>
-        </a-card>
+        </a-spin>
       </div>
-    </a-spin>
+    </div>
 
     <a-modal
       v-model:visible="pwdVisible"

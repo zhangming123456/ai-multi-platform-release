@@ -51,3 +51,133 @@ export interface Template {
   usageCount: number
   createdAt: string
 }
+
+export interface Store {
+  id: string
+  name: string
+  code: string | null
+  address: string | null
+  contact: string | null
+  phone: string | null
+  status: 'active' | 'inactive'
+  created_at: string
+  updated_at: string
+}
+
+export interface InspectionItem {
+  id: string
+  name: string
+  category: string | null
+  max_score: number
+  sort_order: number
+  is_active: boolean
+}
+
+export interface ScoreOption {
+  score: number
+  label: string
+}
+
+export interface InspectionScore {
+  item_id: string
+  item_name: string
+  category: string | null
+  standard: string | null
+  standard_image: string | null
+  score_type: 'score' | 'pass_fail'
+  max_score: number
+  score_options: ScoreOption[] | null
+  score: number
+  require_remark: boolean
+  require_photo: boolean
+  show_remark: boolean
+  show_photo: boolean
+  comment: string
+  ai_generated: boolean
+  photos: string[]
+}
+
+export interface Inspection {
+  id: string
+  title: string
+  status: 'draft' | 'completed'
+  store_id: string
+  store_name: string
+  store_code: string
+  store_address: string
+  template_id: string | null
+  template_name: string | null
+  inspector_id: string
+  inspector_name: string
+  total_score: number
+  passed: boolean
+  issues: string
+  suggestion: string
+  ai_generated: boolean
+  photos: string[]
+  scores: InspectionScore[]
+  checked_at: string
+  created_at: string
+  updated_at: string
+}
+
+export interface Material {
+  id: string
+  name: string
+  url: string
+  type: string
+  category: string | null
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface InspectionTemplateItem {
+  id: string
+  category: string | null
+  title: string
+  standard: string | null
+  standard_image: string | null
+  score_type: 'score' | 'pass_fail'
+  max_score: number
+  score_options: ScoreOption[] | null
+  require_remark: boolean
+  require_photo: boolean
+  show_remark: boolean
+  show_photo: boolean
+  category_precondition_enabled: boolean
+  category_precondition: string | null
+}
+
+export interface InspectionMaterial {
+  id: string
+  category: string | null
+  title: string
+  standard: string | null
+  standard_image: string | null
+  score_type: 'score' | 'pass_fail'
+  max_score: number
+  score_options: ScoreOption[] | null
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface InspectionTemplate {
+  id: string
+  name: string
+  description: string | null
+  is_active: boolean
+  scoring_mode: 'additive' | 'deductive'
+  item_count: number
+  items?: InspectionTemplateItem[]
+  created_at: string
+  updated_at: string
+}
+
+export interface Paginated<T> {
+  items: T[]
+  total: number
+  page: number
+  page_size: number
+}

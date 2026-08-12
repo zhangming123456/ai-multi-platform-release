@@ -23,6 +23,7 @@ type ModelConfig struct {
 	Enabled        bool      `orm:"column(enabled);default(false)" json:"enabled"`
 	MonthlyQuota   int       `orm:"column(monthly_quota);default(1000000)" json:"monthly_quota"`
 	UsedTokens     int       `orm:"column(used_tokens);default(0)" json:"used_tokens"`
+	SortOrder      int       `orm:"column(sort_order);default(0)" json:"sort_order"`
 	CreatedAt      time.Time `orm:"column(created_at);auto_now_add;type(datetime)" json:"created_at"`
 	UpdatedAt      time.Time `orm:"column(updated_at);auto_now;type(datetime)" json:"updated_at"`
 }

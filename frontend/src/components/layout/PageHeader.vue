@@ -4,7 +4,7 @@
     :align="'end'"
     :size="16"
     fill
-    class="page-header w-full animate-fade-up mb-7"
+    class="page-header w-full animate-fade-up mb-7 px-4 md:px-6 lg:px-8 pt-4 md:pt-6 lg:pt-8"
   >
     <a-space direction="vertical" :size="4" class="flex-1 page-header__left">
       <h1

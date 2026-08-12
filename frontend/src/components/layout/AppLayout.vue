@@ -17,7 +17,7 @@
 
     <div
       v-if="isMobileSidebarOpen"
-      class="fixed inset-0 bg-black/20 backdrop-blur-sm z-30 md:hidden animate-fade-in"
+      class="fixed inset-0 bg-black/20 backdrop-blur-sm z-[45] md:hidden animate-fade-in"
       @click="closeMobileSidebar"
     ></div>
 
@@ -45,10 +45,12 @@
         :style="{
           marginLeft: isMobile ? '0px' : `${isMobileSidebarOpen ? 0 : siderWidth}px`,
           maxWidth: `calc(100vw - ${isMobile ? 0 : siderWidth}px)`,
+          ['--f-main-width']: `calc(100vw - ${isMobile ? 0 : siderWidth}px)`,
+          ['--f-aside-width']: `${isMobile ? 0 : siderWidth}px`,
         }"
       >
         <AppHeader :collapsed="isSidebarCollapsed" @toggle-sidebar="toggleSidebar" />
-        <main class="flex-1 overflow-y-auto px-4 md:px-6 lg:px-8 py-4 md:py-6 lg:py-7 w-full">
+        <main class="flex-1 overflow-y-auto w-full">
           <router-view />
         </main>
       </div>

@@ -1,5 +1,5 @@
 <template>
-  <div>
+  <div class="page-main">
     <PageHeader title="模板管理" subtitle="使用模板快速创建优质内容">
       <template #actions>
         <a-button type="primary">
@@ -9,67 +9,69 @@
       </template>
     </PageHeader>
 
-    <div class="mb-5">
-      <SegmentedControl v-model="activeTab" :options="tabs" />
-    </div>
+    <div class="px-4 md:px-6 lg:px-8 flex-1">
+      <div class="mb-5">
+        <SegmentedControl v-model="activeTab" :options="tabs" />
+      </div>
 
-    <a-spin :loading="loading" style="width: 100%; display: block">
-      <a-empty v-if="!loading && filteredTemplates.length === 0" description="暂无模板" />
-      <a-row v-else :gutter="[16, 20]">
-        <a-col
-          v-for="(tpl, index) in filteredTemplates"
-          :key="tpl.id"
-          :xs="24"
-          :sm="24"
-          :md="12"
-          :lg="8"
-          :xl="6"
-        >
-          <a-card
-            hoverable
-            :bordered="false"
-            style="padding: 16px"
-            :style="{ animationDelay: `${index * 50}ms`, padding: '16px' }"
+      <a-spin :loading="loading" style="width: 100%; display: block">
+        <a-empty v-if="!loading && filteredTemplates.length === 0" description="暂无模板" />
+        <a-row v-else :gutter="[16, 20]">
+          <a-col
+            v-for="(tpl, index) in filteredTemplates"
+            :key="tpl.id"
+            :xs="24"
+            :sm="24"
+            :md="12"
+            :lg="8"
+            :xl="6"
           >
-            <template #cover>
-              <div
-                class="h-32 flex items-center justify-center rounded-[12px] mb-3"
-                :style="{ background: getGradient(tpl.platform) }"
-              >
-                <span class="text-white/80 text-4xl font-bold opacity-30">{{
-                  tpl.name.charAt(0)
-                }}</span>
-              </div>
-            </template>
-            <a-space :size="8" align="center" class="mb-2">
-              <PlatformIcon :platform="tpl.platform as 'wechat_mp'" size="sm" />
-              <span class="text-[11px] text-secondary">{{ platformNames[tpl.platform] }}</span>
-              <a-tag size="small" color="gray">通用</a-tag>
-            </a-space>
-            <a-typography-text bold class="text-[13px] mb-1 block">{{
-              tpl.name
-            }}</a-typography-text>
-            <a-typography-text
-              type="secondary"
-              class="text-[12px] mb-3 block"
-              :ellipsis="{ rows: 2 }"
-              >{{ getDescription(tpl) }}</a-typography-text
+            <a-card
+              hoverable
+              :bordered="false"
+              style="padding: 16px"
+              :style="{ animationDelay: `${index * 50}ms`, padding: '16px' }"
             >
-            <template #actions>
-              <span class="text-[11px] text-tertiary tabular">{{
-                platformNames[tpl.platform]
-              }}</span>
-              <a-button type="text" size="mini" title="预览">
-                <template #icon><IconEye /></template>
-              </a-button>
-              <a-button type="text" size="mini" title="复制">
-                <template #icon><IconCopy /></template>
-              </a-button>
-            </template>
-          </a-card>
-        </a-col>
-      </a-row>
-    </a-spin>
+              <template #cover>
+                <div
+                  class="h-32 flex items-center justify-center rounded-[12px] mb-3"
+                  :style="{ background: getGradient(tpl.platform) }"
+                >
+                  <span class="text-white/80 text-4xl font-bold opacity-30">{{
+                    tpl.name.charAt(0)
+                  }}</span>
+                </div>
+              </template>
+              <a-space :size="8" align="center" class="mb-2">
+                <PlatformIcon :platform="tpl.platform as 'wechat_mp'" size="sm" />
+                <span class="text-[11px] text-secondary">{{ platformNames[tpl.platform] }}</span>
+                <a-tag size="small" color="gray">通用</a-tag>
+              </a-space>
+              <a-typography-text bold class="text-[13px] mb-1 block">{{
+                tpl.name
+              }}</a-typography-text>
+              <a-typography-text
+                type="secondary"
+                class="text-[12px] mb-3 block"
+                :ellipsis="{ rows: 2 }"
+                >{{ getDescription(tpl) }}</a-typography-text
+              >
+              <template #actions>
+                <span class="text-[11px] text-tertiary tabular">{{
+                  platformNames[tpl.platform]
+                }}</span>
+                <a-button type="text" size="mini" title="预览">
+                  <template #icon><IconEye /></template>
+                </a-button>
+                <a-button type="text" size="mini" title="复制">
+                  <template #icon><IconCopy /></template>
+                </a-button>
+              </template>
+            </a-card>
+          </a-col>
+        </a-row>
+      </a-spin>
+    </div>
   </div>
 </template>
 

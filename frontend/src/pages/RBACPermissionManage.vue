@@ -28,142 +28,144 @@
       </template>
     </PageHeader>
 
-    <a-spin :loading="loading" tip="加载中..." class="w-full">
-      <div class="flex flex-col lg:flex-row gap-5">
-        <div class="lg:w-[200px] shrink-0">
-          <div class="bg-white/80 backdrop-blur-xl rounded-2xl border border-black/[0.05] p-4">
-            <p class="text-[12px] text-[#86868B] font-medium px-1 pb-3">选择角色</p>
-            <div class="flex flex-col gap-2">
-              <button
-                v-for="role in sortedRoles"
-                :key="role.id"
-                type="button"
-                class="flex items-center justify-between w-full px-3 py-2.5 rounded-xl border text-left transition-all"
-                :class="[
-                  selectedRoleId === role.id
-                    ? 'bg-[#007AFF]/10 border-[#007AFF]/30'
-                    : 'bg-transparent border-black/[0.04] hover:bg-black/[0.02]',
-                ]"
-                @click="onRoleChange(role.id)"
-              >
-                <div class="flex items-center gap-2 min-w-0">
-                  <a-tag :color="roleColor(role)" size="small" class="!m-0 shrink-0">
-                    {{ role.display_name }}
-                  </a-tag>
-                </div>
-                <IconLock
-                  v-if="role.is_super_admin"
-                  :size="12"
-                  class="text-[#ff9500] shrink-0 ml-2"
-                />
-              </button>
-            </div>
-
-            <div
-              v-if="selectedRole?.is_super_admin"
-              class="mt-4 p-3 rounded-xl bg-[#ff9500]/[0.06] border border-[#ff9500]/[0.15] flex items-start gap-2.5"
-            >
-              <IconSafe :size="16" class="text-[#ff9500] mt-0.5 shrink-0" />
-              <p class="text-[12px] text-[#1D1D1F] m-0 leading-relaxed">
-                超级管理员拥有所有权限，不可修改。
-              </p>
-            </div>
-
-            <div
-              v-else-if="selectedRole"
-              class="mt-4 p-3 rounded-xl bg-black/[0.02] border border-black/[0.04]"
-            >
-              <p class="text-[12px] text-[#86868B] m-0 leading-relaxed">
-                {{ selectedRole.description || '暂无描述' }}
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <div class="flex-1 min-w-0">
-          <div v-if="!selectedRole" class="empty-state">
-            <a-empty description="请选择角色" />
-          </div>
-
-          <div v-else class="space-y-4">
-            <div
-              v-for="module in modules"
-              :key="module.key"
-              class="bg-white/80 backdrop-blur-xl rounded-2xl border border-black/[0.05] p-5"
-            >
-              <div class="flex items-center justify-between mb-4">
-                <div class="flex items-center gap-2">
-                  <h3 class="text-[15px] font-semibold text-[#1D1D1F] m-0">{{ module.label }}</h3>
-                  <span class="text-[12px] text-[#86868B] font-medium">{{
-                    module.items.length
-                  }}</span>
-                </div>
-                <div class="flex items-center gap-3">
-                  <a-checkbox
-                    v-if="module.items.some((i) => i.readKey)"
-                    :model-value="moduleReadChecked(module)"
-                    :indeterminate="moduleReadIndeterminate(module)"
-                    :disabled="selectedRole.is_super_admin"
-                    @change="toggleModuleAllRead(module, $event)"
-                  >
-                    读
-                  </a-checkbox>
-                  <a-checkbox
-                    v-if="module.items.some((i) => i.writeKeys.length > 0)"
-                    :model-value="moduleWriteChecked(module)"
-                    :indeterminate="moduleWriteIndeterminate(module)"
-                    :disabled="selectedRole.is_super_admin"
-                    @change="toggleModuleAllWrite(module, $event)"
-                  >
-                    写
-                  </a-checkbox>
-                </div>
+    <div class="px-4 md:px-6 lg:px-8 flex-1">
+      <a-spin :loading="loading" tip="加载中..." class="w-full">
+        <div class="flex flex-col lg:flex-row gap-5">
+          <div class="lg:w-[200px] shrink-0">
+            <div class="bg-white/80 backdrop-blur-xl rounded-2xl border border-black/[0.05] p-4">
+              <p class="text-[12px] text-[#86868B] font-medium px-1 pb-3">选择角色</p>
+              <div class="flex flex-col gap-2">
+                <button
+                  v-for="role in sortedRoles"
+                  :key="role.id"
+                  type="button"
+                  class="flex items-center justify-between w-full px-3 py-2.5 rounded-xl border text-left transition-all"
+                  :class="[
+                    selectedRoleId === role.id
+                      ? 'bg-[#007AFF]/10 border-[#007AFF]/30'
+                      : 'bg-transparent border-black/[0.04] hover:bg-black/[0.02]',
+                  ]"
+                  @click="onRoleChange(role.id)"
+                >
+                  <div class="flex items-center gap-2 min-w-0">
+                    <a-tag :color="roleColor(role)" size="small" class="!m-0 shrink-0">
+                      {{ role.display_name }}
+                    </a-tag>
+                  </div>
+                  <IconLock
+                    v-if="role.is_super_admin"
+                    :size="12"
+                    class="text-[#ff9500] shrink-0 ml-2"
+                  />
+                </button>
               </div>
 
-              <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div
-                  v-for="item in module.items"
-                  :key="item.permId"
-                  class="flex items-center justify-between px-4 py-3 rounded-xl border border-black/[0.04] bg-black/[0.01] hover:bg-black/[0.02] transition-colors"
-                >
-                  <div class="min-w-0 mr-3 flex items-center gap-2">
-                    <div class="min-w-0">
-                      <div class="flex items-center gap-2">
-                        <p class="text-[13px] font-medium text-[#1D1D1F] m-0 truncate">
-                          {{ item.title }}
-                        </p>
-                      </div>
-                      <p class="text-[11px] text-[#86868B] m-0 truncate">{{ item.subtitle }}</p>
-                    </div>
+              <div
+                v-if="selectedRole?.is_super_admin"
+                class="mt-4 p-3 rounded-xl bg-[#ff9500]/[0.06] border border-[#ff9500]/[0.15] flex items-start gap-2.5"
+              >
+                <IconSafe :size="16" class="text-[#ff9500] mt-0.5 shrink-0" />
+                <p class="text-[12px] text-[#1D1D1F] m-0 leading-relaxed">
+                  超级管理员拥有所有权限，不可修改。
+                </p>
+              </div>
+
+              <div
+                v-else-if="selectedRole"
+                class="mt-4 p-3 rounded-xl bg-black/[0.02] border border-black/[0.04]"
+              >
+                <p class="text-[12px] text-[#86868B] m-0 leading-relaxed">
+                  {{ selectedRole.description || '暂无描述' }}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div class="flex-1 min-w-0">
+            <div v-if="!selectedRole" class="empty-state">
+              <a-empty description="请选择角色" />
+            </div>
+
+            <div v-else class="space-y-4">
+              <div
+                v-for="module in modules"
+                :key="module.key"
+                class="bg-white/80 backdrop-blur-xl rounded-2xl border border-black/[0.05] p-5"
+              >
+                <div class="flex items-center justify-between mb-4">
+                  <div class="flex items-center gap-2">
+                    <h3 class="text-[15px] font-semibold text-[#1D1D1F] m-0">{{ module.label }}</h3>
+                    <span class="text-[12px] text-[#86868B] font-medium">{{
+                      module.items.length
+                    }}</span>
                   </div>
-                  <div class="flex flex-col items-end gap-1 shrink-0">
+                  <div class="flex items-center gap-3">
                     <a-checkbox
-                      v-if="item.readKey"
-                      :model-value="effectiveKeys.has(item.readKey)"
-                      :disabled="selectedRole.is_super_admin || inheritedKeys.has(item.readKey)"
-                      @change="toggleReadKey(item.readKey!)"
+                      v-if="module.items.some((i) => i.readKey)"
+                      :model-value="moduleReadChecked(module)"
+                      :indeterminate="moduleReadIndeterminate(module)"
+                      :disabled="selectedRole.is_super_admin"
+                      @change="toggleModuleAllRead(module, $event)"
                     >
                       读
                     </a-checkbox>
                     <a-checkbox
-                      v-if="item.writeKeys.length > 0"
-                      :model-value="item.writeKeys.some((k) => effectiveKeys.has(k))"
-                      :disabled="
-                        selectedRole.is_super_admin ||
-                        item.writeKeys.some((k) => inheritedKeys.has(k))
-                      "
-                      @change="toggleWriteKey(item.writeKeys[0])"
+                      v-if="module.items.some((i) => i.writeKeys.length > 0)"
+                      :model-value="moduleWriteChecked(module)"
+                      :indeterminate="moduleWriteIndeterminate(module)"
+                      :disabled="selectedRole.is_super_admin"
+                      @change="toggleModuleAllWrite(module, $event)"
                     >
                       写
                     </a-checkbox>
                   </div>
                 </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div
+                    v-for="item in module.items"
+                    :key="item.permId"
+                    class="flex items-center justify-between px-4 py-3 rounded-xl border border-black/[0.04] bg-black/[0.01] hover:bg-black/[0.02] transition-colors"
+                  >
+                    <div class="min-w-0 mr-3 flex items-center gap-2">
+                      <div class="min-w-0">
+                        <div class="flex items-center gap-2">
+                          <p class="text-[13px] font-medium text-[#1D1D1F] m-0 truncate">
+                            {{ item.title }}
+                          </p>
+                        </div>
+                        <p class="text-[11px] text-[#86868B] m-0 truncate">{{ item.subtitle }}</p>
+                      </div>
+                    </div>
+                    <div class="flex flex-col items-end gap-1 shrink-0">
+                      <a-checkbox
+                        v-if="item.readKey"
+                        :model-value="effectiveKeys.has(item.readKey)"
+                        :disabled="selectedRole.is_super_admin || inheritedKeys.has(item.readKey)"
+                        @change="toggleReadKey(item.readKey!)"
+                      >
+                        读
+                      </a-checkbox>
+                      <a-checkbox
+                        v-if="item.writeKeys.length > 0"
+                        :model-value="item.writeKeys.some((k) => effectiveKeys.has(k))"
+                        :disabled="
+                          selectedRole.is_super_admin ||
+                          item.writeKeys.some((k) => inheritedKeys.has(k))
+                        "
+                        @change="toggleWriteKey(item.writeKeys[0])"
+                      >
+                        写
+                      </a-checkbox>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
         </div>
-      </div>
-    </a-spin>
+      </a-spin>
+    </div>
   </div>
 </template>
 

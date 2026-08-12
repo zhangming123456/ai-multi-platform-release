@@ -15,6 +15,44 @@ type ModelsController struct {
 	BaseController
 }
 
+// 1x1 像素黑色 PNG 的 base64 编码，用于检测模型是否支持 image_url
+const testImageBase64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+
+func testVisionSupport(baseURL, apiKey, model string) bool {
+	payload := map[string]interface{}{
+		"model": model,
+		"messages": []map[string]interface{}{
+			{
+				"role": "user",
+				"content": []map[string]interface{}{
+					{"type": "text", "text": "describe this image briefly"},
+					{"type": "image_url", "image_url": map[string]string{"url": "data:image/png;base64," + testImageBase64}},
+				},
+			},
+		},
+		"max_tokens": 16,
+		"stream":     false,
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return false
+	}
+	url := strings.TrimRight(baseURL, "/") + "/chat/completions"
+	httpReq, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(body))
+	if err != nil {
+		return false
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Authorization", "Bearer "+apiKey)
+	client := &http.Client{Timeout: 15 * time.Second}
+	resp, err := client.Do(httpReq)
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+	return resp.StatusCode >= 200 && resp.StatusCode < 300
+}
+
 type fetchModelsRequest struct {
 	BaseURL  string `json:"base_url"`
 	APIKey   string `json:"api_key"`
@@ -196,9 +234,12 @@ func (c *ModelsController) Test() {
 		return
 	}
 
+	supportsVision := testVisionSupport(req.BaseURL, req.APIKey, req.Model)
+
 	c.OK(map[string]interface{}{
-		"ok":         true,
-		"model":      req.Model,
-		"latency_ms": latency,
+		"ok":              true,
+		"model":           req.Model,
+		"latency_ms":      latency,
+		"supports_vision": supportsVision,
 	})
 }

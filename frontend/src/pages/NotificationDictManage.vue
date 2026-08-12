@@ -12,73 +12,75 @@
       </template>
     </PageHeader>
 
-    <a-spin :loading="loading" tip="加载中..." class="w-full">
-      <div class="space-y-5">
-        <div
-          v-for="group in groups"
-          :key="group.group_key"
-          class="bg-white/80 backdrop-blur-xl rounded-2xl border border-black/[0.05] p-5"
-        >
-          <div class="flex items-center justify-between mb-4">
-            <div class="flex items-center gap-2">
-              <h3 class="text-[15px] font-semibold text-[#1D1D1F] m-0">
-                {{ groupDisplayName(group.group_key) }}
-              </h3>
-              <a-tag size="small" color="gray" class="!m-0">{{ group.group_key }}</a-tag>
-              <span class="text-[12px] text-[#86868B] font-medium">{{ group.items.length }}</span>
+    <div class="px-4 md:px-6 lg:px-8 flex-1">
+      <a-spin :loading="loading" tip="加载中..." class="w-full">
+        <div class="space-y-5">
+          <div
+            v-for="group in groups"
+            :key="group.group_key"
+            class="bg-white/80 backdrop-blur-xl rounded-2xl border border-black/[0.05] p-5"
+          >
+            <div class="flex items-center justify-between mb-4">
+              <div class="flex items-center gap-2">
+                <h3 class="text-[15px] font-semibold text-[#1D1D1F] m-0">
+                  {{ groupDisplayName(group.group_key) }}
+                </h3>
+                <a-tag size="small" color="gray" class="!m-0">{{ group.group_key }}</a-tag>
+                <span class="text-[12px] text-[#86868B] font-medium">{{ group.items.length }}</span>
+              </div>
             </div>
-          </div>
 
-          <div v-if="group.items.length === 0" class="py-6">
-            <a-empty description="暂无字典条目" />
-          </div>
+            <div v-if="group.items.length === 0" class="py-6">
+              <a-empty description="暂无字典条目" />
+            </div>
 
-          <div v-else class="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div
-              v-for="item in group.items"
-              :key="item.id"
-              class="flex items-center justify-between px-4 py-3 rounded-xl border border-black/[0.04] bg-black/[0.01] hover:bg-black/[0.02] transition-colors"
-              :class="{ 'opacity-50': !item.is_active }"
-            >
-              <div class="min-w-0 mr-3 flex-1">
-                <div class="flex items-center gap-2 flex-wrap">
-                  <p class="text-[13px] font-medium text-[#1D1D1F] m-0 truncate">
-                    {{ item.dict_value }}
+            <div v-else class="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div
+                v-for="item in group.items"
+                :key="item.id"
+                class="flex items-center justify-between px-4 py-3 rounded-xl border border-black/[0.04] bg-black/[0.01] hover:bg-black/[0.02] transition-colors"
+                :class="{ 'opacity-50': !item.is_active }"
+              >
+                <div class="min-w-0 mr-3 flex-1">
+                  <div class="flex items-center gap-2 flex-wrap">
+                    <p class="text-[13px] font-medium text-[#1D1D1F] m-0 truncate">
+                      {{ item.dict_value }}
+                    </p>
+                    <a-tag
+                      v-if="item.is_private"
+                      size="small"
+                      color="orangered"
+                      class="!m-0 shrink-0"
+                    >
+                      隐私
+                    </a-tag>
+                  </div>
+                  <p class="text-[11px] text-[#86868B] m-0 mt-0.5 font-mono">
+                    {{ item.dict_key }}
                   </p>
-                  <a-tag
-                    v-if="item.is_private"
-                    size="small"
-                    color="orangered"
-                    class="!m-0 shrink-0"
-                  >
-                    隐私
-                  </a-tag>
                 </div>
-                <p class="text-[11px] text-[#86868B] m-0 mt-0.5 font-mono">
-                  {{ item.dict_key }}
-                </p>
-              </div>
-              <div class="flex items-center gap-1 shrink-0">
-                <a-tooltip content="编辑">
-                  <a-button size="mini" type="text" @click="openEdit(item)">
-                    <template #icon><IconEdit :size="13" /></template>
-                  </a-button>
-                </a-tooltip>
-                <a-tooltip content="删除">
-                  <a-button size="mini" type="text" status="danger" @click="handleDelete(item)">
-                    <template #icon><IconDelete :size="13" /></template>
-                  </a-button>
-                </a-tooltip>
+                <div class="flex items-center gap-1 shrink-0">
+                  <a-tooltip content="编辑">
+                    <a-button size="mini" type="text" @click="openEdit(item)">
+                      <template #icon><IconEdit :size="13" /></template>
+                    </a-button>
+                  </a-tooltip>
+                  <a-tooltip content="删除">
+                    <a-button size="mini" type="text" status="danger" @click="handleDelete(item)">
+                      <template #icon><IconDelete :size="13" /></template>
+                    </a-button>
+                  </a-tooltip>
+                </div>
               </div>
             </div>
           </div>
-        </div>
 
-        <div v-if="groups.length === 0 && !loading" class="py-12">
-          <a-empty description="暂无字典数据" />
+          <div v-if="groups.length === 0 && !loading" class="py-12">
+            <a-empty description="暂无字典数据" />
+          </div>
         </div>
-      </div>
-    </a-spin>
+      </a-spin>
+    </div>
 
     <a-modal
       v-model:visible="modalVisible"

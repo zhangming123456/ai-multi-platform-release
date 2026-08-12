@@ -82,6 +82,9 @@ func isPublicPath(path string) bool {
 	if path == "/" || path == "/healthz" {
 		return true
 	}
+	if strings.HasPrefix(path, "/uploads/") {
+		return true
+	}
 	if path == "/api/auth/login" || path == "/api/auth/register" {
 		return true
 	}

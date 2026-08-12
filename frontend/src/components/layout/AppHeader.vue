@@ -11,7 +11,7 @@
       </a-button>
 
       <!-- 面包屑 -->
-      <a-breadcrumb class="hidden sm:block">
+      <a-breadcrumb class="hidden md:block">
         <a-breadcrumb-item
           v-for="(item, index) in breadcrumbs"
           :key="item.path"

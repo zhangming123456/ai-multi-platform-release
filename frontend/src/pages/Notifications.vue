@@ -20,85 +20,87 @@
       </template>
     </PageHeader>
 
-    <!-- 类型分组 Tab -->
-    <div class="type-tabs-wrapper mb-4">
-      <div class="type-tabs">
-        <button class="type-tab" :class="{ active: activeType === '' }" @click="switchType('')">
-          <span class="tab-label">全部</span>
-          <span class="tab-count">{{ notificationStore.totalCount }}</span>
-        </button>
-        <button
-          v-for="tab in typeTabs"
-          :key="tab.key"
-          class="type-tab"
-          :class="{ active: activeType === tab.key }"
-          @click="switchType(tab.key)"
-        >
-          <span class="tab-label">{{ tab.label }}</span>
-          <span class="tab-count">{{ tab.count }}</span>
-        </button>
-      </div>
-    </div>
-
-    <!-- 已读/未读 切换 -->
-    <div class="view-mode-toggle mb-5">
-      <button class="toggle-btn" :class="{ active: filter === 'all' }" @click="filter = 'all'">
-        全部 ({{ filteredNotifications.length }})
-      </button>
-      <button
-        class="toggle-btn"
-        :class="{ active: filter === 'unread' }"
-        @click="filter = 'unread'"
-      >
-        未读 ({{ notificationStore.unreadCount }})
-      </button>
-    </div>
-
-    <a-spin :loading="loading" tip="加载中..." class="w-full">
-      <div v-if="filteredNotifications.length > 0" class="notification-list">
-        <div
-          v-for="notification in filteredNotifications"
-          :key="notification.id"
-          :class="['notification-item', { unread: !notification.is_read }]"
-          @click="
-            handleNotificationClick(notification.id, notification.related_id, notification.type)
-          "
-        >
-          <div class="notification-icon">{{ getNotificationIcon(notification.type) }}</div>
-          <div class="notification-content">
-            <div class="notification-header">
-              <div class="flex items-center gap-2">
-                <span class="notification-title-text">{{
-                  getNotificationTitle(notification.type)
-                }}</span>
-                <a-tag
-                  size="small"
-                  :color="getTypeColor(notification.type)"
-                  class="!m-0 !leading-none"
-                >
-                  {{ getNotificationTitle(notification.type) }}
-                </a-tag>
-              </div>
-              <span class="notification-time">{{
-                formatRelativeTime(notification.created_at)
-              }}</span>
-            </div>
-            <div class="notification-message">{{ notification.content }}</div>
-            <div class="notification-time-detail">
-              {{ formatDateTimeSec(notification.created_at) }}
-            </div>
-          </div>
-          <div v-if="!notification.is_read" class="unread-dot"></div>
+    <div class="px-4 md:px-6 lg:px-8 flex-1">
+      <!-- 类型分组 Tab -->
+      <div class="type-tabs-wrapper mb-4">
+        <div class="type-tabs">
+          <button class="type-tab" :class="{ active: activeType === '' }" @click="switchType('')">
+            <span class="tab-label">全部</span>
+            <span class="tab-count">{{ notificationStore.totalCount }}</span>
+          </button>
+          <button
+            v-for="tab in typeTabs"
+            :key="tab.key"
+            class="type-tab"
+            :class="{ active: activeType === tab.key }"
+            @click="switchType(tab.key)"
+          >
+            <span class="tab-label">{{ tab.label }}</span>
+            <span class="tab-count">{{ tab.count }}</span>
+          </button>
         </div>
       </div>
 
-      <div v-else class="empty-state">
-        <IconNotification :size="48" class="text-[#c9c9cc] mb-4" />
-        <p class="text-[14px] text-[#86868B]">
-          {{ filter === 'unread' ? '没有未读通知' : '暂无此类型通知' }}
-        </p>
+      <!-- 已读/未读 切换 -->
+      <div class="view-mode-toggle mb-5">
+        <button class="toggle-btn" :class="{ active: filter === 'all' }" @click="filter = 'all'">
+          全部 ({{ filteredNotifications.length }})
+        </button>
+        <button
+          class="toggle-btn"
+          :class="{ active: filter === 'unread' }"
+          @click="filter = 'unread'"
+        >
+          未读 ({{ notificationStore.unreadCount }})
+        </button>
       </div>
-    </a-spin>
+
+      <a-spin :loading="loading" tip="加载中..." class="w-full">
+        <div v-if="filteredNotifications.length > 0" class="notification-list">
+          <div
+            v-for="notification in filteredNotifications"
+            :key="notification.id"
+            :class="['notification-item', { unread: !notification.is_read }]"
+            @click="
+              handleNotificationClick(notification.id, notification.related_id, notification.type)
+            "
+          >
+            <div class="notification-icon">{{ getNotificationIcon(notification.type) }}</div>
+            <div class="notification-content">
+              <div class="notification-header">
+                <div class="flex items-center gap-2">
+                  <span class="notification-title-text">{{
+                    getNotificationTitle(notification.type)
+                  }}</span>
+                  <a-tag
+                    size="small"
+                    :color="getTypeColor(notification.type)"
+                    class="!m-0 !leading-none"
+                  >
+                    {{ getNotificationTitle(notification.type) }}
+                  </a-tag>
+                </div>
+                <span class="notification-time">{{
+                  formatRelativeTime(notification.created_at)
+                }}</span>
+              </div>
+              <div class="notification-message">{{ notification.content }}</div>
+              <div class="notification-time-detail">
+                {{ formatDateTimeSec(notification.created_at) }}
+              </div>
+            </div>
+            <div v-if="!notification.is_read" class="unread-dot"></div>
+          </div>
+        </div>
+
+        <div v-else class="empty-state">
+          <IconNotification :size="48" class="text-[#c9c9cc] mb-4" />
+          <p class="text-[14px] text-[#86868B]">
+            {{ filter === 'unread' ? '没有未读通知' : '暂无此类型通知' }}
+          </p>
+        </div>
+      </a-spin>
+    </div>
   </div>
 </template>
 

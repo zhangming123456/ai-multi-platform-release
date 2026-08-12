@@ -8,6 +8,8 @@ import (
 
 	"ai-multi-platform-release/backend-go/models"
 	"ai-multi-platform-release/backend-go/services"
+
+	"github.com/beego/beego/v2/client/orm"
 )
 
 func maskAPIKey(key string) string {
@@ -80,7 +82,7 @@ func (c *ModelConfigsController) List() {
 	}
 	var configs []models.ModelConfig
 	_, err := services.GetOrm().QueryTable(new(models.ModelConfig)).
-		OrderBy("created_at").
+		OrderBy("sort_order", "created_at").
 		All(&configs)
 	if err != nil {
 		c.WriteError(http.StatusInternalServerError, "查询模型配置失败")
@@ -147,6 +149,10 @@ func (c *ModelConfigsController) Create() {
 	}
 	if config.MonthlyQuota == 0 {
 		config.MonthlyQuota = 1000000
+	}
+	var allConfigs []models.ModelConfig
+	if _, err := services.GetOrm().QueryTable(new(models.ModelConfig)).All(&allConfigs); err == nil {
+		config.SortOrder = len(allConfigs)
 	}
 	if _, err := services.GetOrm().Insert(config); err != nil {
 		c.WriteError(http.StatusInternalServerError, "创建模型配置失败")
@@ -255,4 +261,32 @@ func (c *ModelConfigsController) Delete() {
 		return
 	}
 	c.WriteNoContent()
+}
+
+type modelConfigReorderRequest struct {
+	IDs []string `json:"ids"`
+}
+
+// Reorder PUT /api/model-configs/reorder
+func (c *ModelConfigsController) Reorder() {
+	if !c.CheckPermission("model_config:update:write") {
+		return
+	}
+	var req modelConfigReorderRequest
+	if err := c.ParseBody(&req); err != nil {
+		c.WriteError(http.StatusBadRequest, "请求体格式错误")
+		return
+	}
+	if len(req.IDs) == 0 {
+		c.WriteError(http.StatusBadRequest, "排序列表不能为空")
+		return
+	}
+	o := services.GetOrm()
+	for i, id := range req.IDs {
+		if _, err := o.QueryTable(new(models.ModelConfig)).Filter("id", id).Update(orm.Params{"sort_order": i}); err != nil {
+			c.WriteError(http.StatusInternalServerError, "更新排序失败")
+			return
+		}
+	}
+	c.OK(map[string]interface{}{"message": "排序已更新"})
 }

@@ -1,5 +1,5 @@
 <template>
-  <div class="db-page">
+  <div class="page-main">
     <PageHeader title="数据库控制台" subtitle="执行 SQL 命令管理数据库（仅超级管理员可用）">
       <template #actions>
         <a-tag color="red" size="small">
@@ -9,240 +9,245 @@
       </template>
     </PageHeader>
 
-    <div class="db-layout">
-      <div class="db-sidebar">
-        <a-card :bordered="false" title="数据表" size="small" class="db-schema-card">
-          <a-spin :loading="tableNames.length === 0" class="db-schema-body">
-            <div v-if="tableNames.length === 0" class="text-center py-5 text-[13px] text-[#AEAEB2]">
-              暂无数据表
-            </div>
-            <div
-              v-for="tableName in tableNames"
-              :key="tableName"
-              class="db-schema-table"
-              :class="{ 'is-active': activeTableName === tableName }"
-            >
-              <div class="db-schema-table-row" @click="toggleTableSchema(tableName)">
-                <span
-                  class="db-schema-chevron"
-                  :class="{ 'is-open': activeTableName === tableName }"
-                  >▸</span
-                >
-                <span class="db-schema-dot" />
-                <span class="db-schema-table-name">{{ tableName }}</span>
-                <span v-if="loadingSchema.has(tableName)" class="db-schema-spinner" />
-                <a-button
-                  type="text"
-                  size="mini"
-                  class="db-schema-query-btn"
-                  @click.stop="selectTableSql(tableName)"
-                >
-                  查询
-                </a-button>
-              </div>
-
+    <div class="px-4 md:px-6 lg:px-8 flex-1">
+      <div class="db-layout">
+        <div class="db-sidebar">
+          <a-card :bordered="false" title="数据表" size="small" class="db-schema-card">
+            <a-spin :loading="tableNames.length === 0" class="db-schema-body">
               <div
-                v-if="activeTableName === tableName && tableSchemas[tableName]"
-                class="db-schema-columns"
+                v-if="tableNames.length === 0"
+                class="text-center py-5 text-[13px] text-[#AEAEB2]"
               >
-                <div v-for="col in tableSchemas[tableName]" :key="col.cid" class="db-schema-col">
-                  <span class="db-schema-col-name" :class="{ 'is-pk': col.pk === 1 }">{{
-                    col.name
-                  }}</span>
-                  <span class="db-schema-col-type">{{ col.type || '—' }}</span>
-                  <a-tag v-if="col.pk === 1" color="orange" size="small" class="db-schema-col-tag"
-                    >PK</a-tag
-                  >
-                </div>
+                暂无数据表
               </div>
-            </div>
-          </a-spin>
-        </a-card>
-
-        <a-card :bordered="false" title="执行历史" size="small" class="db-history-card">
-          <div class="db-history-body">
-            <a-empty v-if="history.length === 0" description="暂无执行记录" />
-            <div v-else class="db-history-list">
               <div
-                v-for="item in history"
-                :key="item.id"
-                class="db-history-item"
-                :class="{ 'is-error': !item.is_success }"
-                @click="loadHistory(item)"
+                v-for="tableName in tableNames"
+                :key="tableName"
+                class="db-schema-table"
+                :class="{ 'is-active': activeTableName === tableName }"
               >
-                <div class="db-history-item__meta">
-                  <span class="db-history-item__user">{{ item.username }}</span>
-                  <span class="db-history-item__time">{{
-                    formatHistoryTime(item.created_at)
-                  }}</span>
-                </div>
-                <code class="db-history-item__sql">{{ item.sql_text }}</code>
-              </div>
-              <div v-if="historyTotal > historyPageSize" class="db-history-pagination">
-                <a-pagination v-bind="historyPaginationConfig" />
-              </div>
-            </div>
-          </div>
-        </a-card>
-      </div>
-
-      <div class="db-main">
-        <a-card :bordered="false" class="db-editor-card">
-          <template #title>
-            <div class="flex items-center gap-2">
-              <IconCode :size="16" class="text-[#007AFF]" />
-              SQL 编辑器
-            </div>
-          </template>
-          <template #extra>
-            <span class="text-[11px] text-[#AEAEB2]">Ctrl/Cmd + Enter 执行</span>
-          </template>
-
-          <div class="db-textarea-wrap">
-            <textarea
-              ref="textareaEl"
-              v-model="sqlInput"
-              class="db-textarea"
-              placeholder="输入 SQL 命令… 输入时自动提示关键词和表名"
-              rows="6"
-              spellcheck="false"
-              @input="onInput"
-              @keydown="onTextareaKeydown"
-              @click="onTextareaClick"
-              @blur="onTextareaBlur"
-            />
-
-            <Teleport to="body">
-              <div
-                v-if="showSuggestions && suggestions.length > 0"
-                class="db-suggest-panel"
-                :style="suggestionStyle"
-              >
-                <div class="db-suggest-header">
-                  <IconThunderbolt :size="12" />
-                  智能提示
-                </div>
-                <div
-                  v-for="(item, idx) in suggestions"
-                  :key="item.text"
-                  class="db-suggest-item"
-                  :class="{ 'is-active': idx === selectedSuggestionIdx }"
-                  @mousedown.prevent="acceptSuggestion(item)"
-                  @mouseenter="selectedSuggestionIdx = idx"
-                >
-                  <span class="db-suggest-icon">{{ getSuggestionIcon(item.type) }}</span>
-                  <div class="db-suggest-content">
-                    <span class="db-suggest-text">{{ item.text }}</span>
-                    <span class="db-suggest-desc">{{ item.description }}</span>
-                  </div>
+                <div class="db-schema-table-row" @click="toggleTableSchema(tableName)">
                   <span
-                    class="db-suggest-badge"
-                    :class="`db-suggest-badge--${badgeType(item.type)}`"
+                    class="db-schema-chevron"
+                    :class="{ 'is-open': activeTableName === tableName }"
+                    >▸</span
                   >
-                    {{ item.category }}
-                  </span>
+                  <span class="db-schema-dot" />
+                  <span class="db-schema-table-name">{{ tableName }}</span>
+                  <span v-if="loadingSchema.has(tableName)" class="db-schema-spinner" />
+                  <a-button
+                    type="text"
+                    size="mini"
+                    class="db-schema-query-btn"
+                    @click.stop="selectTableSql(tableName)"
+                  >
+                    查询
+                  </a-button>
+                </div>
+
+                <div
+                  v-if="activeTableName === tableName && tableSchemas[tableName]"
+                  class="db-schema-columns"
+                >
+                  <div v-for="col in tableSchemas[tableName]" :key="col.cid" class="db-schema-col">
+                    <span class="db-schema-col-name" :class="{ 'is-pk': col.pk === 1 }">{{
+                      col.name
+                    }}</span>
+                    <span class="db-schema-col-type">{{ col.type || '—' }}</span>
+                    <a-tag v-if="col.pk === 1" color="orange" size="small" class="db-schema-col-tag"
+                      >PK</a-tag
+                    >
+                  </div>
                 </div>
               </div>
-            </Teleport>
-          </div>
+            </a-spin>
+          </a-card>
 
-          <div class="db-toolbar">
-            <div class="db-presets">
-              <a-tag
-                v-for="preset in tablePresets"
-                :key="preset.sql"
-                color="arcoblue"
-                class="db-preset-tag"
-                @click="applyPreset(preset.sql)"
-              >
-                <span class="text-[12px] mr-1">{{ preset.icon }}</span>
-                {{ preset.label }}
-              </a-tag>
-            </div>
-            <a-space :size="8">
-              <a-button :disabled="!sqlInput" @click="sqlInput = ''">
-                <template #icon><IconDelete /></template>
-                清空
-              </a-button>
-              <a-button type="primary" :loading="executing" @click="executeSql">
-                <template #icon><IconPlayArrow /></template>
-                执行
-              </a-button>
-            </a-space>
-          </div>
-        </a-card>
-
-        <a-card v-if="result" :bordered="false" class="db-result-card">
-          <template #title>
-            <div class="flex items-center gap-2">
-              <span class="db-result-dot" :class="result.success ? 'is-ok' : 'is-err'" />
-              {{ result.is_query ? `查询结果 · ${result.row_count} 行` : '执行结果' }}
-            </div>
-          </template>
-          <template #extra>
-            <a-button type="text" size="mini" @click="clearResult">
-              <template #icon><IconDelete /></template>
-            </a-button>
-          </template>
-
-          <a-alert :type="result.success ? 'success' : 'error'" class="mb-4">
-            {{ result.message }}
-          </a-alert>
-
-          <template v-if="result.is_query && result.columns.length > 0">
-            <a-table
-              :columns="[
-                ...result.columns.map((c) => ({
-                  title: c,
-                  dataIndex: c,
-                  ellipsis: true,
-                  width: 160,
-                })),
-                { title: '操作', slotName: 'rowActions', width: 80, fixed: 'right' as const },
-              ]"
-              :data="
-                result.rows.map((row) => {
-                  const obj: Record<string, unknown> = {}
-                  result!.columns.forEach((col, i) => {
-                    obj[col] = row[i]
-                  })
-                  return obj
-                })
-              "
-              :bordered="false"
-              :hoverable="true"
-              :pagination="paginationConfig"
-              size="small"
-              :scroll="{ x: 'max-content' }"
-            >
-              <template #bodyCell="{ column, record }">
-                <span
-                  class="db-cell"
-                  :class="{
-                    'db-cell--null': record[column.dataIndex] === null,
-                    'db-cell--empty': record[column.dataIndex] === '',
-                  }"
+          <a-card :bordered="false" title="执行历史" size="small" class="db-history-card">
+            <div class="db-history-body">
+              <a-empty v-if="history.length === 0" description="暂无执行记录" />
+              <div v-else class="db-history-list">
+                <div
+                  v-for="item in history"
+                  :key="item.id"
+                  class="db-history-item"
+                  :class="{ 'is-error': !item.is_success }"
+                  @click="loadHistory(item)"
                 >
-                  {{ formatCell(record[column.dataIndex] as string | number | null) }}
-                </span>
-              </template>
-              <template #rowActions="{ record }">
-                <a-button
-                  type="text"
-                  status="danger"
-                  size="mini"
-                  title="删除该行（需审核）"
-                  @click="requestRowDelete(record)"
+                  <div class="db-history-item__meta">
+                    <span class="db-history-item__user">{{ item.username }}</span>
+                    <span class="db-history-item__time">{{
+                      formatHistoryTime(item.created_at)
+                    }}</span>
+                  </div>
+                  <code class="db-history-item__sql">{{ item.sql_text }}</code>
+                </div>
+                <div v-if="historyTotal > historyPageSize" class="db-history-pagination">
+                  <a-pagination v-bind="historyPaginationConfig" />
+                </div>
+              </div>
+            </div>
+          </a-card>
+        </div>
+
+        <div class="db-main">
+          <a-card :bordered="false" class="db-editor-card">
+            <template #title>
+              <div class="flex items-center gap-2">
+                <IconCode :size="16" class="text-[#007AFF]" />
+                SQL 编辑器
+              </div>
+            </template>
+            <template #extra>
+              <span class="text-[11px] text-[#AEAEB2]">Ctrl/Cmd + Enter 执行</span>
+            </template>
+
+            <div class="db-textarea-wrap">
+              <textarea
+                ref="textareaEl"
+                v-model="sqlInput"
+                class="db-textarea"
+                placeholder="输入 SQL 命令… 输入时自动提示关键词和表名"
+                rows="6"
+                spellcheck="false"
+                @input="onInput"
+                @keydown="onTextareaKeydown"
+                @click="onTextareaClick"
+                @blur="onTextareaBlur"
+              />
+
+              <Teleport to="body">
+                <div
+                  v-if="showSuggestions && suggestions.length > 0"
+                  class="db-suggest-panel"
+                  :style="suggestionStyle"
                 >
+                  <div class="db-suggest-header">
+                    <IconThunderbolt :size="12" />
+                    智能提示
+                  </div>
+                  <div
+                    v-for="(item, idx) in suggestions"
+                    :key="item.text"
+                    class="db-suggest-item"
+                    :class="{ 'is-active': idx === selectedSuggestionIdx }"
+                    @mousedown.prevent="acceptSuggestion(item)"
+                    @mouseenter="selectedSuggestionIdx = idx"
+                  >
+                    <span class="db-suggest-icon">{{ getSuggestionIcon(item.type) }}</span>
+                    <div class="db-suggest-content">
+                      <span class="db-suggest-text">{{ item.text }}</span>
+                      <span class="db-suggest-desc">{{ item.description }}</span>
+                    </div>
+                    <span
+                      class="db-suggest-badge"
+                      :class="`db-suggest-badge--${badgeType(item.type)}`"
+                    >
+                      {{ item.category }}
+                    </span>
+                  </div>
+                </div>
+              </Teleport>
+            </div>
+
+            <div class="db-toolbar">
+              <div class="db-presets">
+                <a-tag
+                  v-for="preset in tablePresets"
+                  :key="preset.sql"
+                  color="arcoblue"
+                  class="db-preset-tag"
+                  @click="applyPreset(preset.sql)"
+                >
+                  <span class="text-[12px] mr-1">{{ preset.icon }}</span>
+                  {{ preset.label }}
+                </a-tag>
+              </div>
+              <a-space :size="8">
+                <a-button :disabled="!sqlInput" @click="sqlInput = ''">
                   <template #icon><IconDelete /></template>
+                  清空
                 </a-button>
-              </template>
-              <template #empty>
-                <a-empty description="无数据" />
-              </template>
-            </a-table>
-          </template>
-        </a-card>
+                <a-button type="primary" :loading="executing" @click="executeSql">
+                  <template #icon><IconPlayArrow /></template>
+                  执行
+                </a-button>
+              </a-space>
+            </div>
+          </a-card>
+
+          <a-card v-if="result" :bordered="false" class="db-result-card">
+            <template #title>
+              <div class="flex items-center gap-2">
+                <span class="db-result-dot" :class="result.success ? 'is-ok' : 'is-err'" />
+                {{ result.is_query ? `查询结果 · ${result.row_count} 行` : '执行结果' }}
+              </div>
+            </template>
+            <template #extra>
+              <a-button type="text" size="mini" @click="clearResult">
+                <template #icon><IconDelete /></template>
+              </a-button>
+            </template>
+
+            <a-alert :type="result.success ? 'success' : 'error'" class="mb-4">
+              {{ result.message }}
+            </a-alert>
+
+            <template v-if="result.is_query && result.columns.length > 0">
+              <a-table
+                :columns="[
+                  ...result.columns.map((c) => ({
+                    title: c,
+                    dataIndex: c,
+                    ellipsis: true,
+                    width: 160,
+                  })),
+                  { title: '操作', slotName: 'rowActions', width: 80, fixed: 'right' as const },
+                ]"
+                :data="
+                  result.rows.map((row) => {
+                    const obj: Record<string, unknown> = {}
+                    result!.columns.forEach((col, i) => {
+                      obj[col] = row[i]
+                    })
+                    return obj
+                  })
+                "
+                :bordered="false"
+                :hoverable="true"
+                :pagination="paginationConfig"
+                size="small"
+                :scroll="{ x: 'max-content' }"
+              >
+                <template #bodyCell="{ column, record }">
+                  <span
+                    class="db-cell"
+                    :class="{
+                      'db-cell--null': record[column.dataIndex] === null,
+                      'db-cell--empty': record[column.dataIndex] === '',
+                    }"
+                  >
+                    {{ formatCell(record[column.dataIndex] as string | number | null) }}
+                  </span>
+                </template>
+                <template #rowActions="{ record }">
+                  <a-button
+                    type="text"
+                    status="danger"
+                    size="mini"
+                    title="删除该行（需审核）"
+                    @click="requestRowDelete(record)"
+                  >
+                    <template #icon><IconDelete /></template>
+                  </a-button>
+                </template>
+                <template #empty>
+                  <a-empty description="无数据" />
+                </template>
+              </a-table>
+            </template>
+          </a-card>
+        </div>
       </div>
     </div>
   </div>

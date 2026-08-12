@@ -911,3 +911,68 @@ if route.path !== '/':
 5. **等宽字体**：SQL、日志、时间数字使用 `SF Mono` 或 `tabular-nums`
 6. **颜色语义**：成功绿、警告橙、危险红、主色蓝，严格遵循 Apple 调色板
 7. **248px 断点**：所有页面支持极小屏深度压缩
+
+### 8.4 `<main>` 区域三段式布局结构
+
+`<main>` 内的页面布局统一采用三段式结构：`page-header` → `page-main` → `page-footer`（可选）。
+
+```
+┌────────────────────────────────────────┐
+│  <main>（无 padding，由内容自身提供）    │
+│  ├─ page-header（PageHeader 组件）       │
+│  │   · 上、左、右内边距由 PageHeader 自身│
+│  │     提供：px-4 md:px-6 lg:px-8       │
+│  │     pt-4 md:pt-6 lg:pt-8            │
+│  ├─ page-main（主内容区）                │
+│  │   · 水平内边距由内容自身提供          │
+│  │   · 垂直方向通过 gap 控制间距         │
+│  └─ page-footer（可选，底部操作区）      │
+│      · 仅当存在表单提交时使用            │
+│      · sticky bottom-0 固定在底部       │
+│      · 水平内边距与 page-header 一致     │
+└────────────────────────────────────────┘
+```
+
+| 区域          | 是否必需 | 说明                                   |
+| ------------- | -------- | -------------------------------------- |
+| `page-header` | 必需     | 页面顶部标题栏，使用 `PageHeader` 组件 |
+| `page-main`   | 必需     | 主内容区，承载页面核心内容             |
+| `page-footer` | 可选     | 底部操作区，仅当页面包含表单提交时使用 |
+
+**规范要点**：
+
+1. `<main>` 不再提供全局 padding，由各区域自身设置内边距
+2. `page-header` 的上、左、右内边距统一为 `px-4 md:px-6 lg:px-8` + `pt-4 md:pt-6 lg:pt-8`
+3. `page-main` 的水平内边距与 `page-header` 保持一致（`px-4 md:px-6 lg:px-8`）
+4. `page-footer` 使用 `sticky bottom-0` 固定在底部，水平内边距与 `page-header` 一致
+5. 当页面存在表单提交（如保存按钮）时，提交操作统一放置在 `page-footer` 中
+6. 三个区域的水平内边距必须保持一致，确保视觉对齐
+
+**示例结构**：
+
+```vue
+<div class="page-main">
+  <!-- 1. page-header：必需 -->
+  <PageHeader :title="页面标题" subtitle="页面副标题">
+    <template #actions>
+      <a-button>返回</a-button>
+      <a-button type="primary">保存</a-button>
+    </template>
+  </PageHeader>
+
+  <!-- 2. page-main：必需，主内容区 -->
+  <div class="px-4 md:px-6 lg:px-8">
+    <!-- 页面核心内容 -->
+  </div>
+
+  <!-- 3. page-footer：可选，仅存在表单提交时使用 -->
+  <div class="sticky bottom-0 z-30 border-t border-[#E5E5EA] bg-white/90 backdrop-blur-xl
+              px-4 md:px-6 lg:px-8 py-3 flex items-center justify-between">
+    <span class="text-[13px] text-[#86868b]">辅助信息</span>
+    <div class="flex items-center gap-3">
+      <a-button>返回</a-button>
+      <a-button type="primary" :loading="saving" @click="handleSave">保存</a-button>
+    </div>
+  </div>
+</div>
+```
