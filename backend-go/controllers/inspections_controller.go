@@ -17,11 +17,12 @@ type InspectionsController struct {
 }
 
 type inspectionScoreRequest struct {
-	ItemID      string   `json:"item_id"`
-	Score       float64  `json:"score"`
-	Comment     string   `json:"comment"`
-	AIGenerated bool     `json:"ai_generated"`
-	Photos      []string `json:"photos"`
+	ItemID       string   `json:"item_id"`
+	Score        float64  `json:"score"`
+	Comment      string   `json:"comment"`
+	AIGenerated  bool     `json:"ai_generated"`
+	AISuggestion string   `json:"ai_suggestion"`
+	Photos       []string `json:"photos"`
 }
 
 type inspectionCreateRequest struct {
@@ -609,12 +610,13 @@ func loadAIItems(templateID string) ([]services.InspectionAIItem, error) {
 		aiItems := make([]services.InspectionAIItem, 0, len(items))
 		for _, it := range items {
 			aiItems = append(aiItems, services.InspectionAIItem{
-				ID:           it.ID,
-				Name:         it.Title,
-				Standard:     it.Standard,
-				ScoreType:    it.ScoreType,
-				MaxScore:     it.MaxScore,
-				ScoreOptions: services.EffectiveScoreOptions(&it),
+				ID:            it.ID,
+				Name:          it.Title,
+				Standard:      it.Standard,
+				StandardImage: it.StandardImage,
+				ScoreType:     it.ScoreType,
+				MaxScore:      it.MaxScore,
+				ScoreOptions:  services.EffectiveScoreOptions(&it),
 			})
 		}
 		return aiItems, nil
@@ -707,11 +709,12 @@ func inspectionCurrentScores(inspection *models.Inspection) []inspectionScoreReq
 	result := make([]inspectionScoreRequest, 0, len(list))
 	for _, s := range list {
 		result = append(result, inspectionScoreRequest{
-			ItemID:      s.ItemID,
-			Score:       s.Score,
-			Comment:     s.Comment,
-			AIGenerated: s.AIGenerated,
-			Photos:      unmarshalPhotos(s.Photos),
+			ItemID:       s.ItemID,
+			Score:        s.Score,
+			Comment:      s.Comment,
+			AIGenerated:  s.AIGenerated,
+			AISuggestion: s.AISuggestion,
+			Photos:       unmarshalPhotos(s.Photos),
 		})
 	}
 	return result
@@ -900,6 +903,7 @@ func buildScoreRows(inspection *models.Inspection, reqScores []inspectionScoreRe
 			ShowPhoto:      item.ShowPhoto,
 			Comment:        rs.Comment,
 			AIGenerated:    rs.AIGenerated,
+			AISuggestion:   rs.AISuggestion,
 			Photos:         marshalPhotos(rs.Photos),
 			CreatedAt:      now,
 		})
@@ -1052,6 +1056,7 @@ func inspectionWithScores(inspection *models.Inspection) map[string]interface{} 
 			"show_photo":     s.ShowPhoto,
 			"comment":        s.Comment,
 			"ai_generated":   s.AIGenerated,
+			"ai_suggestion":  s.AISuggestion,
 			"photos":         unmarshalPhotos(s.Photos),
 		})
 	}

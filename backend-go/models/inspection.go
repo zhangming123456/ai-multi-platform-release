@@ -45,6 +45,7 @@ type InspectionScore struct {
 	ShowPhoto      bool      `orm:"column(show_photo);default(true)" json:"show_photo"`
 	Comment        string    `orm:"column(comment);type(text);null" json:"comment"`
 	AIGenerated    bool      `orm:"column(ai_generated);default(false)" json:"ai_generated"`
+	AISuggestion   string    `orm:"column(ai_suggestion);type(text);null" json:"ai_suggestion"`
 	Photos         string    `orm:"column(photos);type(text);null" json:"photos"`
 	CreatedAt      time.Time `orm:"column(created_at);auto_now_add;type(datetime)" json:"created_at"`
 }

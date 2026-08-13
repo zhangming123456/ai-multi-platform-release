@@ -94,6 +94,7 @@ export interface InspectionScore {
   show_photo: boolean
   comment: string
   ai_generated: boolean
+  ai_suggestion?: string
   photos: string[]
 }
 

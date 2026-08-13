@@ -79,12 +79,13 @@ type InspectionAIResult struct {
 }
 
 type InspectionAIItem struct {
-	ID           string
-	Name         string
-	Standard     string
-	ScoreType    string
-	MaxScore     int
-	ScoreOptions []models.ScoreOption
+	ID            string
+	Name          string
+	Standard      string
+	StandardImage string
+	ScoreType     string
+	MaxScore      int
+	ScoreOptions  []models.ScoreOption
 }
 
 // InspectionSkill 前端组装的检查项技能规范，用于向 AI 明确定义巡店标准与评分规则。
@@ -205,9 +206,33 @@ func loadImageAsUploadedFile(imageURL string) (*UploadedFile, error) {
 		return nil, fmt.Errorf("图片 URL 为空")
 	}
 
-	// 完整 URL：直接透传，让模型端自行拉取
+	// 完整 URL：由后端下载图片内容并转为 base64，保证模型一定能读取
 	if strings.HasPrefix(imageURL, "http://") || strings.HasPrefix(imageURL, "https://") {
-		return &UploadedFile{URL: imageURL}, nil
+		client := &http.Client{Timeout: 15 * time.Second}
+		resp, err := client.Get(imageURL)
+		if err != nil {
+			return nil, fmt.Errorf("下载图片失败 %s: %w", imageURL, err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			return nil, fmt.Errorf("下载图片失败 %s: 状态码 %d", imageURL, resp.StatusCode)
+		}
+		data, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return nil, fmt.Errorf("读取图片内容失败 %s: %w", imageURL, err)
+		}
+		mimeType := resp.Header.Get("Content-Type")
+		if mimeType == "" {
+			mimeType = mime.TypeByExtension(strings.ToLower(filepath.Ext(imageURL)))
+		}
+		if mimeType == "" {
+			mimeType = "image/png"
+		}
+		return &UploadedFile{
+			Data:     base64.StdEncoding.EncodeToString(data),
+			MimeType: mimeType,
+			URL:      imageURL,
+		}, nil
 	}
 
 	// 解析 /uploads/ 相对路径
@@ -281,17 +306,32 @@ func buildInspectionVisionContent(prompt string, standardImages []UploadedFile, 
 }
 
 // visionPartFromFile 将 UploadedFile 转换为 vision API 所需的 image_url / video_url 部分。
+// 所有图片统一由后端转为 base64 data URL 再交给模型：本地文件路径 / http(s) 链接都先下载/读取转 base64；
+// 前端直接传来的 base64（Data 非空）则原样使用。
 func visionPartFromFile(f UploadedFile) interface{} {
-	imgURL := f.URL
-	if imgURL == "" {
+	imgURL := strings.TrimSpace(f.URL)
+	if imgURL == "" && f.Data == "" {
 		imgURL = f.Data
 	}
-	if strings.HasPrefix(imgURL, "http://") || strings.HasPrefix(imgURL, "https://") {
+
+	// 优先统一加载为 base64：http(s) 链接、/uploads/ 相对路径
+	if strings.HasPrefix(imgURL, "http://") || strings.HasPrefix(imgURL, "https://") || strings.HasPrefix(imgURL, "/uploads/") {
+		if loaded, err := loadImageAsUploadedFile(imgURL); err == nil && loaded.Data != "" {
+			dataURL := "data:" + loaded.MimeType + ";base64," + loaded.Data
+			return map[string]interface{}{
+				"type":      "image_url",
+				"image_url": map[string]interface{}{"url": dataURL},
+			}
+		}
+	}
+
+	if f.Data == "" {
 		return map[string]interface{}{
 			"type":      "image_url",
 			"image_url": map[string]interface{}{"url": imgURL},
 		}
 	}
+
 	dataURL := "data:" + f.MimeType + ";base64," + f.Data
 	return map[string]interface{}{
 		"type":      "image_url",
@@ -317,7 +357,18 @@ func AnalyzeInspection(storeName string, items []InspectionAIItem, photos []Uplo
 
 	// 分支：前端传入了 skills 技能规范，使用 function calling 严格规范返回格式
 	if skillSpec != nil && len(skillSpec.Skills) > 0 {
+		standardImages := collectStandardImages(skillSpec.Skills)
+		hasStandardImages := len(standardImages) > 0
+		hasPhotos := len(photos) > 0
 		skillsPrompt := buildInspectionSkillsPrompt(skillSpec.Skills)
+		imageHint := ""
+		if hasStandardImages && hasPhotos {
+			imageHint = "\n本次已附带检查标准参照图与巡店现场图，请结合标准图与现场图进行对比分析，重点关注现场与标准的差异。"
+		} else if hasStandardImages {
+			imageHint = "\n本次已附带检查标准参照图，请参照标准图进行评估。"
+		} else if hasPhotos {
+			imageHint = "\n本次已附带巡店现场图，请结合现场图进行评估。"
+		}
 		prompt := fmt.Sprintf(`你是一名专业的连锁门店巡店督导。请对「%s」进行巡店检查。
 %s
 请基于以上检查项标准与巡店信息，客观评估每个检查项的达标情况，重点输出两大部分：
@@ -325,15 +376,16 @@ func AnalyzeInspection(storeName string, items []InspectionAIItem, photos []Uplo
 2. suggestion（AI 整改建议）：针对每个问题给出具体、可执行的整改措施与提升建议。
 %s
 %s
+%s
 
-请调用 submit_inspection_result 工具提交结果。scores 仅包含与巡店关键词/图片有关联的检查项，每项的 item_id 与上面给出的 item_id 一致，score 必须落在该检查项允许的分值范围内；无关的检查项不要返回评分；issues 与 suggestion 必须详尽充实。`, storeDesc, skillsPrompt, keywordsHint, photoHint)
+请调用 submit_inspection_result 工具提交结果。scores 仅包含与巡店关键词/图片有关联的检查项，每项的 item_id 与上面给出的 item_id 一致，score 必须落在该检查项允许的分值范围内；无关的检查项不要返回评分；issues 与 suggestion 必须详尽充实。`, storeDesc, skillsPrompt, keywordsHint, photoHint, imageHint)
 
 		messages := []chatMessage{{
 			Role:    "system",
 			Content: "你是专业的连锁门店巡店督导专家，擅长门店标准化检查，输出问题与整改建议。使用中文回复。必须生成一份完整的巡店分析报告，包含每个检查项的评估结果（含标准图与现场图对比分析）。必须通过调用 submit_inspection_result 工具返回结构化结果。",
 		}}
-		if supportsVision && len(photos) > 0 {
-			messages = append(messages, chatMessage{Role: "user", Content: buildVisionContent(prompt, photos)})
+		if supportsVision && (hasStandardImages || hasPhotos) {
+			messages = append(messages, chatMessage{Role: "user", Content: buildInspectionVisionContent(prompt, standardImages, photos)})
 		} else {
 			messages = append(messages, chatMessage{Role: "user", Content: prompt})
 		}
@@ -410,6 +462,8 @@ func AnalyzeInspection(storeName string, items []InspectionAIItem, photos []Uplo
 	}
 
 	// 兼容分支：未传 skills，维持原有 prompt + JSON 返回逻辑
+	standardImages := make([]UploadedFile, 0)
+	seenStandard := make(map[string]bool)
 	itemLines := make([]string, 0, len(items))
 	for _, it := range items {
 		scoreDesc := fmt.Sprintf("满分 %d 分", it.MaxScore)
@@ -430,7 +484,26 @@ func AnalyzeInspection(storeName string, items []InspectionAIItem, photos []Uplo
 		if it.Standard != "" {
 			line += fmt.Sprintf("；检查标准：%s", it.Standard)
 		}
+		if it.StandardImage != "" {
+			line += "；已附带标准参照图"
+			if !seenStandard[it.StandardImage] {
+				seenStandard[it.StandardImage] = true
+				if f, err := loadImageAsUploadedFile(it.StandardImage); err == nil {
+					standardImages = append(standardImages, *f)
+				}
+			}
+		}
 		itemLines = append(itemLines, line)
+	}
+	hasStandardImages := len(standardImages) > 0
+	hasPhotos := len(photos) > 0
+	imageHint := ""
+	if hasStandardImages && hasPhotos {
+		imageHint = "\n本次已附带检查标准参照图与巡店现场图，请结合标准图与现场图进行对比分析，重点关注现场与标准的差异。"
+	} else if hasStandardImages {
+		imageHint = "\n本次已附带检查标准参照图，请参照标准图进行评估。"
+	} else if hasPhotos {
+		imageHint = "\n本次已附带巡店现场图，请结合现场图进行评估。"
 	}
 
 	prompt := fmt.Sprintf(`你是一名专业的连锁门店巡店督导。请对「%s」进行巡店检查。
@@ -444,6 +517,7 @@ func AnalyzeInspection(storeName string, items []InspectionAIItem, photos []Uplo
 4. report（巡店分析报告）：完整的巡店分析报告，包含每个检查项的评估详情、标准图与现场图对比分析（如有）、评分理由、改进建议。
 %s
 %s
+%s
 
 请严格以 JSON 格式返回（不要输出其他内容）：
 {
@@ -451,14 +525,14 @@ func AnalyzeInspection(storeName string, items []InspectionAIItem, photos []Uplo
   "issues": "问题与备注，按检查项分条列出",
   "suggestion": "AI 整改建议，具体可执行",
   "report": "完整的巡店分析报告文本，按检查项分章节"
-}`, storeDesc, strings.Join(itemLines, "\n"), keywordsHint, photoHint)
+}`, storeDesc, strings.Join(itemLines, "\n"), keywordsHint, photoHint, imageHint)
 
 	messages := []chatMessage{{
 		Role:    "system",
 		Content: "你是专业的连锁门店巡店督导专家，擅长门店标准化检查，输出问题与整改建议。使用中文回复。必须生成一份完整的巡店分析报告，包含每个检查项的评估结果（含标准图与现场图对比分析）。",
 	}}
-	if supportsVision && len(photos) > 0 {
-		messages = append(messages, chatMessage{Role: "user", Content: buildVisionContent(prompt, photos)})
+	if supportsVision && (hasStandardImages || hasPhotos) {
+		messages = append(messages, chatMessage{Role: "user", Content: buildInspectionVisionContent(prompt, standardImages, photos)})
 	} else {
 		messages = append(messages, chatMessage{Role: "user", Content: prompt})
 	}
@@ -640,7 +714,18 @@ func AnalyzeInspectionStream(storeName string, items []InspectionAIItem, photos 
 		var tools []toolDefinition
 
 		if skillSpec != nil && len(skillSpec.Skills) > 0 {
+			standardImages := collectStandardImages(skillSpec.Skills)
+			hasStandardImages := len(standardImages) > 0
+			hasPhotos := len(photos) > 0
 			skillsPrompt := buildInspectionSkillsPrompt(skillSpec.Skills)
+			imageHint := ""
+			if hasStandardImages && hasPhotos {
+				imageHint = "\n本次已附带检查标准参照图与巡店现场图，请结合标准图与现场图进行对比分析，重点关注现场与标准的差异。"
+			} else if hasStandardImages {
+				imageHint = "\n本次已附带检查标准参照图，请参照标准图进行评估。"
+			} else if hasPhotos {
+				imageHint = "\n本次已附带巡店现场图，请结合现场图进行评估。"
+			}
 			prompt := fmt.Sprintf(`你是一名专业的连锁门店巡店督导。请对「%s」进行巡店检查。
 %s
 请基于以上检查项标准与巡店信息，客观评估每个检查项的达标情况，重点输出两大部分：
@@ -648,14 +733,15 @@ func AnalyzeInspectionStream(storeName string, items []InspectionAIItem, photos 
 2. suggestion（AI 整改建议）：针对每个问题给出具体、可执行的整改措施与提升建议。
 %s
 %s
+%s
 
-请调用 submit_inspection_result 工具提交结果。scores 仅包含与巡店关键词/图片有关联的检查项，每项的 item_id 与上面给出的 item_id 一致，score 必须落在该检查项允许的分值范围内；无关的检查项不要返回评分；issues 与 suggestion 必须详尽充实。`, storeDesc, skillsPrompt, keywordsHint, photoHint)
+请调用 submit_inspection_result 工具提交结果。scores 仅包含与巡店关键词/图片有关联的检查项，每项的 item_id 与上面给出的 item_id 一致，score 必须落在该检查项允许的分值范围内；无关的检查项不要返回评分；issues 与 suggestion 必须详尽充实。`, storeDesc, skillsPrompt, keywordsHint, photoHint, imageHint)
 			messages = []chatMessage{{
 				Role:    "system",
 				Content: "你是专业的连锁门店巡店督导专家，擅长门店标准化检查，输出问题与整改建议。使用中文回复。必须通过调用 submit_inspection_result 工具返回结构化结果。",
 			}}
-		if supportsVision && len(photos) > 0 {
-				messages = append(messages, chatMessage{Role: "user", Content: buildVisionContent(prompt, photos)})
+			if supportsVision && (hasStandardImages || hasPhotos) {
+				messages = append(messages, chatMessage{Role: "user", Content: buildInspectionVisionContent(prompt, standardImages, photos)})
 			} else {
 				messages = append(messages, chatMessage{Role: "user", Content: prompt})
 			}
@@ -672,6 +758,8 @@ func AnalyzeInspectionStream(storeName string, items []InspectionAIItem, photos 
 				},
 			}}
 		} else {
+			standardImages := make([]UploadedFile, 0)
+			seenStandard := make(map[string]bool)
 			itemLines := make([]string, 0, len(items))
 			for _, it := range items {
 				scoreDesc := fmt.Sprintf("满分 %d 分", it.MaxScore)
@@ -692,7 +780,26 @@ func AnalyzeInspectionStream(storeName string, items []InspectionAIItem, photos 
 				if it.Standard != "" {
 					line += fmt.Sprintf("；检查标准：%s", it.Standard)
 				}
+				if it.StandardImage != "" {
+					line += "；已附带标准参照图"
+					if !seenStandard[it.StandardImage] {
+						seenStandard[it.StandardImage] = true
+						if f, err := loadImageAsUploadedFile(it.StandardImage); err == nil {
+							standardImages = append(standardImages, *f)
+						}
+					}
+				}
 				itemLines = append(itemLines, line)
+			}
+			hasStandardImages := len(standardImages) > 0
+			hasPhotos := len(photos) > 0
+			imageHint := ""
+			if hasStandardImages && hasPhotos {
+				imageHint = "\n本次已附带检查标准参照图与巡店现场图，请结合标准图与现场图进行对比分析，重点关注现场与标准的差异。"
+			} else if hasStandardImages {
+				imageHint = "\n本次已附带检查标准参照图，请参照标准图进行评估。"
+			} else if hasPhotos {
+				imageHint = "\n本次已附带巡店现场图，请结合现场图进行评估。"
 			}
 			prompt := fmt.Sprintf(`你是一名专业的连锁门店巡店督导。请对「%s」进行巡店检查。
 检查项及评分标准如下：
@@ -705,6 +812,7 @@ func AnalyzeInspectionStream(storeName string, items []InspectionAIItem, photos 
 4. report（巡店分析报告）：完整的巡店分析报告，包含每个检查项的评估详情、标准图与现场图对比分析（如有）、评分理由、改进建议。
 %s
 %s
+%s
 
 请严格以 JSON 格式返回（不要输出其他内容）：
 {
@@ -712,13 +820,13 @@ func AnalyzeInspectionStream(storeName string, items []InspectionAIItem, photos 
   "issues": "问题与备注，按检查项分条列出",
   "suggestion": "AI 整改建议，具体可执行",
   "report": "完整的巡店分析报告文本，按检查项分章节"
-}`, storeDesc, strings.Join(itemLines, "\n"), keywordsHint, photoHint)
+}`, storeDesc, strings.Join(itemLines, "\n"), keywordsHint, photoHint, imageHint)
 			messages = []chatMessage{{
 				Role:    "system",
 				Content: "你是专业的连锁门店巡店督导专家，擅长门店标准化检查，输出问题与整改建议。使用中文回复。",
 			}}
-		if supportsVision && len(photos) > 0 {
-				messages = append(messages, chatMessage{Role: "user", Content: buildVisionContent(prompt, photos)})
+			if supportsVision && (hasStandardImages || hasPhotos) {
+				messages = append(messages, chatMessage{Role: "user", Content: buildInspectionVisionContent(prompt, standardImages, photos)})
 			} else {
 				messages = append(messages, chatMessage{Role: "user", Content: prompt})
 			}
@@ -932,7 +1040,7 @@ type SingleItemAnalysisResult struct {
 }
 
 func AnalyzeSingleInspectionItem(req SingleItemAnalysisRequest) (*SingleItemAnalysisResult, error) {
-	apiKey, baseURL, model, planName, _, err := ResolveModelConfig(req.PlanID, req.ModelID)
+	apiKey, baseURL, model, planName, supportsVision, err := ResolveModelConfig(req.PlanID, req.ModelID)
 	if err != nil {
 		return nil, err
 	}
@@ -1005,7 +1113,18 @@ func AnalyzeSingleInspectionItem(req SingleItemAnalysisRequest) (*SingleItemAnal
 		Content: "你是专业的连锁门店巡店督导专家，擅长门店标准化检查，输出问题与整改建议。使用中文回复。",
 	}}
 
-	messages = append(messages, chatMessage{Role: "user", Content: prompt})
+	// 加载标准图与现场图，vision 模型可直接看图片进行对比与相关性判断
+	standardImages := make([]UploadedFile, 0, 1)
+	if req.StandardImage != "" {
+		if f, err := loadImageAsUploadedFile(req.StandardImage); err == nil {
+			standardImages = append(standardImages, *f)
+		}
+	}
+	if supportsVision && (len(standardImages) > 0 || len(req.Photos) > 0) {
+		messages = append(messages, chatMessage{Role: "user", Content: buildInspectionVisionContent(prompt, standardImages, req.Photos)})
+	} else {
+		messages = append(messages, chatMessage{Role: "user", Content: prompt})
+	}
 
 	resp, err := callChatCompletions(apiKey, baseURL, model, messages, false)
 	if err != nil {
@@ -1050,7 +1169,7 @@ func AnalyzeSingleInspectionItem(req SingleItemAnalysisRequest) (*SingleItemAnal
 }
 
 func AnalyzeSingleInspectionItemStream(req SingleItemAnalysisRequest) (<-chan AIStreamEvent, error) {
-	apiKey, baseURL, model, planName, _, err := ResolveModelConfig(req.PlanID, req.ModelID)
+	apiKey, baseURL, model, planName, supportsVision, err := ResolveModelConfig(req.PlanID, req.ModelID)
 	if err != nil {
 		return nil, err
 	}
@@ -1127,7 +1246,18 @@ func AnalyzeSingleInspectionItemStream(req SingleItemAnalysisRequest) (<-chan AI
 			Content: "你是专业的连锁门店巡店督导专家，擅长门店标准化检查，输出问题与整改建议。使用中文回复。",
 		}}
 
-		messages = append(messages, chatMessage{Role: "user", Content: prompt})
+		// 加载标准图与现场图，vision 模型可直接看图片进行对比与相关性判断
+		standardImages := make([]UploadedFile, 0, 1)
+		if req.StandardImage != "" {
+			if f, err := loadImageAsUploadedFile(req.StandardImage); err == nil {
+				standardImages = append(standardImages, *f)
+			}
+		}
+		if supportsVision && (len(standardImages) > 0 || len(req.Photos) > 0) {
+			messages = append(messages, chatMessage{Role: "user", Content: buildInspectionVisionContent(prompt, standardImages, req.Photos)})
+		} else {
+			messages = append(messages, chatMessage{Role: "user", Content: prompt})
+		}
 
 		events <- AIStreamEvent{Event: "log", Level: "info", Message: fmt.Sprintf("使用模型配置 %s（%s）", planName, model)}
 

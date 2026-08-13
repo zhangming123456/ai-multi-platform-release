@@ -345,6 +345,20 @@
                           @change="(e: Event) => onRowFileInputChange(row, e)"
                         />
                       </div>
+
+                      <!-- AI 整改建议 -->
+                      <div
+                        v-if="row.ai_suggestion"
+                        class="rounded-lg border border-[#E8F1FF] bg-[#F0F7FF] p-2.5"
+                      >
+                        <div class="flex items-center gap-1.5 mb-1">
+                          <IconRobot :size="13" class="text-[#007AFF]" />
+                          <span class="text-[12px] font-medium text-[#1D1D1F]">AI 整改建议</span>
+                        </div>
+                        <div class="text-[12px] leading-relaxed text-[#3C3C43] whitespace-pre-wrap">
+                          {{ row.ai_suggestion }}
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -417,38 +431,49 @@
                     </button>
                   </div>
                 </div>
-
                 <div class="ai-inspect-panel__body-wrap">
                   <div ref="logBodyRef" class="ai-inspect-panel__body">
-                    <div v-if="aiLogs.length === 0" class="ai-inspect-panel__empty">
-                      <span class="ai-inspect-panel__prompt">➜</span>
-                      点击「开始 AI 巡店」后，这里将实时输出调用日志
-                    </div>
-                    <div
-                      v-for="entry in aiLogs"
-                      :key="entry.id"
-                      class="log-line"
-                      :class="[
-                        `log-line--${entry.level}`,
-                        { 'log-line--has-detail': entry.detail },
-                      ]"
-                    >
-                      <div class="log-line__row" @click="toggleLogDetail(entry.id)">
-                        <span class="log-line__time">{{ entry.time }}</span>
-                        <span class="log-line__level">{{ levelText(entry.level) }}</span>
-                        <span class="log-line__msg">{{ entry.message }}</span>
-                        <span v-if="entry.detail" class="log-line__toggle">
-                          {{ logExpanded.has(entry.id) ? '▾' : '▸' }}
-                        </span>
+                    <div ref="logBodyWRef">
+                      <div v-if="aiLogs.length === 0" class="ai-inspect-panel__empty">
+                        <span class="ai-inspect-panel__prompt">➜</span>
+                        点击「开始 AI 巡店」后，这里将实时输出调用日志
                       </div>
-                      <pre
-                        v-if="entry.detail && logExpanded.has(entry.id)"
-                        class="log-line__detail"
-                        >{{ entry.detail }}</pre>
-                    </div>
-                    <div v-if="isAnalyzing" class="log-line log-line--cursor">
-                      <span class="ai-inspect-panel__prompt">➜</span>
-                      <span class="log-cursor"></span>
+                      <template v-for="entry in aiLogs" :key="entry.id">
+                        <div
+                          class="log-line"
+                          :class="[
+                            `log-line--${entry.level}`,
+                            { 'log-line--has-detail': entry.detail },
+                          ]"
+                        >
+                          <div class="log-line__row" @click="toggleLogDetail(entry.id)">
+                            <span class="log-line__time">{{ entry.time }}</span>
+                            <span class="log-line__level">{{ levelText(entry.level) }}</span>
+                            <span class="log-line__msg">{{ entry.message }}</span>
+                            <span v-if="entry.detail" class="log-line__toggle">
+                              {{ logExpanded.has(entry.id) ? '▾' : '▸' }}
+                            </span>
+                          </div>
+                        </div>
+                        <div
+                          v-if="entry.detail && logExpanded.has(entry.id)"
+                          class="log-line"
+                          :class="[
+                            `log-line--${entry.level}`,
+                            { 'log-line--has-detail': entry.detail },
+                          ]"
+                        >
+                          <div class="log-line__row">
+                            <span class="log-line__time">{{ entry.time }}</span>
+                            <span class="log-line__level">{{ levelText(entry.level) }}</span>
+                            <pre class="log-line__detail">{{ entry.detail }}</pre>
+                          </div>
+                        </div>
+                      </template>
+                      <div v-if="isAnalyzing" class="log-line log-line--cursor">
+                        <span class="ai-inspect-panel__prompt">➜</span>
+                        <span class="log-cursor"></span>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -587,7 +612,6 @@
                   >
                 </div>
               </div>
-
               <!-- AI 巡店分析报告 -->
               <div
                 v-if="aiReport"
@@ -777,31 +801,47 @@
 
             <div class="ai-inspect-panel__body-wrap">
               <div ref="logDrawerBodyRef" class="ai-inspect-panel__body">
-                <div v-if="aiLogs.length === 0" class="ai-inspect-panel__empty">
-                  <span class="ai-inspect-panel__prompt">➜</span>
-                  点击「开始 AI 巡店」后，这里将实时输出调用日志
-                </div>
-                <div
-                  v-for="entry in aiLogs"
-                  :key="entry.id"
-                  class="log-line"
-                  :class="[`log-line--${entry.level}`, { 'log-line--has-detail': entry.detail }]"
-                >
-                  <div class="log-line__row" @click="toggleLogDetail(entry.id)">
-                    <span class="log-line__time">{{ entry.time }}</span>
-                    <span class="log-line__level">{{ levelText(entry.level) }}</span>
-                    <span class="log-line__msg">{{ entry.message }}</span>
-                    <span v-if="entry.detail" class="log-line__toggle">
-                      {{ logExpanded.has(entry.id) ? '▾' : '▸' }}
-                    </span>
+                <div ref="logDrawerWBodyRef">
+                  <div v-if="aiLogs.length === 0" class="ai-inspect-panel__empty">
+                    <span class="ai-inspect-panel__prompt">➜</span>
+                    点击「开始 AI 巡店」后，这里将实时输出调用日志
                   </div>
-                  <pre v-if="entry.detail && logExpanded.has(entry.id)" class="log-line__detail">{{
-                    entry.detail
-                  }}</pre>
-                </div>
-                <div v-if="isAnalyzing" class="log-line log-line--cursor">
-                  <span class="ai-inspect-panel__prompt">➜</span>
-                  <span class="log-cursor"></span>
+                  <template v-for="entry in aiLogs" :key="entry.id">
+                    <div
+                      class="log-line"
+                      :class="[
+                        `log-line--${entry.level}`,
+                        { 'log-line--has-detail': entry.detail },
+                      ]"
+                    >
+                      <div class="log-line__row" @click="toggleLogDetail(entry.id)">
+                        <span class="log-line__time">{{ entry.time }}</span>
+                        <span class="log-line__level">{{ levelText(entry.level) }}</span>
+                        <span class="log-line__msg">{{ entry.message }}</span>
+                        <span v-if="entry.detail" class="log-line__toggle">
+                          {{ logExpanded.has(entry.id) ? '▾' : '▸' }}
+                        </span>
+                      </div>
+                    </div>
+                    <div
+                      v-if="entry.detail && logExpanded.has(entry.id)"
+                      class="log-line"
+                      :class="[
+                        `log-line--${entry.level}`,
+                        { 'log-line--has-detail': entry.detail },
+                      ]"
+                    >
+                      <div class="log-line__row">
+                        <span class="log-line__time">{{ entry.time }}</span>
+                        <span class="log-line__level">{{ levelText(entry.level) }}</span>
+                        <pre class="log-line__detail">{{ entry.detail }}</pre>
+                      </div>
+                    </div>
+                  </template>
+                  <div v-if="isAnalyzing" class="log-line log-line--cursor">
+                    <span class="ai-inspect-panel__prompt">➜</span>
+                    <span class="log-cursor"></span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -910,6 +950,7 @@
 import { ref, reactive, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Message, Modal } from '@arco-design/web-vue'
+import { useElementSize } from '@vueuse/core'
 import {
   IconRobot,
   IconUp,
@@ -991,6 +1032,7 @@ interface ScoreRow {
   comment: string
   ai_generated: boolean
   photos: PhotoItem[]
+  ai_suggestion?: string
   _aiScoring?: boolean
   _aiScore?: number
   _aiComment?: string
@@ -1143,6 +1185,9 @@ let aiLogSeq = 0
 const logBodyRef = ref<HTMLElement | null>(null)
 const logDrawerBodyRef = ref<HTMLElement | null>(null)
 
+const logBodyWRef = ref<HTMLElement | null>(null)
+const logDrawerWBodyRef = ref<HTMLElement | null>(null)
+
 // AI 生成标记追踪：记录 AI 生成的问题/建议原始值，用于识别用户手动修改后取消标记
 const aiOriginalIssues = ref('')
 const aiOriginalSuggestion = ref('')
@@ -1241,16 +1286,28 @@ function toggleLogDetail(id: string) {
   }
 }
 
+const { height: logBodyHeight } = useElementSize(logBodyWRef)
+const { height: logDrawerBodyHeight } = useElementSize(logDrawerWBodyRef)
+
 // 日志实时滚动到底部，确保光标始终处于可视范围
 function scrollAILogsToBottom() {
   nextTick(() => {
     const bodies = [logBodyRef.value, logDrawerBodyRef.value]
     for (const el of bodies) {
-      if (el) el.scrollTop = el.scrollHeight
+      if (el) {
+        el.scrollTo({
+          top: el.scrollHeight,
+          behavior: 'smooth', // 这里同样使用了smooth滚动行为
+        })
+      }
     }
   })
 }
 
+watch([logBodyHeight, logDrawerBodyHeight], (value, oldValue) => {
+  console.log(value, 'valuevaluevalue')
+  scrollAILogsToBottom()
+})
 watch([aiLogs, aiStreamingText, isAnalyzing], scrollAILogsToBottom)
 
 function levelText(level: LogLevel): string {
@@ -1414,6 +1471,7 @@ async function fetchItems() {
       show_photo: true,
       comment: '',
       ai_generated: false,
+      ai_suggestion: '',
       photos: [],
     }))
   } catch {
@@ -1445,6 +1503,7 @@ function rowFromTemplateItem(item: InspectionTemplateItem): ScoreRow {
     show_photo: item.show_photo ?? true,
     comment: '',
     ai_generated: false,
+    ai_suggestion: '',
     photos: [],
   }
 }
@@ -1515,6 +1574,7 @@ async function fetchDetail() {
           show_photo: s.show_photo ?? true,
           comment: s.comment || '',
           ai_generated: !!s.ai_generated,
+          ai_suggestion: s.ai_suggestion || '',
           photos: (s.photos || []).map((url, index) => ({
             uid: `score-saved-${index}`,
             name: url.split('/').pop() || url,
@@ -1849,11 +1909,13 @@ async function handleAnalyze() {
     Message.warning('当前模型不支持视觉理解，无法分析图片。请在模型配置中选用支持视觉理解的模型')
     return
   }
-  const photos: { data: string; mime_type: string }[] = []
+  const photos: { data: string; mime_type: string; url?: string }[] = []
   for (const item of [...allRowPhotos.value, ...aiPhotos.value]) {
     if (item.file) {
       const encoded = await fileToBase64(item.file)
       photos.push(encoded)
+    } else if (item.url) {
+      photos.push({ data: '', mime_type: 'image/jpeg', url: item.url })
     }
   }
 
@@ -2107,6 +2169,7 @@ async function handleSingleItemAI(row: ScoreRow) {
     return
   }
   row._aiScoring = true
+  row.ai_suggestion = ''
 
   const scoreIsFromAI = row._aiScore !== undefined && row.score === row._aiScore
   const commentIsFromAI = row._aiComment !== undefined && row.comment === row._aiComment
@@ -2129,10 +2192,18 @@ async function handleSingleItemAI(row: ScoreRow) {
   pushAILog('info', `[${row.item_name}] 开始 AI 生成…`)
 
   try {
-    const photoUrls = await uploadRowPhotos(row)
+    const photos: { data: string; mime_type: string; url?: string }[] = []
+    for (const p of row.photos) {
+      if (p.file) {
+        const encoded = await fileToBase64(p.file)
+        photos.push(encoded)
+      } else if (p.url) {
+        photos.push({ data: '', mime_type: 'image/jpeg', url: p.url })
+      }
+    }
     const bodyWithPhotos = {
       ...requestBody,
-      photos: photoUrls.map((url) => ({ data: url, url: url, mime_type: 'image/*' })),
+      photos,
     }
 
     pushAILog(
@@ -2221,6 +2292,9 @@ async function handleSingleItemAI(row: ScoreRow) {
             if (payload.comment) {
               row.comment = payload.comment
               row._aiComment = payload.comment
+            }
+            if (payload.suggestion) {
+              row.ai_suggestion = payload.suggestion
             }
             row.ai_generated = true
             pushAILog(
@@ -2343,6 +2417,7 @@ async function doSave() {
         score: Number(r.score) || 0,
         comment: r.comment,
         ai_generated: r.ai_generated,
+        ai_suggestion: r.ai_suggestion || '',
         photos: rowPhotos,
       })
     }
@@ -2816,7 +2891,7 @@ function nowLocalString() {
   overflow: hidden;
 }
 .ai-inspect-panel__body {
-  max-height: 240px;
+  height: 240px;
   overflow-y: auto;
   padding: 12px 14px;
   font-family: 'SF Mono', ui-monospace, Menlo, Monaco, 'Cascadia Code', 'Roboto Mono', monospace;

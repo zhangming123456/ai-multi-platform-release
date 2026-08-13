@@ -80,6 +80,7 @@ func migrateSchema() error {
 		{"inspection_scores", "show_remark", "ALTER TABLE inspection_scores ADD COLUMN show_remark bool DEFAULT true"},
 		{"inspection_scores", "show_photo", "ALTER TABLE inspection_scores ADD COLUMN show_photo bool DEFAULT true"},
 		{"inspection_scores", "photos", "ALTER TABLE inspection_scores ADD COLUMN photos text"},
+		{"inspection_scores", "ai_suggestion", "ALTER TABLE inspection_scores ADD COLUMN ai_suggestion text"},
 		{"inspection_template_items", "score_options", "ALTER TABLE inspection_template_items ADD COLUMN score_options text"},
 		{"inspection_template_items", "category", "ALTER TABLE inspection_template_items ADD COLUMN category varchar(100) DEFAULT ''"},
 		{"inspection_template_items", "show_remark", "ALTER TABLE inspection_template_items ADD COLUMN show_remark bool DEFAULT true"},
