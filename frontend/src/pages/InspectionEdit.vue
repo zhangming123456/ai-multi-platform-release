@@ -12,7 +12,7 @@
           <a-tag color="arcoblue" size="small">实时分析</a-tag>
         </div>
         <div class="text-[12px] text-[#86868b] mb-4">
-          检查项内图片、AI 巡店图片与巡店关键词至少提供一种，AI
+          检查项内图片、检查项内反馈问题、AI 巡店图片与巡店关键词至少提供一种，AI
           将按检查表标准分析并生成问题与备注、AI 整改建议。
         </div>
         <a-form :model="form" layout="vertical">
@@ -34,17 +34,16 @@
               </a-option>
             </a-select>
           </a-form-item>
-          <a-form-item label="巡店关键词 / 现场描述（可选）">
-            <a-textarea
-              v-model="aiKeywords"
-              placeholder="填写巡店现场发现，例如：门口地垫破损、消防通道被遮挡、收银台前有杂物堆放…"
-              :max-length="200"
-              :auto-size="{ minRows: 2, maxRows: 4 }"
-              show-word-limit
-            />
-          </a-form-item>
-          <a-form-item label="巡店图片（可选）">
-            <div class="ai-photo-upload">
+          <a-form-item label="巡店现场描述">
+            <div
+              class="feedback-input-area"
+              :class="{ 'feedback-input-area--dragging': isAIDragging }"
+              @dragenter="handleAIDragEnter"
+              @dragleave="handleAIDragLeave"
+              @dragover="handleAIDragOver"
+              @drop="handleAIDrop"
+            >
+              <!-- 已上传图片预览 -->
               <div v-if="aiPhotos.length > 0" class="feedback-thumbs">
                 <div v-for="(photo, pIdx) in aiPhotos" :key="photo.uid" class="feedback-thumb-item">
                   <img :src="photo.url" class="feedback-thumb-img" />
@@ -54,6 +53,21 @@
                   <span class="feedback-thumb-name">{{ photo.name }}</span>
                 </div>
               </div>
+
+              <!-- 文本输入区 -->
+              <a-textarea
+                v-model="aiKeywords"
+                placeholder="填写巡店现场发现，例如：门口地垫破损、消防通道被遮挡、收银台前有杂物堆放…&#10;支持拖拽/粘贴图片，或粘贴图片 URL 自动识别"
+                :auto-size="{ minRows: 3, maxRows: 6 }"
+                :max-length="500"
+                show-word-limit
+                class="feedback-textarea"
+                @paste="handleAIPaste"
+                @input="handleAIInput"
+                @keydown="handleAIKeydown"
+              />
+
+              <!-- 工具栏 -->
               <div class="feedback-toolbar">
                 <div class="feedback-toolbar-left">
                   <button
@@ -63,12 +77,14 @@
                     @click="triggerAIUpload(fromDrawer)"
                   >
                     <IconImage :size="16" />
-                    <span class="text-[12px]">上传图片</span>
-                    <span class="text-[11px] text-[#86868b]">{{ aiPhotos.length }}/10</span>
                   </button>
+                  <span class="text-[12px] text-[#86868b]">图片</span>
+                  <span class="text-[11px] text-[#86868b]">{{ aiPhotos.length }}/10</span>
                   <span class="text-[11px] text-[#86868b]">单张≤10MB</span>
                 </div>
               </div>
+
+              <!-- 隐藏文件输入 -->
               <input
                 :ref="(el: any) => (fromDrawer ? setAIDrawerFileInput(el) : setAIFileInput(el))"
                 type="file"
@@ -89,7 +105,10 @@
           :disabled="
             !form.store_id ||
             !form.template_id ||
-            (allRowPhotos.length === 0 && !aiKeywords.trim() && aiPhotos.length === 0) ||
+            (allRowPhotos.length === 0 &&
+              !hasRowComments &&
+              aiPhotos.length === 0 &&
+              !aiKeywords.trim()) ||
             isAnalyzing ||
             !scrolledToBottom
           "
@@ -104,18 +123,16 @@
           }}</template>
           <template v-else-if="!form.template_id">请先选择检查表模板。</template>
           <template
-            v-else-if="allRowPhotos.length === 0 && aiPhotos.length === 0 && !aiKeywords.trim()"
-            >请至少提供一种巡店依据：检查项内图片、AI 巡店图片或关键词。</template
+            v-else-if="
+              allRowPhotos.length === 0 &&
+              !hasRowComments &&
+              aiPhotos.length === 0 &&
+              !aiKeywords.trim()
+            "
+            >请至少提供一种巡店依据：检查项内图片、检查项内反馈问题、AI 巡店图片或关键词。</template
           >
           <template v-else-if="!scrolledToBottom">请滚动至页面最底部以解锁 AI 巡店功能。</template>
-          <template v-else
-            >本次将基于{{
-              allRowPhotos.length + aiPhotos.length > 0
-                ? ` ${allRowPhotos.length + aiPhotos.length} 张照片`
-                : ''
-            }}{{ allRowPhotos.length + aiPhotos.length > 0 && aiKeywords.trim() ? '、' : ''
-            }}{{ aiKeywords.trim() ? ' 巡店关键词' : '' }}进行实时分析。</template
-          >
+          <template v-else>本次将基于 {{ aiBasisDescription }} 进行实时分析。</template>
         </div>
       </div>
     </DefineAIInspectForm>
@@ -139,10 +156,7 @@
           </button>
         </div>
         <div
-          class="ai-report-body prose prose-sm max-w-none text-[13px] leading-relaxed text-[#3C3C43] overflow-y-auto"
-          :style="{
-            maxHeight: '300px',
-          }"
+          class="ai-report-body prose prose-sm max-w-none text-[13px] leading-relaxed text-[#3C3C43]"
           v-html="renderedAIReport"
         />
       </div>
@@ -500,22 +514,21 @@
                         <!-- 工具栏 -->
                         <div class="feedback-toolbar">
                           <div class="feedback-toolbar-left">
-                            <button
-                              v-if="row.show_photo"
-                              type="button"
-                              class="feedback-toolbar-btn"
-                              :disabled="!isCategoryEditable(catGroup) || row.photos.length >= 10"
-                              @click="triggerRowUpload(row)"
-                            >
-                              <IconImage :size="16" />
-                              <span class="text-[12px]">图片</span>
-                              <span class="text-[11px] text-[#86868b]"
-                                >{{ row.photos.length }}/10</span
+                            <template v-if="row.show_photo">
+                              <button
+                                type="button"
+                                class="feedback-toolbar-btn"
+                                :disabled="!isCategoryEditable(catGroup) || row.photos.length >= 10"
+                                @click="triggerRowUpload(row)"
                               >
-                            </button>
-                            <span v-if="row.show_photo" class="text-[11px] text-[#86868b]"
-                              >单张≤10MB</span
-                            >
+                                <IconImage :size="16" />
+                              </button>
+                              <span class="text-[12px] text-[#86868b]">图片</span>
+                              <span class="text-[11px] text-[#86868b]">
+                                {{ row.photos.length }}/10
+                              </span>
+                              <span class="text-[11px] text-[#86868b]"> 单张≤10MB </span>
+                            </template>
                           </div>
                           <div class="feedback-toolbar-right">
                             <a-button
@@ -987,6 +1000,9 @@ const allRowPhotos = computed<PhotoItem[]>(() => {
   return result
 })
 
+// 检查项内是否已填写反馈问题
+const hasRowComments = computed(() => scoreRows.value.some((r) => r.comment.trim()))
+
 const selectedPlanId = ref('')
 const selectedModelId = ref('')
 const aiDrawerVisible = ref(false)
@@ -1003,6 +1019,22 @@ const renderedAIReport = computed(() => {
 })
 const aiKeywords = ref('')
 const aiPhotos = ref<PhotoItem[]>([])
+
+// 本次 AI 巡店的依据描述（照片 / 检查项内反馈问题 / 巡店关键词）
+const aiBasisDescription = computed(() => {
+  const parts: string[] = []
+  const totalPhotos = allRowPhotos.value.length + aiPhotos.value.length
+  if (totalPhotos > 0) {
+    parts.push(
+      allRowPhotos.value.length > 0
+        ? `${totalPhotos} 张照片（其中检查项 ${allRowPhotos.value.length} 张）`
+        : `${totalPhotos} 张照片`,
+    )
+  }
+  if (hasRowComments.value) parts.push('检查项内反馈问题')
+  if (aiKeywords.value.trim()) parts.push('巡店关键词')
+  return parts.join('、')
+})
 const aiLogs = ref<LogEntry[]>([])
 const scrolledToBottom = ref(false)
 let aiLogSeq = 0
@@ -1043,36 +1075,143 @@ function copyAIReport() {
   )
 }
 
-function onAIFileInputChange(e: Event) {
-  const input = e.target as HTMLInputElement
-  if (!input.files || input.files.length === 0) return
+async function addAIPhotos(files: File[]) {
+  const imageFiles = files.filter((f) => f.type.startsWith('image/'))
+  if (imageFiles.length === 0) return
   const remaining = 10 - aiPhotos.value.length
   if (remaining <= 0) {
     Message.warning('最多上传 10 张图片')
     return
   }
-  const files = Array.from(input.files).slice(0, remaining)
+  const accept = imageFiles.slice(0, remaining)
   let hasOversize = false
-  for (const file of files) {
+  for (const file of accept) {
     if (file.size > MAX_IMAGE_SIZE) {
       hasOversize = true
       continue
     }
+    const fileToUse = file.size > 500 * 1024 ? await compressImage(file) : file
     aiPhotos.value.push({
       uid: `ai-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       name: file.name,
-      url: URL.createObjectURL(file),
+      url: URL.createObjectURL(fileToUse),
       status: 'init',
-      file,
+      file: fileToUse,
     })
   }
-  if (hasOversize) {
-    Message.warning('单张图片大小不能超过 10MB')
-  }
+  if (hasOversize) Message.warning('单张图片大小不能超过 10MB')
+}
+
+async function onAIFileInputChange(e: Event) {
+  const input = e.target as HTMLInputElement
+  if (!input.files || input.files.length === 0) return
+  await addAIPhotos(Array.from(input.files))
+  input.value = ''
 }
 
 function removeAIPhoto(index: number) {
   aiPhotos.value.splice(index, 1)
+}
+
+const isAIDragging = ref(false)
+let aiDragDepth = 0
+
+function handleAIPaste(e: ClipboardEvent) {
+  const files = Array.from(e.clipboardData?.files || []).filter((f) => f.type.startsWith('image/'))
+  if (files.length > 0) {
+    e.preventDefault()
+    addAIPhotos(files)
+    return
+  }
+  nextTick(() => {
+    extractImageLinksFromAIKeywords()
+    normalizeAIKeywordsNewlines()
+  })
+}
+
+function handleAIInput(val: string | any) {
+  if (typeof val !== 'string') return
+  nextTick(() => {
+    normalizeAIKeywordsNewlines()
+    extractImageLinksFromAIKeywords()
+  })
+}
+
+function handleAIKeydown(e: KeyboardEvent) {
+  if (e.key === 'Enter' && !e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey) {
+    const target = e.target as HTMLTextAreaElement
+    const before = target.value.slice(0, target.selectionStart)
+    if (before.endsWith('\n\n')) {
+      e.preventDefault()
+    }
+  }
+}
+
+function extractImageLinksFromAIKeywords() {
+  const text = aiKeywords.value
+  const urls = Array.from(new Set(text.match(FILE_URL_PATTERN) || []))
+    .map((u) => u.replace(/[.,;:!?，。；：！？、]+$/, ''))
+    .filter((u) => IMAGE_URL_PATTERN.test(u))
+  if (urls.length === 0) return
+  const existing = new Set(aiPhotos.value.map((p) => p.url))
+  const remaining = 10 - aiPhotos.value.length
+  let addedCount = 0
+  for (const url of urls) {
+    if (existing.has(url)) continue
+    if (addedCount >= remaining) break
+    const path = url.split(/[?#]/)[0]
+    let name = path.split('/').pop() || url
+    try {
+      name = decodeURIComponent(name)
+    } catch {
+      /* keep original */
+    }
+    aiPhotos.value.push({
+      uid: `ai-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      name,
+      url,
+      status: 'done',
+    })
+    existing.add(url)
+    addedCount++
+  }
+  const cleaned = text.replace(FILE_URL_PATTERN, (match) => {
+    const url = match.replace(/[.,;:!?，。；：！？、]+$/, '')
+    return IMAGE_URL_PATTERN.test(url) ? '' : match
+  })
+  aiKeywords.value = cleaned.replace(/ +/g, ' ').replace(/\n{3,}/g, '\n\n')
+}
+
+function normalizeAIKeywordsNewlines() {
+  const text = aiKeywords.value
+  const normalized = text.replace(/\n{3,}/g, '\n\n')
+  if (normalized !== text) {
+    aiKeywords.value = normalized
+  }
+}
+
+function handleAIDragEnter(e: DragEvent) {
+  if (!e.dataTransfer?.types.includes('Files')) return
+  aiDragDepth++
+  isAIDragging.value = true
+}
+function handleAIDragLeave() {
+  aiDragDepth--
+  if (aiDragDepth <= 0) {
+    aiDragDepth = 0
+    isAIDragging.value = false
+  }
+}
+function handleAIDragOver(e: DragEvent) {
+  if (!e.dataTransfer?.types.includes('Files')) return
+  e.preventDefault()
+}
+function handleAIDrop(e: DragEvent) {
+  aiDragDepth = 0
+  isAIDragging.value = false
+  if (!e.dataTransfer?.types.includes('Files')) return
+  e.preventDefault()
+  addAIPhotos(Array.from(e.dataTransfer.files))
 }
 
 function pushAILog(level: LogLevel, message: string, detail?: string) {
@@ -1633,6 +1772,55 @@ function removeRowPhoto(row: ScoreRow, index: number) {
   row.ai_generated = false
 }
 
+async function compressImage(file: File, maxSize = 1600, quality = 0.8): Promise<File> {
+  if (!file.type.startsWith('image/')) return file
+  return new Promise((resolve) => {
+    const img = new Image()
+    const url = URL.createObjectURL(file)
+    img.onload = () => {
+      URL.revokeObjectURL(url)
+      let { width, height } = img
+      if (width <= maxSize && height <= maxSize) {
+        resolve(file)
+        return
+      }
+      if (width > height) {
+        height = Math.round((height * maxSize) / width)
+        width = maxSize
+      } else {
+        width = Math.round((width * maxSize) / height)
+        height = maxSize
+      }
+      const canvas = document.createElement('canvas')
+      canvas.width = width
+      canvas.height = height
+      const ctx = canvas.getContext('2d')
+      if (!ctx) {
+        resolve(file)
+        return
+      }
+      ctx.drawImage(img, 0, 0, width, height)
+      canvas.toBlob(
+        (blob) => {
+          if (!blob) {
+            resolve(file)
+            return
+          }
+          const compressed = new File([blob], file.name, { type: 'image/jpeg' })
+          resolve(compressed)
+        },
+        'image/jpeg',
+        quality,
+      )
+    }
+    img.onerror = () => {
+      URL.revokeObjectURL(url)
+      resolve(file)
+    }
+    img.src = url
+  })
+}
+
 async function fileToBase64(file: File): Promise<{ data: string; mime_type: string }> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
@@ -1682,8 +1870,13 @@ async function handleAnalyze() {
     return
   }
   const keywords = aiKeywords.value.trim()
-  if (allRowPhotos.value.length === 0 && aiPhotos.value.length === 0 && !keywords) {
-    Message.warning('请至少提供一种巡店依据：检查项内图片、AI 巡店图片或关键词')
+  if (
+    allRowPhotos.value.length === 0 &&
+    !hasRowComments.value &&
+    aiPhotos.value.length === 0 &&
+    !keywords
+  ) {
+    Message.warning('请至少提供一种巡店依据：检查项内图片、检查项内反馈问题、AI 巡店图片或关键词')
     return
   }
   if (!selectedPlanId.value || !selectedModelId.value) {
@@ -2472,6 +2665,7 @@ function nowLocalString() {
 
 /* ===== 反馈问题 + 图片上传一体化输入区 ===== */
 .feedback-input-area {
+  width: 100%;
   border: 1px solid #e5e5ea;
   border-radius: 12px;
   background: #f5f5f7;
@@ -2480,6 +2674,10 @@ function nowLocalString() {
 .feedback-input-area--disabled {
   opacity: 0.6;
   pointer-events: none;
+}
+.feedback-input-area--dragging {
+  border-color: #007aff;
+  background: #eef5ff;
 }
 
 .feedback-thumbs {
@@ -2585,7 +2783,7 @@ function nowLocalString() {
 .feedback-toolbar-left {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
 }
 .feedback-toolbar-btn {
   display: inline-flex;
