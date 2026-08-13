@@ -5,6 +5,224 @@
       subtitle="选择检查表模板并评分，支持上传照片并使用 AI 生成检查报告"
     />
 
+    <DefineAIInspectForm v-slot="{ selectSize, fromDrawer, hintClass, showHeader, wrapperClass }">
+      <div :class="[wrapperClass]">
+        <div v-if="showHeader" class="flex items-center gap-2 mb-1">
+          <span class="text-[15px] font-semibold text-[#1D1D1F]">AI 巡店</span>
+          <a-tag color="arcoblue" size="small">实时分析</a-tag>
+        </div>
+        <div class="text-[12px] text-[#86868b] mb-4">
+          检查项内图片、AI 巡店图片与巡店关键词至少提供一种，AI
+          将按检查表标准分析并生成问题与备注、AI 整改建议。
+        </div>
+        <a-form :model="form" layout="vertical">
+          <a-form-item label="模型">
+            <a-select
+              :model-value="activeModelKey"
+              placeholder="选择模型"
+              :size="selectSize as any"
+              @change="onModelChange"
+            >
+              <a-option v-for="opt in modelOptions" :key="opt.key" :value="opt.key">
+                <span class="provider-opt">
+                  <span class="provider-opt__name">
+                    <span class="provider-opt__bracket">【</span>{{ opt.planName
+                    }}<span class="provider-opt__bracket">】</span>
+                  </span>
+                  <span class="provider-opt__model">{{ opt.modelId }}</span>
+                </span>
+              </a-option>
+            </a-select>
+          </a-form-item>
+          <a-form-item label="巡店关键词 / 现场描述（可选）">
+            <a-textarea
+              v-model="aiKeywords"
+              placeholder="填写巡店现场发现，例如：门口地垫破损、消防通道被遮挡、收银台前有杂物堆放…"
+              :max-length="200"
+              :auto-size="{ minRows: 2, maxRows: 4 }"
+              show-word-limit
+            />
+          </a-form-item>
+          <a-form-item label="巡店图片（可选）">
+            <div class="ai-photo-upload">
+              <div v-if="aiPhotos.length > 0" class="feedback-thumbs">
+                <div v-for="(photo, pIdx) in aiPhotos" :key="photo.uid" class="feedback-thumb-item">
+                  <img :src="photo.url" class="feedback-thumb-img" />
+                  <button type="button" class="feedback-thumb-remove" @click="removeAIPhoto(pIdx)">
+                    <IconClose :size="12" />
+                  </button>
+                  <span class="feedback-thumb-name">{{ photo.name }}</span>
+                </div>
+              </div>
+              <div class="feedback-toolbar">
+                <div class="feedback-toolbar-left">
+                  <button
+                    type="button"
+                    class="feedback-toolbar-btn"
+                    :disabled="aiPhotos.length >= 10"
+                    @click="triggerAIUpload(fromDrawer)"
+                  >
+                    <IconImage :size="16" />
+                    <span class="text-[12px]">上传图片</span>
+                    <span class="text-[11px] text-[#86868b]">{{ aiPhotos.length }}/10</span>
+                  </button>
+                  <span class="text-[11px] text-[#86868b]">单张≤10MB</span>
+                </div>
+              </div>
+              <input
+                :ref="(el: any) => (fromDrawer ? setAIDrawerFileInput(el) : setAIFileInput(el))"
+                type="file"
+                accept="image/*"
+                multiple
+                class="hidden"
+                @change="(e: Event) => onAIFileInputChange(e)"
+              />
+            </div>
+          </a-form-item>
+        </a-form>
+        <a-button
+          v-perm="'inspection:ai:write'"
+          type="primary"
+          long
+          size="large"
+          :loading="isAnalyzing"
+          :disabled="
+            !form.store_id ||
+            !form.template_id ||
+            (allRowPhotos.length === 0 && !aiKeywords.trim() && aiPhotos.length === 0) ||
+            isAnalyzing ||
+            !scrolledToBottom
+          "
+          @click="handleAnalyze"
+        >
+          <template #icon v-if="!isAnalyzing"><IconRobot /></template>
+          {{ isAnalyzing ? 'AI 正在分析...' : '开始 AI 巡店' }}
+        </a-button>
+        <div :class="['text-[12px] text-[#86868b] mt-3', hintClass]">
+          <template v-if="!form.store_id">{{
+            fromDrawer ? '请先选择巡店门店。' : '请先选择门店。'
+          }}</template>
+          <template v-else-if="!form.template_id">请先选择检查表模板。</template>
+          <template
+            v-else-if="allRowPhotos.length === 0 && aiPhotos.length === 0 && !aiKeywords.trim()"
+            >请至少提供一种巡店依据：检查项内图片、AI 巡店图片或关键词。</template
+          >
+          <template v-else-if="!scrolledToBottom">请滚动至页面最底部以解锁 AI 巡店功能。</template>
+          <template v-else
+            >本次将基于{{
+              allRowPhotos.length + aiPhotos.length > 0
+                ? ` ${allRowPhotos.length + aiPhotos.length} 张照片`
+                : ''
+            }}{{ allRowPhotos.length + aiPhotos.length > 0 && aiKeywords.trim() ? '、' : ''
+            }}{{ aiKeywords.trim() ? ' 巡店关键词' : '' }}进行实时分析。</template
+          >
+        </div>
+      </div>
+    </DefineAIInspectForm>
+
+    <DefineAIReportBlock v-slot="{ wrapperClass }">
+      <div
+        v-if="aiReport"
+        :class="[
+          'rounded-2xl border border-[#E5E5EA] bg-white/70 backdrop-blur-xl p-5',
+          wrapperClass,
+        ]"
+      >
+        <div class="flex items-center justify-between mb-3">
+          <span class="text-[15px] font-semibold text-[#1D1D1F]">AI 巡店分析报告</span>
+          <button
+            type="button"
+            class="text-[12px] text-[#007AFF] hover:text-[#0056cc] transition-colors"
+            @click="copyAIReport"
+          >
+            <IconCopy :size="14" class="inline-block mr-1" />复制报告
+          </button>
+        </div>
+        <div
+          class="ai-report-body prose prose-sm max-w-none text-[13px] leading-relaxed text-[#3C3C43] overflow-y-auto"
+          :style="{
+            maxHeight: '300px',
+          }"
+          v-html="renderedAIReport"
+        />
+      </div>
+    </DefineAIReportBlock>
+
+    <DefineAiInspectPanel v-slot="{ wrapperClass }">
+      <div class="ai-inspect-panel" :class="wrapperClass">
+        <div class="ai-inspect-panel__bar">
+          <div class="flex items-center gap-2">
+            <IconCode :size="14" style="color: #8e8e93" />
+            <span class="ai-inspect-panel__title">调用日志</span>
+            <span v-if="isAnalyzing" class="log-live">
+              <span class="log-live__pulse"></span>
+              实时分析中
+            </span>
+            <span v-else-if="aiLogs.length > 0" class="log-idle">空闲</span>
+          </div>
+          <div class="flex items-center gap-1">
+            <span class="ai-inspect-panel__count">{{ aiLogs.length }} 条</span>
+            <button class="ai-inspect-panel__btn" title="清空日志" @click="clearAILogs">
+              <IconDelete :size="13" />
+            </button>
+          </div>
+        </div>
+        <!-- 日志打印 -->
+        <div class="ai-inspect-panel__body-wrap">
+          <div class="ai-inspect-panel__body">
+            <div class="ai-inspect-panel__body-main">
+              <div v-if="aiLogs.length === 0" class="ai-inspect-panel__empty">
+                <span class="ai-inspect-panel__prompt">➜</span>
+                点击「开始 AI 巡店」后，这里将实时输出调用日志
+              </div>
+              <template v-for="entry in aiLogs" :key="entry.id">
+                <div
+                  class="log-line"
+                  :class="[`log-line--${entry.level}`, { 'log-line--has-detail': entry.detail }]"
+                >
+                  <div class="log-line__row" @click="toggleLogDetail(entry.id)">
+                    <span class="log-line__time">{{ entry.time }}</span>
+                    <span class="log-line__level">{{ levelText(entry.level) }}</span>
+                    <span class="log-line__msg">{{ entry.message }}</span>
+                    <span v-if="entry.detail" class="log-line__toggle">
+                      {{ logExpanded.has(entry.id) ? '▾' : '▸' }}
+                    </span>
+                  </div>
+                </div>
+                <div
+                  v-if="entry.detail && logExpanded.has(entry.id)"
+                  class="log-line"
+                  :class="[`log-line--${entry.level}`, { 'log-line--has-detail': entry.detail }]"
+                >
+                  <div class="log-line__row">
+                    <span class="log-line__time">{{ entry.time }}</span>
+                    <span class="log-line__level">{{ levelText(entry.level) }}</span>
+                    <pre class="log-line__detail">{{ entry.detail }}</pre>
+                  </div>
+                </div>
+              </template>
+              <div v-if="isAnalyzing" class="log-line log-line--cursor">
+                <span class="ai-inspect-panel__prompt">➜</span>
+                <span class="log-cursor"></span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <!-- 流式输出预览 -->
+        <div v-if="aiStreamingText" class="ai-inspect-stream">
+          <div class="ai-inspect-stream__header">
+            <span class="text-[13px] font-medium">{{
+              aiStreaming ? 'AI 正在输出' : 'AI 输出预览'
+            }}</span>
+            <span v-if="aiStreaming" class="ai-inspect-stream__badge">实时</span>
+          </div>
+          <div class="ai-inspect-stream__text">
+            {{ aiStreamingText }}<span v-if="aiStreaming" class="streaming-cursor"></span>
+          </div>
+        </div>
+      </div>
+    </DefineAiInspectPanel>
+
     <div class="px-4 md:px-6 lg:px-8 flex-1">
       <a-spin :loading="loading" tip="加载中..." class="w-full">
         <div class="grid grid-cols-1 xl:grid-cols-3 gap-4">
@@ -82,7 +300,7 @@
               </div>
 
               <div
-                v-for="(catGroup, catIndex) in categoryGroups"
+                v-for="catGroup in categoryGroups"
                 :key="catGroup.category"
                 class="mb-4 border border-[#E5E5EA] rounded-2xl bg-white overflow-hidden transition-colors"
                 :class="
@@ -413,226 +631,14 @@
           <div class="hidden xl:block" style="padding-left: 45px">
             <div class="sticky top-4 space-y-4">
               <!-- 实时对话 / 日志终端 -->
-              <div class="ai-inspect-panel">
-                <div class="ai-inspect-panel__bar">
-                  <div class="flex items-center gap-2">
-                    <IconCode :size="14" style="color: #8e8e93" />
-                    <span class="ai-inspect-panel__title">调用日志</span>
-                    <span v-if="isAnalyzing" class="log-live">
-                      <span class="log-live__pulse"></span>
-                      实时分析中
-                    </span>
-                    <span v-else-if="aiLogs.length > 0" class="log-idle">空闲</span>
-                  </div>
-                  <div class="flex items-center gap-1">
-                    <span class="ai-inspect-panel__count">{{ aiLogs.length }} 条</span>
-                    <button class="ai-inspect-panel__btn" title="清空日志" @click="clearAILogs">
-                      <IconDelete :size="13" />
-                    </button>
-                  </div>
-                </div>
-                <div class="ai-inspect-panel__body-wrap">
-                  <div ref="logBodyRef" class="ai-inspect-panel__body">
-                    <div ref="logBodyWRef">
-                      <div v-if="aiLogs.length === 0" class="ai-inspect-panel__empty">
-                        <span class="ai-inspect-panel__prompt">➜</span>
-                        点击「开始 AI 巡店」后，这里将实时输出调用日志
-                      </div>
-                      <template v-for="entry in aiLogs" :key="entry.id">
-                        <div
-                          class="log-line"
-                          :class="[
-                            `log-line--${entry.level}`,
-                            { 'log-line--has-detail': entry.detail },
-                          ]"
-                        >
-                          <div class="log-line__row" @click="toggleLogDetail(entry.id)">
-                            <span class="log-line__time">{{ entry.time }}</span>
-                            <span class="log-line__level">{{ levelText(entry.level) }}</span>
-                            <span class="log-line__msg">{{ entry.message }}</span>
-                            <span v-if="entry.detail" class="log-line__toggle">
-                              {{ logExpanded.has(entry.id) ? '▾' : '▸' }}
-                            </span>
-                          </div>
-                        </div>
-                        <div
-                          v-if="entry.detail && logExpanded.has(entry.id)"
-                          class="log-line"
-                          :class="[
-                            `log-line--${entry.level}`,
-                            { 'log-line--has-detail': entry.detail },
-                          ]"
-                        >
-                          <div class="log-line__row">
-                            <span class="log-line__time">{{ entry.time }}</span>
-                            <span class="log-line__level">{{ levelText(entry.level) }}</span>
-                            <pre class="log-line__detail">{{ entry.detail }}</pre>
-                          </div>
-                        </div>
-                      </template>
-                      <div v-if="isAnalyzing" class="log-line log-line--cursor">
-                        <span class="ai-inspect-panel__prompt">➜</span>
-                        <span class="log-cursor"></span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <!-- 流式输出预览 -->
-                <div v-if="aiStreaming && aiStreamingText" class="ai-inspect-stream">
-                  <div class="ai-inspect-stream__header">
-                    <span class="text-[13px] font-medium">AI 正在输出</span>
-                    <span class="ai-inspect-stream__badge">实时</span>
-                  </div>
-                  <div class="ai-inspect-stream__text">
-                    {{ aiStreamingText }}<span class="streaming-cursor"></span>
-                  </div>
-                </div>
-              </div>
-
-              <div class="rounded-2xl border border-[#E5E5EA] bg-white/70 backdrop-blur-xl p-5">
-                <div class="flex items-center gap-2 mb-1">
-                  <span class="text-[15px] font-semibold text-[#1D1D1F]">AI 巡店</span>
-                  <a-tag color="arcoblue" size="small">实时分析</a-tag>
-                </div>
-                <div class="text-[12px] text-[#86868b] mb-4">
-                  检查项内图片、AI 巡店图片与巡店关键词至少提供一种，AI
-                  将按检查表标准分析并生成问题与备注、AI 整改建议。
-                </div>
-                <a-form :model="form" layout="vertical">
-                  <a-form-item label="模型">
-                    <a-select
-                      :model-value="activeModelKey"
-                      placeholder="选择模型"
-                      size="small"
-                      @change="onModelChange"
-                    >
-                      <a-option v-for="opt in modelOptions" :key="opt.key" :value="opt.key">
-                        <span class="provider-opt">
-                          <span class="provider-opt__name">
-                            <span class="provider-opt__bracket">【</span>{{ opt.planName
-                            }}<span class="provider-opt__bracket">】</span>
-                          </span>
-                          <span class="provider-opt__model">{{ opt.modelId }}</span>
-                        </span>
-                      </a-option>
-                    </a-select>
-                  </a-form-item>
-                  <a-form-item label="巡店关键词 / 现场描述（可选）">
-                    <a-textarea
-                      v-model="aiKeywords"
-                      placeholder="填写巡店现场发现，例如：门口地垫破损、消防通道被遮挡、收银台前有杂物堆放…"
-                      :max-length="200"
-                      :auto-size="{ minRows: 2, maxRows: 4 }"
-                      show-word-limit
-                    />
-                  </a-form-item>
-                  <a-form-item label="巡店图片（可选）">
-                    <div class="ai-photo-upload">
-                      <div v-if="aiPhotos.length > 0" class="feedback-thumbs">
-                        <div
-                          v-for="(photo, pIdx) in aiPhotos"
-                          :key="photo.uid"
-                          class="feedback-thumb-item"
-                        >
-                          <img :src="photo.url" class="feedback-thumb-img" />
-                          <button
-                            type="button"
-                            class="feedback-thumb-remove"
-                            @click="removeAIPhoto(pIdx)"
-                          >
-                            <IconClose :size="12" />
-                          </button>
-                          <span class="feedback-thumb-name">{{ photo.name }}</span>
-                        </div>
-                      </div>
-                      <div class="feedback-toolbar">
-                        <div class="feedback-toolbar-left">
-                          <button
-                            type="button"
-                            class="feedback-toolbar-btn"
-                            :disabled="aiPhotos.length >= 10"
-                            @click="triggerAIUpload()"
-                          >
-                            <IconImage :size="16" />
-                            <span class="text-[12px]">上传图片</span>
-                            <span class="text-[11px] text-[#86868b]">{{ aiPhotos.length }}/10</span>
-                          </button>
-                          <span class="text-[11px] text-[#86868b]">单张≤10MB</span>
-                        </div>
-                      </div>
-                      <input
-                        :ref="(el: any) => setAIFileInput(el)"
-                        type="file"
-                        accept="image/*"
-                        multiple
-                        class="hidden"
-                        @change="(e: Event) => onAIFileInputChange(e)"
-                      />
-                    </div>
-                  </a-form-item>
-                </a-form>
-                <a-button
-                  v-perm="'inspection:ai:write'"
-                  type="primary"
-                  long
-                  size="large"
-                  :loading="isAnalyzing"
-                  :disabled="
-                    !form.store_id ||
-                    !form.template_id ||
-                    (allRowPhotos.length === 0 && !aiKeywords.trim() && aiPhotos.length === 0) ||
-                    isAnalyzing ||
-                    !scrolledToBottom
-                  "
-                  @click="handleAnalyze"
-                >
-                  <template #icon v-if="!isAnalyzing"><IconRobot /></template>
-                  {{ isAnalyzing ? 'AI 正在分析...' : '开始 AI 巡店' }}
-                </a-button>
-                <div class="text-[12px] text-[#86868b] mt-3">
-                  <template v-if="!form.store_id">请先选择门店。</template>
-                  <template v-else-if="!form.template_id">请先选择检查表模板。</template>
-                  <template
-                    v-else-if="
-                      allRowPhotos.length === 0 && aiPhotos.length === 0 && !aiKeywords.trim()
-                    "
-                    >请至少提供一种巡店依据：检查项内图片、AI 巡店图片或关键词。</template
-                  >
-                  <template v-else-if="!scrolledToBottom"
-                    >请滚动至页面最底部以解锁 AI 巡店功能。</template
-                  >
-                  <template v-else
-                    >本次将基于{{
-                      allRowPhotos.length + aiPhotos.length > 0
-                        ? ` ${allRowPhotos.length + aiPhotos.length} 张照片`
-                        : ''
-                    }}{{ allRowPhotos.length + aiPhotos.length > 0 && aiKeywords.trim() ? '、' : ''
-                    }}{{ aiKeywords.trim() ? ' 巡店关键词' : '' }}进行实时分析。</template
-                  >
-                </div>
-              </div>
+              <ReuseAiInspectPanel ref="aiInspectPanelRef" />
               <!-- AI 巡店分析报告 -->
-              <div
-                v-if="aiReport"
-                class="rounded-2xl border border-[#E5E5EA] bg-white/70 backdrop-blur-xl p-5"
-              >
-                <div class="flex items-center justify-between mb-3">
-                  <span class="text-[15px] font-semibold text-[#1D1D1F]">AI 巡店分析报告</span>
-                  <button
-                    type="button"
-                    class="text-[12px] text-[#007AFF] hover:text-[#0056cc] transition-colors"
-                    @click="copyAIReport"
-                  >
-                    <IconCopy :size="14" class="inline-block mr-1" />复制报告
-                  </button>
-                </div>
-                <div
-                  class="ai-report-body prose prose-sm max-w-none text-[13px] leading-relaxed text-[#3C3C43] whitespace-pre-wrap"
-                >
-                  {{ aiReport }}
-                </div>
-              </div>
+              <ReuseAIReportBlock />
+              <ReuseAIInspectForm
+                select-size="small"
+                :show-header="true"
+                wrapper-class="rounded-2xl border border-[#E5E5EA] bg-white/70 backdrop-blur-xl p-5"
+              />
             </div>
           </div>
         </div>
@@ -645,217 +651,16 @@
           :footer="false"
           placement="right"
         >
-          <div class="text-[12px] text-[#86868b] mb-4">
-            检查项内图片、AI 巡店图片与巡店关键词至少提供一种，AI
-            将按检查表标准分析并生成问题与备注、AI 整改建议。
-          </div>
-          <a-form :model="form" layout="vertical">
-            <a-form-item label="模型">
-              <a-select
-                :model-value="activeModelKey"
-                placeholder="选择模型"
-                @change="onModelChange"
-              >
-                <a-option v-for="opt in modelOptions" :key="opt.key" :value="opt.key">
-                  <span class="provider-opt">
-                    <span class="provider-opt__name">
-                      <span class="provider-opt__bracket">【</span>{{ opt.planName
-                      }}<span class="provider-opt__bracket">】</span>
-                    </span>
-                    <span class="provider-opt__model">{{ opt.modelId }}</span>
-                  </span>
-                </a-option>
-              </a-select>
-            </a-form-item>
-            <a-form-item label="巡店关键词 / 现场描述（可选）">
-              <a-textarea
-                v-model="aiKeywords"
-                placeholder="填写巡店现场发现，例如：门口地垫破损、消防通道被遮挡、收银台前有杂物堆放…"
-                :max-length="200"
-                :auto-size="{ minRows: 2, maxRows: 4 }"
-                show-word-limit
-              />
-            </a-form-item>
-            <a-form-item label="巡店图片（可选）">
-              <div class="ai-photo-upload">
-                <div v-if="aiPhotos.length > 0" class="feedback-thumbs">
-                  <div
-                    v-for="(photo, pIdx) in aiPhotos"
-                    :key="photo.uid"
-                    class="feedback-thumb-item"
-                  >
-                    <img :src="photo.url" class="feedback-thumb-img" />
-                    <button
-                      type="button"
-                      class="feedback-thumb-remove"
-                      @click="removeAIPhoto(pIdx)"
-                    >
-                      <IconClose :size="12" />
-                    </button>
-                    <span class="feedback-thumb-name">{{ photo.name }}</span>
-                  </div>
-                </div>
-                <div class="feedback-toolbar">
-                  <div class="feedback-toolbar-left">
-                    <button
-                      type="button"
-                      class="feedback-toolbar-btn"
-                      :disabled="aiPhotos.length >= 10"
-                      @click="triggerAIUpload(true)"
-                    >
-                      <IconImage :size="16" />
-                      <span class="text-[12px]">上传图片</span>
-                      <span class="text-[11px] text-[#86868b]">{{ aiPhotos.length }}/10</span>
-                    </button>
-                    <span class="text-[11px] text-[#86868b]">单张≤10MB</span>
-                  </div>
-                </div>
-                <input
-                  :ref="(el: any) => setAIDrawerFileInput(el)"
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  class="hidden"
-                  @change="(e: Event) => onAIFileInputChange(e)"
-                />
-              </div>
-            </a-form-item>
-          </a-form>
-          <a-button
-            v-perm="'inspection:ai:write'"
-            type="primary"
-            long
-            size="large"
-            :loading="isAnalyzing"
-            :disabled="
-              !form.store_id ||
-              !form.template_id ||
-              (allRowPhotos.length === 0 && !aiKeywords.trim() && aiPhotos.length === 0) ||
-              isAnalyzing ||
-              !scrolledToBottom
-            "
-            @click="handleAnalyze"
-          >
-            <template #icon v-if="!isAnalyzing"><IconRobot /></template>
-            {{ isAnalyzing ? 'AI 正在分析...' : '开始 AI 巡店' }}
-          </a-button>
-          <div class="text-[12px] text-[#86868b] mt-3 mb-4">
-            <template v-if="!form.store_id">请先选择巡店门店。</template>
-            <template v-else-if="!form.template_id">请先选择检查表模板。</template>
-            <template
-              v-else-if="allRowPhotos.length === 0 && aiPhotos.length === 0 && !aiKeywords.trim()"
-              >请至少提供一种巡店依据：检查项内图片、AI 巡店图片或关键词。</template
-            >
-            <template v-else-if="!scrolledToBottom"
-              >请滚动至页面最底部以解锁 AI 巡店功能。</template
-            >
-            <template v-else
-              >本次将基于{{
-                allRowPhotos.length + aiPhotos.length > 0
-                  ? ` ${allRowPhotos.length + aiPhotos.length} 张照片`
-                  : ''
-              }}{{ allRowPhotos.length + aiPhotos.length > 0 && aiKeywords.trim() ? '、' : ''
-              }}{{ aiKeywords.trim() ? ' 巡店关键词' : '' }}进行实时分析。</template
-            >
-          </div>
-          <!-- AI 巡店分析报告 -->
-          <div
-            v-if="aiReport"
-            class="rounded-2xl border border-[#E5E5EA] bg-white/70 backdrop-blur-xl p-5 mb-4"
-          >
-            <div class="flex items-center justify-between mb-3">
-              <span class="text-[15px] font-semibold text-[#1D1D1F]">AI 巡店分析报告</span>
-              <button
-                type="button"
-                class="text-[12px] text-[#007AFF] hover:text-[#0056cc] transition-colors"
-                @click="copyAIReport"
-              >
-                <IconCopy :size="14" class="inline-block mr-1" />复制报告
-              </button>
-            </div>
-            <div
-              class="ai-report-body prose prose-sm max-w-none text-[13px] leading-relaxed text-[#3C3C43] whitespace-pre-wrap"
-            >
-              {{ aiReport }}
-            </div>
-          </div>
-          <!-- Drawer 内实时日志终端 -->
-          <div class="ai-inspect-panel mb-4">
-            <div class="ai-inspect-panel__bar">
-              <div class="flex items-center gap-2">
-                <IconCode :size="14" style="color: #8e8e93" />
-                <span class="ai-inspect-panel__title">调用日志</span>
-                <span v-if="isAnalyzing" class="log-live">
-                  <span class="log-live__pulse"></span>
-                  实时分析中
-                </span>
-                <span v-else-if="aiLogs.length > 0" class="log-idle">空闲</span>
-              </div>
-              <div class="flex items-center gap-1">
-                <span class="ai-inspect-panel__count">{{ aiLogs.length }} 条</span>
-                <button class="ai-inspect-panel__btn" title="清空日志" @click="clearAILogs">
-                  <IconDelete :size="13" />
-                </button>
-              </div>
-            </div>
-
-            <div class="ai-inspect-panel__body-wrap">
-              <div ref="logDrawerBodyRef" class="ai-inspect-panel__body">
-                <div ref="logDrawerWBodyRef">
-                  <div v-if="aiLogs.length === 0" class="ai-inspect-panel__empty">
-                    <span class="ai-inspect-panel__prompt">➜</span>
-                    点击「开始 AI 巡店」后，这里将实时输出调用日志
-                  </div>
-                  <template v-for="entry in aiLogs" :key="entry.id">
-                    <div
-                      class="log-line"
-                      :class="[
-                        `log-line--${entry.level}`,
-                        { 'log-line--has-detail': entry.detail },
-                      ]"
-                    >
-                      <div class="log-line__row" @click="toggleLogDetail(entry.id)">
-                        <span class="log-line__time">{{ entry.time }}</span>
-                        <span class="log-line__level">{{ levelText(entry.level) }}</span>
-                        <span class="log-line__msg">{{ entry.message }}</span>
-                        <span v-if="entry.detail" class="log-line__toggle">
-                          {{ logExpanded.has(entry.id) ? '▾' : '▸' }}
-                        </span>
-                      </div>
-                    </div>
-                    <div
-                      v-if="entry.detail && logExpanded.has(entry.id)"
-                      class="log-line"
-                      :class="[
-                        `log-line--${entry.level}`,
-                        { 'log-line--has-detail': entry.detail },
-                      ]"
-                    >
-                      <div class="log-line__row">
-                        <span class="log-line__time">{{ entry.time }}</span>
-                        <span class="log-line__level">{{ levelText(entry.level) }}</span>
-                        <pre class="log-line__detail">{{ entry.detail }}</pre>
-                      </div>
-                    </div>
-                  </template>
-                  <div v-if="isAnalyzing" class="log-line log-line--cursor">
-                    <span class="ai-inspect-panel__prompt">➜</span>
-                    <span class="log-cursor"></span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <!-- 流式输出预览 -->
-            <div v-if="aiStreaming && aiStreamingText" class="ai-inspect-stream">
-              <div class="ai-inspect-stream__header">
-                <span class="text-[13px] font-medium">AI 正在输出</span>
-                <span class="ai-inspect-stream__badge">实时</span>
-              </div>
-              <div class="ai-inspect-stream__text">
-                {{ aiStreamingText }}<span class="streaming-cursor"></span>
-              </div>
-            </div>
+          <div class="space-y-4">
+            <!-- Drawer 内实时日志终端 -->
+            <ReuseAiInspectPanel ref="aiDrawerInspectPanelRef" />
+            <!-- AI 巡店分析报告 -->
+            <ReuseAIReportBlock wrapper-class="mb-4" />
+            <ReuseAIInspectForm
+              select-size="small"
+              :show-header="true"
+              wrapper-class="rounded-2xl border border-[#E5E5EA] bg-white/70 backdrop-blur-xl p-5"
+            />
           </div>
         </a-drawer>
 
@@ -947,10 +752,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted, nextTick, watch, unref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Message, Modal } from '@arco-design/web-vue'
-import { useElementSize } from '@vueuse/core'
+import { useResizeObserver, createReusableTemplate, useScroll, unrefElement } from '@vueuse/core'
 import {
   IconRobot,
   IconUp,
@@ -958,7 +763,6 @@ import {
   IconCheck,
   IconClose,
   IconCaretRight,
-  IconCaretDown,
   IconImage,
   IconCode,
   IconCopy,
@@ -977,6 +781,23 @@ import type {
   Store,
 } from '@/types'
 import api from '@/utils/api'
+import { marked } from 'marked'
+
+const [DefineAIInspectForm, ReuseAIInspectForm] = createReusableTemplate<{
+  selectSize?: string
+  fromDrawer?: boolean
+  hintClass?: string
+  showHeader?: boolean
+  wrapperClass?: string
+}>()
+
+const [DefineAIReportBlock, ReuseAIReportBlock] = createReusableTemplate<{
+  wrapperClass?: string
+}>()
+
+const [DefineAiInspectPanel, ReuseAiInspectPanel] = createReusableTemplate<{
+  wrapperClass?: string
+}>()
 
 interface PhotoItem {
   uid: string
@@ -986,7 +807,7 @@ interface PhotoItem {
   file?: File
 }
 
-type LogLevel = 'info' | 'req' | 'ok' | 'err'
+type LogLevel = 'info' | 'req' | 'ok' | 'err' | 'warn'
 
 interface LogEntry {
   id: string
@@ -1175,18 +996,16 @@ const isAnalyzing = ref(false)
 const aiStreaming = ref(false)
 const aiStreamingText = ref('')
 const aiReport = ref('')
+const renderedAIReport = computed(() => {
+  if (!aiReport.value) return ''
+  marked.setOptions({ gfm: true, breaks: true })
+  return marked.parse(aiReport.value) as string
+})
 const aiKeywords = ref('')
 const aiPhotos = ref<PhotoItem[]>([])
 const aiLogs = ref<LogEntry[]>([])
 const scrolledToBottom = ref(false)
 let aiLogSeq = 0
-
-// 日志终端滚动容器（大屏面板 + Drawer）
-const logBodyRef = ref<HTMLElement | null>(null)
-const logDrawerBodyRef = ref<HTMLElement | null>(null)
-
-const logBodyWRef = ref<HTMLElement | null>(null)
-const logDrawerWBodyRef = ref<HTMLElement | null>(null)
 
 // AI 生成标记追踪：记录 AI 生成的问题/建议原始值，用于识别用户手动修改后取消标记
 const aiOriginalIssues = ref('')
@@ -1286,29 +1105,50 @@ function toggleLogDetail(id: string) {
   }
 }
 
-const { height: logBodyHeight } = useElementSize(logBodyWRef)
-const { height: logDrawerBodyHeight } = useElementSize(logDrawerWBodyRef)
-
-// 日志实时滚动到底部，确保光标始终处于可视范围
-function scrollAILogsToBottom() {
-  nextTick(() => {
-    const bodies = [logBodyRef.value, logDrawerBodyRef.value]
-    for (const el of bodies) {
-      if (el) {
-        el.scrollTo({
-          top: el.scrollHeight,
-          behavior: 'smooth', // 这里同样使用了smooth滚动行为
-        })
-      }
-    }
-  })
-}
-
-watch([logBodyHeight, logDrawerBodyHeight], (value, oldValue) => {
-  console.log(value, 'valuevaluevalue')
-  scrollAILogsToBottom()
+// 日志终端滚动容器（大屏面板 + Drawer）
+const aiInspectPanelRef = ref<InstanceType<typeof ReuseAiInspectPanel>>()
+const logBodyEl = computed<HTMLElement | undefined>(() => {
+  const el = unrefElement(aiInspectPanelRef)
+  return el?.querySelector('.ai-inspect-panel__body') ?? undefined
 })
-watch([aiLogs, aiStreamingText, isAnalyzing], scrollAILogsToBottom)
+const logBodyMainEl = computed<HTMLElement | undefined>(() => {
+  const el = unrefElement(aiInspectPanelRef)
+  return el?.querySelector('.ai-inspect-panel__body-main') ?? undefined
+})
+const { y: logBodyY } = useScroll(logBodyEl, {
+  behavior: 'smooth',
+})
+
+useResizeObserver(logBodyMainEl, () => {
+  const el = unref(logBodyEl)
+  // 日志实时滚动到底部，确保光标始终处于可视范围
+  // 仅在用户已经处于底部时才自动滚动，避免打断用户查看历史日志
+  if (el) {
+    logBodyY.value = el.scrollHeight - el.clientHeight
+  }
+})
+
+const aiDrawerInspectPanelRef = ref<InstanceType<typeof ReuseAiInspectPanel>>()
+const logDrawerBodyEl = computed<HTMLElement | undefined>(() => {
+  const el = unrefElement(aiDrawerInspectPanelRef)
+  return el?.querySelector('.ai-inspect-panel__body') ?? undefined
+})
+const logDrawerBodyMainEl = computed<HTMLElement | undefined>(() => {
+  const el = unrefElement(aiDrawerInspectPanelRef)
+  return el?.querySelector('.ai-inspect-panel__body-main') ?? undefined
+})
+const { y: logDrawerBodyY } = useScroll(logDrawerBodyEl, {
+  behavior: 'smooth',
+})
+
+useResizeObserver(logDrawerBodyMainEl, () => {
+  const el = unref(logDrawerBodyEl)
+  // 日志实时滚动到底部，确保光标始终处于可视范围
+  // 仅在用户已经处于底部时才自动滚动，避免打断用户查看历史日志
+  if (el) {
+    logDrawerBodyY.value = el.scrollHeight - el.clientHeight
+  }
+})
 
 function levelText(level: LogLevel): string {
   const map: Record<LogLevel, string> = {
@@ -1316,6 +1156,7 @@ function levelText(level: LogLevel): string {
     req: 'REQ',
     ok: 'OK',
     err: 'ERR',
+    warn: 'WARN',
   }
   return map[level] || level.toUpperCase()
 }
@@ -1380,12 +1221,6 @@ function isRowPassed(row: ScoreRow): boolean {
     return Number(row.score) === opts[0].score
   }
   return row.max_score > 0 ? Number(row.score) >= row.max_score : Number(row.score) > 0
-}
-
-function rowUsesOptions(row: ScoreRow): boolean {
-  if (!row.score_options || row.score_options.length === 0) return false
-  if (row.score_type === 'pass_fail') return true
-  return row.score_options.some((o) => o.score === Number(row.score))
 }
 
 function scoreLabel(row: ScoreRow): string {
@@ -1736,28 +1571,6 @@ function handleCommentInput(row: ScoreRow, val: string | any) {
   })
 }
 
-// 图片大小校验，过滤超限文件
-function filterImageFiles(fileList: any[]): any[] {
-  const result: any[] = []
-  let hasOversize = false
-  for (const f of fileList) {
-    if (f.file && f.file.size > MAX_IMAGE_SIZE) {
-      hasOversize = true
-      continue
-    }
-    result.push(f)
-  }
-  if (hasOversize) {
-    Message.warning(`单张图片大小不能超过 10MB`)
-  }
-  return result
-}
-
-function handleRowPhotoChange(row: ScoreRow, fileList: any[]) {
-  row.photos = normalizeFileList(filterImageFiles(fileList))
-  row.ai_generated = false
-}
-
 // ===== 创作内容风格图片上传（原生 input） =====
 const rowFileInputs: Record<string, HTMLInputElement | null> = {}
 
@@ -1820,38 +1633,6 @@ function removeRowPhoto(row: ScoreRow, index: number) {
   row.ai_generated = false
 }
 
-function normalizeFileList(fileList: any[]): PhotoItem[] {
-  const newList: PhotoItem[] = []
-  for (const item of fileList) {
-    if (item.status === 'done' && item.response) {
-      newList.push({
-        uid: item.uid,
-        name: item.name,
-        url: item.response?.url || item.url,
-        status: 'done',
-      })
-      continue
-    }
-    if (item.file) {
-      newList.push({
-        uid: item.uid,
-        name: item.name,
-        url: item.url || URL.createObjectURL(item.file),
-        status: 'init',
-        file: item.file,
-      })
-    } else if (item.url) {
-      newList.push({
-        uid: item.uid,
-        name: item.name,
-        url: item.url,
-        status: 'done',
-      })
-    }
-  }
-  return newList
-}
-
 async function fileToBase64(file: File): Promise<{ data: string; mime_type: string }> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
@@ -1864,7 +1645,12 @@ async function fileToBase64(file: File): Promise<{ data: string; mime_type: stri
   })
 }
 
-function applyAIResult(data: { scores?: InspectionScore[]; issues?: string; suggestion?: string }) {
+function applyAIResult(data: {
+  scores?: InspectionScore[]
+  issues?: string
+  suggestion?: string
+  report?: string
+}) {
   if (data.scores && data.scores.length > 0) {
     const aiMap = new Map(data.scores.map((s: InspectionScore) => [s.item_id, s]))
     for (const row of scoreRows.value) {
@@ -1974,6 +1760,7 @@ async function handleAnalyze() {
   }
 
   const startedAt = performance.now()
+  let analysisFailed = false
   pushAILog('info', `开始 AI 巡店分析 · ${keywords ? '关键词 + ' : ''}${photos.length} 张照片`)
   pushAILog('info', `使用模型配置（${selectedModelId.value}）`)
 
@@ -2080,6 +1867,7 @@ async function handleAnalyze() {
             pushAILog('ok', '已获取 AI 巡店分析结果')
             break
           case 'error':
+            analysisFailed = true
             pushAILog('err', payload.message || 'AI 巡店分析失败')
             if (payload.available_plans?.length > 0) {
               const planNames = payload.available_plans
@@ -2105,17 +1893,19 @@ async function handleAnalyze() {
       pushAILog('ok', `已生成问题与建议 ，相关检查项已评分 · 总耗时 ${(total / 1000).toFixed(1)}s`)
       Message.success('AI 巡店分析完成，已生成问题与整改建议，相关检查项已评分')
     } else {
+      analysisFailed = true
       pushAILog('err', '未获取到有效分析结果')
       Message.error('未获取到 AI 巡店分析结果，请重试')
     }
   } catch (error: unknown) {
+    analysisFailed = true
     const err = error as { message?: string }
     pushAILog('err', err.message || '网络异常')
     Message.error(err.message || 'AI 巡店分析失败，请重试')
   } finally {
     isAnalyzing.value = false
     aiStreaming.value = false
-    aiStreamingText.value = ''
+    if (!analysisFailed) aiStreamingText.value = ''
   }
 }
 
