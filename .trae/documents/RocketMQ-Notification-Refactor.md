@@ -5,17 +5,17 @@
 
 ## 0. 决策摘要
 
-| # | 决策项 | 结论 |
-| -- | ---- | ---- |
-| 1 | 部署形态 | **Docker 单机 RocketMQ 5.x**（nameserver + broker + proxy） |
-| 2 | 客户端选型 | **官方 gRPC 客户端** `apache/rocketmq-clients/golang`（5.x，长期维护） |
-| 3 | 改造范围 | **通知推送链路 + 发布任务 worker + AI 复核异步化** |
-| 4 | 消费者部署 | **独立消费者进程**（新 Go 二进制，与 API 服务分离） |
-| 5 | 可靠性 | **标准可靠**：同步发送 + 发送重试 + 消费重试 + 死信队列（DLQ） |
-| 6 | Topic 组织 | **每业务域一个 Topic**：`notification` / `publish_task` / `ai_recheck`，Tag 按类型细分 |
-| 7 | 生产端即时性 | **保留内存广播双写**（单实例下 RocketMQ/Redis 故障仍即时推送） |
-| 8 | 跨进程桥接 | **Redis Pub/Sub**（通道 `notification:push`，已有 Redis 基础设施） |
-| 9 | 顺序性 | **不要求严格顺序**（消息带 `created_at`，DB 为最终排序来源） |
+| #   | 决策项       | 结论                                                                                   |
+| --- | ------------ | -------------------------------------------------------------------------------------- |
+| 1   | 部署形态     | **Docker 单机 RocketMQ 5.x**（nameserver + broker + proxy）                            |
+| 2   | 客户端选型   | **官方 gRPC 客户端** `apache/rocketmq-clients/golang`（5.x，长期维护）                 |
+| 3   | 改造范围     | **通知推送链路 + 发布任务 worker + AI 复核异步化**                                     |
+| 4   | 消费者部署   | **独立消费者进程**（新 Go 二进制，与 API 服务分离）                                    |
+| 5   | 可靠性       | **标准可靠**：同步发送 + 发送重试 + 消费重试 + 死信队列（DLQ）                         |
+| 6   | Topic 组织   | **每业务域一个 Topic**：`notification` / `publish_task` / `ai_recheck`，Tag 按类型细分 |
+| 7   | 生产端即时性 | **保留内存广播双写**（单实例下 RocketMQ/Redis 故障仍即时推送）                         |
+| 8   | 跨进程桥接   | **Redis Pub/Sub**（通道 `notification:push`，已有 Redis 基础设施）                     |
+| 9   | 顺序性       | **不要求严格顺序**（消息带 `created_at`，DB 为最终排序来源）                           |
 
 > **架构要点**：选择「独立消费者进程」后，RocketMQ 消费端与 SSE 连接（进程内内存广播）**不在同一进程**。因此必须引入**跨进程推送桥接**（Redis Pub/Sub），由独立消费者进程把消息发布到 Redis，API 服务器各实例订阅后转发到本地 Broadcaster → SSE。Redis 已在现有 `docker-compose.yml` 中部署（redis:7-alpine），无需新增基础设施，仅需在 Go 侧引入 `go-redis` 依赖。
 
@@ -31,12 +31,12 @@
 
 存在以下问题：
 
-| 问题 | 说明 |
-| ---- | ---- |
-| **无跨实例能力** | 进程内内存广播仅单实例有效；多实例部署时，其他实例产生的通知无法实时到达本实例 SSE，只能依赖 500ms DB 轮询兜底 |
-| **创建与推送同步耦合** | 通知创建时同步「先写库、再内存广播」，缺少异步削峰、重试与持久化中间层；批量通知场景下阻塞请求线程 |
-| **扩展性受限** | 接收者列表（`userIDsWithPermission`）在创建时同步全量计算，通知量大时成为性能瓶颈 |
-| **无异步任务承载** | 后端没有任何持久化队列/worker/定时任务；发布任务只有「登记」没有「执行者」，AI 复核完全同步串行等待 |
+| 问题                   | 说明                                                                                                           |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------- |
+| **无跨实例能力**       | 进程内内存广播仅单实例有效；多实例部署时，其他实例产生的通知无法实时到达本实例 SSE，只能依赖 500ms DB 轮询兜底 |
+| **创建与推送同步耦合** | 通知创建时同步「先写库、再内存广播」，缺少异步削峰、重试与持久化中间层；批量通知场景下阻塞请求线程             |
+| **扩展性受限**         | 接收者列表（`userIDsWithPermission`）在创建时同步全量计算，通知量大时成为性能瓶颈                              |
+| **无异步任务承载**     | 后端没有任何持久化队列/worker/定时任务；发布任务只有「登记」没有「执行者」，AI 复核完全同步串行等待            |
 
 **改造目标**：
 
@@ -52,16 +52,16 @@
 
 ### 2.1 核心文件
 
-| 层级 | 文件 | 职责 |
-| ---- | ---- | ---- |
-| 模型 | `backend-go/models/notification.go` | `Notification`（notifications 表）、`NotificationDict` |
-| 统一创建入口 | `backend-go/controllers/base.go` `createNotification` / `createNotificationWithChannel` | 写库 + 内存广播 |
-| 内存广播 | `backend-go/services/notification_broadcaster.go` | 全局单例 `map[userID]map[chan]bool` |
-| SSE 端点 | `backend-go/controllers/notifications_controller.go` `Stream` | SSE 长连接 + 500ms DB 轮询兜底 + knownIDs 去重 |
-| API 端点 | 同上 | List / UnreadCount / TypeCounts / MarkRead / MarkAllRead / 字典管理 |
-| 通知生产者 | reviews / db_changes / rbac_roles / rbac_users / inspection_tasks 控制器 | 20 处调用创建通知 |
-| 前端实时 | `frontend/src/composables/useNotificationRealtime.ts` | EventSource 连接 SSE，失败降级 15s 轮询 |
-| 前端 UI | NotificationBell / Notifications / NotificationDictManage | 铃铛角标、消息中心、字典管理 |
+| 层级         | 文件                                                                                    | 职责                                                                |
+| ------------ | --------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| 模型         | `backend-go/models/notification.go`                                                     | `Notification`（notifications 表）、`NotificationDict`              |
+| 统一创建入口 | `backend-go/controllers/base.go` `createNotification` / `createNotificationWithChannel` | 写库 + 内存广播                                                     |
+| 内存广播     | `backend-go/services/notification_broadcaster.go`                                       | 全局单例 `map[userID]map[chan]bool`                                 |
+| SSE 端点     | `backend-go/controllers/notifications_controller.go` `Stream`                           | SSE 长连接 + 500ms DB 轮询兜底 + knownIDs 去重                      |
+| API 端点     | 同上                                                                                    | List / UnreadCount / TypeCounts / MarkRead / MarkAllRead / 字典管理 |
+| 通知生产者   | reviews / db_changes / rbac_roles / rbac_users / inspection_tasks 控制器                | 20 处调用创建通知                                                   |
+| 前端实时     | `frontend/src/composables/useNotificationRealtime.ts`                                   | EventSource 连接 SSE，失败降级 15s 轮询                             |
+| 前端 UI      | NotificationBell / Notifications / NotificationDictManage                               | 铃铛角标、消息中心、字典管理                                        |
 
 ### 2.2 当前调用链
 
@@ -92,12 +92,12 @@ SSE "event: notification"
 
 **其他异步场景调查结果**：
 
-| 场景 | 现状 | 结论 |
-| ---- | ---- | ---- |
-| 发布任务（publish_task） | **纯「登记制」**：`CreateTask` 仅写 DB 记录（publishing/published/failed 状态），**没有执行者**，`RetryTask` 仅改状态 | 可改造为「登记 → RocketMQ 消息 → 独立执行 worker 消费 → 回写状态 + 发通知」 |
-| AI 生成（contents_controller AIGenerate/AIGenerateStream） | 请求内 goroutine + SSE 流式返回，一次性请求 | 改造需改为「提交 → 后台生成 → 完成后通知」，**会改变前端流式体验**，影响面大，建议暂缓 |
-| 巡店整改 AI 复核（inspection_recheck_service） | **完全同步串行**：提交整改后同步等待 AI 复核结果 | 可改造为「提交 → 后台复核 → 完成后通知 + 状态回写」，前端改为轮询/等待通知 |
-| Redis | 仅 Python 侧 / docker-compose 有部署，Go 未接入 | 引入 `go-redis` 作为跨进程桥接依赖（基础设施已存在） |
+| 场景                                                       | 现状                                                                                                                  | 结论                                                                                   |
+| ---------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| 发布任务（publish_task）                                   | **纯「登记制」**：`CreateTask` 仅写 DB 记录（publishing/published/failed 状态），**没有执行者**，`RetryTask` 仅改状态 | 可改造为「登记 → RocketMQ 消息 → 独立执行 worker 消费 → 回写状态 + 发通知」            |
+| AI 生成（contents_controller AIGenerate/AIGenerateStream） | 请求内 goroutine + SSE 流式返回，一次性请求                                                                           | 改造需改为「提交 → 后台生成 → 完成后通知」，**会改变前端流式体验**，影响面大，建议暂缓 |
+| 巡店整改 AI 复核（inspection_recheck_service）             | **完全同步串行**：提交整改后同步等待 AI 复核结果                                                                      | 可改造为「提交 → 后台复核 → 完成后通知 + 状态回写」，前端改为轮询/等待通知             |
+| Redis                                                      | 仅 Python 侧 / docker-compose 有部署，Go 未接入                                                                       | 引入 `go-redis` 作为跨进程桥接依赖（基础设施已存在）                                   |
 
 ---
 
@@ -110,7 +110,7 @@ SSE "event: notification"
 业务控制器 createNotificationWithChannel（改造）
    ├─ ① 写库 notifications 表（保持原有逻辑）
    ├─ ② RocketMQ Producer 同步发送（3 次重试，失败不阻塞）
-   └─ ③ 内存广播双写（即时兜底，决策见 §11 待确认）
+   └─ ③ 内存广播双写（已定稿保留，单实例即时兜底）
          │
          ▼
   RocketMQ 5.x Broker（持久化 / 重试 / DLQ）
@@ -144,18 +144,18 @@ SSE "event: notification"
 
 ### 4.1 部署形态（已定稿：方案 B · Docker 5.x）
 
-| 方案 | 说明 | 结论 |
-| ---- | ---- | ---- |
-| A. Docker 单机 4.x | nameserver + broker，客户端 `apache/rocketmq-client-go/v2`（TCP） | ✗ 客户端已停止维护 |
-| **B. Docker 单机 5.x** | **nameserver + broker + proxy，客户端 `apache/rocketmq-clients/golang`（gRPC）** | **✓ 选定** |
-| C. 云上 RocketMQ（阿里云/腾讯云） | 托管服务，走 HTTP/gRPC 接入 | 生产托管备选，架构兼容 |
+| 方案                              | 说明                                                                             | 结论                   |
+| --------------------------------- | -------------------------------------------------------------------------------- | ---------------------- |
+| A. Docker 单机 4.x                | nameserver + broker，客户端 `apache/rocketmq-client-go/v2`（TCP）                | ✗ 客户端已停止维护     |
+| **B. Docker 单机 5.x**            | **nameserver + broker + proxy，客户端 `apache/rocketmq-clients/golang`（gRPC）** | **✓ 选定**             |
+| C. 云上 RocketMQ（阿里云/腾讯云） | 托管服务，走 HTTP/gRPC 接入                                                      | 生产托管备选，架构兼容 |
 
 ### 4.2 Go 客户端选型（已定稿：官方 gRPC）
 
-| 客户端 | 协议 | RocketMQ 版本 | 维护状态 | 结论 |
-| ---- | ---- | ---- | ---- | ---- |
-| `apache/rocketmq-client-go/v2` | TCP（Remoting） | 4.x | 已停止维护（社区存档） | ✗ |
-| **`apache/rocketmq-clients/golang`** | **gRPC（Proxy 8081）** | **5.x** | **官方维护** | **✓ 选定** |
+| 客户端                               | 协议                   | RocketMQ 版本 | 维护状态               | 结论       |
+| ------------------------------------ | ---------------------- | ------------- | ---------------------- | ---------- |
+| `apache/rocketmq-client-go/v2`       | TCP（Remoting）        | 4.x           | 已停止维护（社区存档） | ✗          |
+| **`apache/rocketmq-clients/golang`** | **gRPC（Proxy 8081）** | **5.x**       | **官方维护**           | **✓ 选定** |
 
 生产/消费代码形态（示意）：
 
@@ -177,30 +177,26 @@ consumer, _ := golang.NewSimpleConsumer(&golang.SimpleConsumerOptions{
 }, nil)
 ```
 
-### 4.3 Topic / Tag 设计（待确认，见 §11）
+### 4.3 Topic / Tag 设计（已定稿：每业务域一个 Topic）
 
 ```
-方案 A（推荐）：每业务域一个 Topic
-  Topic: notification       → 通知推送（消费组 notification_consumer）
-  Topic: publish_task       → 发布任务执行（消费组 publish_worker）
-  Topic: ai_recheck         → AI 复核异步化（消费组 ai_recheck_worker）
-  Tag：按通知类型细分（review_submit / role_updated / inspection_task_* ...）
-
-方案 B：单一 Topic + Tag
-  Topic: notification，Tag 承载全部业务语义（仅适合纯通知场景）
+Topic: notification       → 通知推送（消费组 notification_consumer）
+Topic: publish_task       → 发布任务执行（消费组 publish_worker）
+Topic: ai_recheck         → AI 复核异步化（消费组 ai_recheck_worker）
+Tag：按业务类型细分（通知：review_submit / role_updated / inspection_task_* ...）
 ```
 
 ### 4.4 消息体结构
 
 ```json
 {
-  "msg_id": "uuid",            // 消息唯一 ID（幂等去重）
-  "user_id": "uuid",           // 接收者
-  "type": "review_submit",     // 通知类型
+  "msg_id": "uuid", // 消息唯一 ID（幂等去重）
+  "user_id": "uuid", // 接收者
+  "type": "review_submit", // 通知类型
   "title": "标题",
   "content": "内容",
-  "related_id": "uuid",        // 关联业务 ID
-  "channel": "internal",       // 渠道
+  "related_id": "uuid", // 关联业务 ID
+  "channel": "internal", // 渠道
   "created_at": "2026-08-17T10:00:00Z"
 }
 ```
@@ -219,7 +215,7 @@ func createNotificationWithChannel(userID, ntype, title, content, relatedID, cha
     // ② 投递 RocketMQ（同步发送 + 重试；仍失败仅记日志，不阻塞主流程）
     payload := services.NotificationPayload{...}
     _ = services.SendNotificationMessage(payload) // 失败容忍，DB 轮询兜底
-    // ③ 内存广播双写（可选，保证单实例即时性，决策见 §11）
+    // ③ 内存广播双写（已定稿保留：单实例即时兜底；SSE 侧 knownIDs 去重）
     services.GetBroadcaster().Broadcast(userID, payload)
     return nil
 }
@@ -252,14 +248,14 @@ func createNotificationWithChannel(userID, ntype, title, content, relatedID, cha
 
 ### 4.8 可靠性设计（已定稿：标准可靠）
 
-| 环节 | 策略 |
-| ---- | ---- |
-| 发送失败 | **同步发送 + 重试（3 次）**；仍失败记录日志，依赖内存广播双写 + DB 轮询兜底补偿 |
-| 消费失败 | RocketMQ 消息阶梯重试（默认 16 次），重试耗尽进 **DLQ：`%DLQ%notification_consumer`**（按消费组自动生成） |
-| 幂等 | 消费端以 `msg_id` 去重（滑动窗口内存去重 + DB 存在性校验可选）；SSE 侧 `knownIDs` 二次去重，防双写重复推送 |
-| 乱序 | 单用户通知无强顺序要求（消息带 `created_at`，DB 是最终排序来源）；如需严格顺序可按 `user_id` 分片消费（见 §11） |
-| 降级 | RocketMQ / Redis 不可用 → 500ms DB 轮询兜底通道照常工作，功能不丢失 |
-| 至少一次语义 | RocketMQ 保证至少一次投递，重复投递由幂等去重兜住 |
+| 环节         | 策略                                                                                                            |
+| ------------ | --------------------------------------------------------------------------------------------------------------- |
+| 发送失败     | **同步发送 + 重试（3 次）**；仍失败记录日志，依赖内存广播双写 + DB 轮询兜底补偿                                 |
+| 消费失败     | RocketMQ 消息阶梯重试（默认 16 次），重试耗尽进 **DLQ：`%DLQ%notification_consumer`**（按消费组自动生成）       |
+| 幂等         | 消费端以 `msg_id` 去重（滑动窗口内存去重 + DB 存在性校验可选）；SSE 侧 `knownIDs` 二次去重，防双写重复推送      |
+| 乱序         | 单用户通知无强顺序要求（消息带 `created_at`，DB 是最终排序来源）；如需严格顺序可按 `user_id` 分片消费（见 §11） |
+| 降级         | RocketMQ / Redis 不可用 → 500ms DB 轮询兜底通道照常工作，功能不丢失                                             |
+| 至少一次语义 | RocketMQ 保证至少一次投递，重复投递由幂等去重兜住                                                               |
 
 ### 4.9 配置管理（backend-go/conf/app.conf）
 
@@ -286,28 +282,28 @@ redis_channel_push = notification:push
 
 ### 5.1 发布任务执行 worker（推荐纳入）
 
-| 项 | 内容 |
-| ---- | ---- |
-| 现状 | `PublishController.CreateTask` 仅登记 DB 记录；`publishing/published/failed` 状态无执行者 |
-| 改造 | 创建任务时落库 + 发 `publish_task` 消息；`publish_worker` 消费组执行实际发布（复用现有发布逻辑），完成后回写状态 + 发送完成通知 |
-| 新增文件 | `cmd/publish-worker/main.go`、`services/publish_worker.go` |
-| 影响面 | 后端新增执行逻辑，**前端不变**（任务列表/状态/重试按钮语义保持） |
+| 项       | 内容                                                                                                                            |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| 现状     | `PublishController.CreateTask` 仅登记 DB 记录；`publishing/published/failed` 状态无执行者                                       |
+| 改造     | 创建任务时落库 + 发 `publish_task` 消息；`publish_worker` 消费组执行实际发布（复用现有发布逻辑），完成后回写状态 + 发送完成通知 |
+| 新增文件 | `cmd/publish-worker/main.go`、`services/publish_worker.go`                                                                      |
+| 影响面   | 后端新增执行逻辑，**前端不变**（任务列表/状态/重试按钮语义保持）                                                                |
 
-### 5.2 AI 复核异步化（推荐纳入）
+### 5.2 AI 复核异步化（已确认纳入）
 
-| 项 | 内容 |
-| ---- | ---- |
-| 现状 | 整改提交后同步串行等待 AI 复核（`inspection_recheck_service.go`），请求长时间阻塞 |
-| 改造 | 提交整改时落库 + 发 `ai_recheck` 消息；`ai_recheck_worker` 消费组后台执行复核，完成后回写复核结果 + 发送「复核通过/不通过」通知（复用现有通知类型 `recheck_passed/recheck_failed`） |
-| 新增文件 | `cmd/ai-recheck-worker/main.go`、`services/ai_recheck_worker.go` |
-| 影响面 | 前端提交整改后改为「等待通知/轮询状态」，需小改前端交互提示 |
+| 项       | 内容                                                                                                                                                                                |
+| -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 现状     | 整改提交后同步串行等待 AI 复核（`inspection_recheck_service.go`），请求长时间阻塞                                                                                                   |
+| 改造     | 提交整改时落库 + 发 `ai_recheck` 消息；`ai_recheck_worker` 消费组后台执行复核，完成后回写复核结果 + 发送「复核通过/不通过」通知（复用现有通知类型 `recheck_passed/recheck_failed`） |
+| 新增文件 | `cmd/ai-recheck-worker/main.go`、`services/ai_recheck_worker.go`                                                                                                                    |
+| 影响面   | 前端提交整改后改为「等待通知/轮询状态」，需小改前端交互提示                                                                                                                         |
 
 ### 5.3 AI 生成异步化（不建议本期纳入）
 
-| 项 | 内容 |
-| ---- | ---- |
-| 现状 | `AIGenerateStream` 请求内 goroutine + SSE 流式返回 |
-| 改造 | 改为后台生成 + 完成后通知，**丢失流式体验**，前端改动大（生成进度、取消、重试） |
+| 项   | 内容                                                                                        |
+| ---- | ------------------------------------------------------------------------------------------- |
+| 现状 | `AIGenerateStream` 请求内 goroutine + SSE 流式返回                                          |
+| 改造 | 改为后台生成 + 完成后通知，**丢失流式体验**，前端改动大（生成进度、取消、重试）             |
 | 建议 | 本期仅将「生成完成 → 通知」链路接入通知 Topic（若生成入口已有通知），**不重构生成执行方式** |
 
 ---
@@ -339,7 +335,7 @@ services:
     ports:
       - '10909:10909'
       - '10911:10911'
-      - '8081:8081'          # gRPC Proxy（5.x 客户端接入端口）
+      - '8081:8081' # gRPC Proxy（5.x 客户端接入端口）
     environment:
       - TZ=Asia/Shanghai
       - NAMESRV_ADDR=rocketmq-namesrv:9876
@@ -394,18 +390,18 @@ autoCreateSubscriptionGroup=true
 
 ## 9. 改造范围与任务拆分
 
-| # | 任务 | 涉及文件 | 依赖决策 |
-| -- | ---- | ---- | ---- |
-| 1 | RocketMQ / go-redis 依赖引入与配置读取 | `go.mod`、`conf/app.conf` | — |
-| 2 | 消息体定义与序列化 | `services/notification_message.go` | — |
-| 3 | 生产者 `SendNotificationMessage` | `services/notification_producer.go` | — |
-| 4 | 创建链路改造（写库后投递 + 可选双写） | `controllers/base.go` | §11-Q3 |
-| 5 | 独立消费者进程（通知链路） | `cmd/notification-consumer/main.go` | — |
-| 6 | Redis 桥接（API 侧订阅转发） | `services/notification_bridge.go`、`main.go` | §11-Q4 |
-| 7 | Docker Compose（RocketMQ 5.x） | `docker-compose.rocketmq.yml`、`docker/rocketmq/broker.conf` | — |
-| 8 | 发布任务 worker | `cmd/publish-worker/main.go`、`services/publish_worker.go` | §11-Q1 |
-| 9 | AI 复核 worker | `cmd/ai-recheck-worker/main.go`、`services/ai_recheck_worker.go` | §11-Q1 |
-| 10 | 联调验证（单实例/多实例 SSE、故障注入） | 测试脚本 | — |
+| #   | 任务                                      | 涉及文件                                                         |
+| --- | ----------------------------------------- | ---------------------------------------------------------------- |
+| 1   | RocketMQ / go-redis 依赖引入与配置读取    | `go.mod`、`conf/app.conf`                                        |
+| 2   | 消息体定义与序列化                        | `services/notification_message.go`                               |
+| 3   | 生产者 `SendNotificationMessage`          | `services/notification_producer.go`                              |
+| 4   | 创建链路改造（写库后投递 + 内存广播双写） | `controllers/base.go`                                            |
+| 5   | 独立消费者进程（通知链路）                | `cmd/notification-consumer/main.go`                              |
+| 6   | Redis 桥接（API 侧订阅转发）              | `services/notification_bridge.go`、`main.go`                     |
+| 7   | Docker Compose（RocketMQ 5.x）            | `docker-compose.rocketmq.yml`、`docker/rocketmq/broker.conf`     |
+| 8   | 发布任务 worker                           | `cmd/publish-worker/main.go`、`services/publish_worker.go`       |
+| 9   | AI 复核 worker                            | `cmd/ai-recheck-worker/main.go`、`services/ai_recheck_worker.go` |
+| 10  | 联调验证（单实例/多实例 SSE、故障注入）   | 测试脚本                                                         |
 
 ---
 
@@ -421,12 +417,14 @@ autoCreateSubscriptionGroup=true
 
 ---
 
-## 11. 待确认问题
+## 11. 决策确认记录
 
-以下问题确认后进入实施：
+以下决策均已确认，进入实施后不再变更（如需调整请重新评审本文档）：
 
-1. **Q1 · 其他异步场景范围**（§5）：本期纳入哪些？（发布任务 worker / AI 复核异步化 / 两者都要 / 暂不纳入）
-2. **Q2 · Topic 组织方式**（§4.3）：每业务域一个 Topic（推荐，隔离清晰、独立消费组与 DLQ）/ 单一 Topic + Tag？
-3. **Q3 · 生产端即时性**（§4.5）：是否保留「内存广播双写」作为单实例即时通道（RocketMQ/Redis 故障时仍即时推送）？
-4. **Q4 · 跨进程桥接**（§4.7）：Redis Pub/Sub（推荐，已有 Redis）/ RocketMQ push-topic 回环（API 侧挂轻量消费者）？
-5. **Q5 · 顺序性**（§4.8）：单用户通知是否要求严格顺序消费？（默认不要求，DB 为最终排序来源）
+| #   | 决策项           | 确认结论                                                               | 影响章节 |
+| --- | ---------------- | ---------------------------------------------------------------------- | -------- |
+| Q1  | 其他异步场景范围 | 发布任务执行 worker + AI 复核异步化，**均纳入本期**；AI 生成异步化暂缓 | §5       |
+| Q2  | Topic 组织方式   | **每业务域一个 Topic**（notification / publish_task / ai_recheck）     | §4.3     |
+| Q3  | 生产端即时性     | **保留内存广播双写**（单实例即时兜底，knownIDs 去重防重复）            | §4.5     |
+| Q4  | 跨进程桥接       | **Redis Pub/Sub**（通道 `notification:push`，API 侧桥接订阅器转发）    | §4.7     |
+| Q5  | 顺序性           | **不要求严格顺序**（消息带 `created_at`，DB 为最终排序来源）           | §4.8     |
