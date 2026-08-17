@@ -194,168 +194,65 @@
               </button>
             </div>
 
-            <div
-              ref="inputCardRef"
-              class="chat-input-card"
-              :class="{ 'chat-input-card--drag': isDragOver }"
-              @dragenter.prevent="onDragEnter"
-              @dragover.prevent="onDragOver"
-              @dragleave.prevent="onDragLeave"
-              @drop.prevent="onDrop"
+            <AttachmentInputArea
+              ref="createAreaRef"
+              v-model="fileUrls"
+              v-model:text="promptText"
+              theme="dark"
+              :file-types="['image', 'video']"
+              :max-count="MAX_UPLOAD_FILES"
+              :min-rows="3"
+              :max-rows="5"
+              :hint="shortcutHint"
+              :enter-behavior="'send'"
+              placeholder="输入创作需求，使用 #标签 添加关键词，例如：写一篇小红书文案 #穿搭 #夏季"
+              @enter="generate"
+              @change="onAreaChange"
             >
-              <div v-if="uploadedFiles.length > 0" class="uploaded-files">
-                <div v-for="(item, idx) in uploadedFiles" :key="idx" class="file-chip">
-                  <template v-if="item.kind === 'link'">
-                    <img v-if="item.isImage" :src="item.url" class="file-thumb" />
-                    <div v-else class="file-icon"><IconFile :size="20" /></div>
-                  </template>
-                  <template v-else>
-                    <img
-                      v-if="isImage(item.file)"
-                      :src="filePreview(item.file)"
-                      class="file-thumb"
-                    />
-                    <div v-else class="file-icon"><IconFile :size="20" /></div>
-                  </template>
-                  <div class="file-info">
-                    <div class="file-name">{{ itemName(item) }}</div>
-                    <div class="file-meta">{{ itemMeta(item) }}</div>
-                  </div>
-                  <div v-if="item.isImage" class="file-actions">
-                    <button
-                      type="button"
-                      class="file-action-btn"
-                      title="查看"
-                      @click="openViewer(idx)"
-                    >
-                      <IconEye :size="13" />
-                      <span>查看</span>
-                    </button>
-                    <button
-                      v-if="item.kind === 'file'"
-                      type="button"
-                      class="file-action-btn"
-                      title="编辑"
-                      @click="openEditor(idx)"
-                    >
-                      <IconEdit :size="13" />
-                      <span>编辑</span>
-                    </button>
-                  </div>
-                  <button type="button" class="file-remove" @click="removeFile(idx)">
-                    <IconClose :size="14" />
-                  </button>
-                </div>
-              </div>
-
-              <a-textarea
-                v-model="promptText"
-                :auto-size="{ minRows: 3, maxRows: 5 }"
-                placeholder="输入创作需求，使用 #标签 添加关键词，例如：写一篇小红书文案 #穿搭 #夏季"
-                class="chat-textarea"
-                @keydown="handleTextareaKeydown"
-                @paste="handleTextareaPaste"
-              />
-
-              <div class="chat-toolbar">
-                <div class="toolbar-left">
-                  <button
-                    type="button"
-                    class="toolbar-btn"
-                    title="上传文件"
-                    @click="triggerUpload('all')"
+              <template #toolbar-right>
+                <span
+                  class="model-select-wrap"
+                  :class="{ 'model-select-wrap--compact': modelCompact }"
+                >
+                  <a-select
+                    :model-value="activeModelKey"
+                    :placeholder="modelOptions.length ? '选择模型' : '无可用模型'"
+                    size="small"
+                    class="chat-model-select"
+                    @change="onModelChange"
                   >
-                    <IconFolderAdd :size="18" />
-                  </button>
-                  <button
-                    type="button"
-                    class="toolbar-btn"
-                    title="图片"
-                    @click="triggerUpload('image')"
-                  >
-                    <IconImage :size="18" />
-                  </button>
-                  <button
-                    type="button"
-                    class="toolbar-btn"
-                    title="视频"
-                    @click="triggerUpload('video')"
-                  >
-                    <IconVideoCamera :size="18" />
-                  </button>
-                  <span class="chat-shortcut-hint">{{ shortcutHint }}</span>
-                </div>
-                <div class="toolbar-right">
-                  <span
-                    class="model-select-wrap"
-                    :class="{ 'model-select-wrap--compact': modelCompact }"
-                  >
-                    <a-select
-                      :model-value="activeModelKey"
-                      :placeholder="modelOptions.length ? '选择模型' : '无可用模型'"
-                      size="small"
-                      class="chat-model-select"
-                      @change="onModelChange"
-                    >
-                      <a-option v-for="opt in modelOptions" :key="opt.key" :value="opt.key">
-                        <span class="provider-opt">
-                          <span class="provider-opt__name">
-                            <span class="provider-opt__bracket">【</span>{{ opt.planName
-                            }}<span class="provider-opt__bracket">】</span>
-                          </span>
-                          <span class="provider-opt__model">{{ opt.modelId }}</span>
+                    <a-option v-for="opt in modelOptions" :key="opt.key" :value="opt.key">
+                      <span class="provider-opt">
+                        <span class="provider-opt__name">
+                          <span class="provider-opt__bracket">【</span>{{ opt.planName
+                          }}<span class="provider-opt__bracket">】</span>
                         </span>
-                      </a-option>
-                    </a-select>
-                    <IconRobot class="model-select-icon" :size="18" />
-                  </span>
-                  <button
-                    type="button"
-                    class="send-btn"
-                    :disabled="!canGenerate || isGenerating"
-                    @click="generate"
-                  >
-                    <IconArrowUp v-if="!isGenerating" :size="18" />
-                    <IconLoading v-else :size="16" spin />
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <input
-              ref="fileInputRef"
-              type="file"
-              :accept="acceptType"
-              multiple
-              class="hidden-file-input"
-              @change="handleNativeFileChange"
-            />
+                        <span class="provider-opt__model">{{ opt.modelId }}</span>
+                      </span>
+                    </a-option>
+                  </a-select>
+                  <IconRobot class="model-select-icon" :size="18" />
+                </span>
+                <button
+                  type="button"
+                  class="send-btn"
+                  :disabled="!canGenerate || isGenerating"
+                  @click="generate"
+                >
+                  <IconArrowUp v-if="!isGenerating" :size="18" />
+                  <IconLoading v-else :size="16" spin />
+                </button>
+              </template>
+            </AttachmentInputArea>
           </div>
         </div>
       </div>
     </div>
-
-    <ImageViewerModal
-      :visible="viewerVisible"
-      :items="viewerItems"
-      :index="viewerIndex"
-      @close="viewerVisible = false"
-      @prev="viewerPrev"
-      @next="viewerNext"
-    />
-
-    <ImageEditorModal
-      :visible="editorVisible"
-      :url="editorTarget?.url || ''"
-      :name="editorTarget?.name || ''"
-      @close="closeEditor"
-      @confirm="onEditorConfirm"
-    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, nextTick, watch, defineAsyncComponent } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { Message } from '@arco-design/web-vue'
 import {
@@ -364,25 +261,17 @@ import {
   IconSettings,
   IconCode,
   IconDelete,
-  IconImage,
-  IconVideoCamera,
-  IconFile,
-  IconClose,
   IconArrowUp,
   IconLoading,
-  IconFolderAdd,
   IconStar,
   IconRobot,
-  IconEye,
-  IconEdit,
 } from '@arco-design/web-vue/es/icon'
 import PageHeader from '@/components/layout/PageHeader.vue'
 import PlatformIcon from '@/components/shared/PlatformIcon.vue'
-import ImageViewerModal from '@/components/ImageViewerModal.vue'
+import AttachmentInputArea from '@/components/AttachmentInputArea.vue'
 import { useTokenPlanStore, parseModelField } from '@/stores/tokenPlan'
+import { urlFileName } from '@/composables/useUrlExtractor'
 import api from '@/utils/api'
-
-const ImageEditorModal = defineAsyncComponent(() => import('@/components/ImageEditorModal.vue'))
 
 const router = useRouter()
 const store = useTokenPlanStore()
@@ -458,69 +347,40 @@ const promptText = ref('')
 const selectedPlatforms = ref<string[]>(['xiaohongshu'])
 const isGenerating = ref(false)
 const streamingText = ref('')
-
-interface UploadedItemBase {
-  name: string
-  isImage: boolean
-}
-
-interface UploadedFileItem extends UploadedItemBase {
-  kind: 'file'
-  file: File
-}
-
-interface UploadedLinkItem extends UploadedItemBase {
-  kind: 'link'
-  url: string
-}
-
-type UploadedItem = UploadedFileItem | UploadedLinkItem
-
-const uploadedFiles = ref<UploadedItem[]>([])
-const isDragOver = ref(false)
-let dragDepth = 0
-
-function onDragEnter() {
-  dragDepth++
-  isDragOver.value = true
-}
-
-function onDragOver() {
-  isDragOver.value = true
-}
-
-function onDragLeave() {
-  dragDepth--
-  if (dragDepth <= 0) {
-    dragDepth = 0
-    isDragOver.value = false
-  }
-}
-
-function onDrop(e: DragEvent) {
-  dragDepth = 0
-  isDragOver.value = false
-  const files = Array.from(e.dataTransfer?.files || [])
-  if (files.length > 0) {
-    addFiles(files)
-  }
-}
 const streamingPlatform = ref('')
-const fileInputRef = ref<HTMLInputElement | null>(null)
-const acceptType = ref('image/*,video/*')
-const inputCardRef = ref<HTMLElement | null>(null)
+const fileUrls = ref<string[]>([])
+const MAX_UPLOAD_FILES = 10
+const hasFiles = ref(false)
+
+interface PendingFileItem {
+  file: File
+  type: string
+  name: string
+  size: number
+}
+
+const createAreaRef = ref<{
+  getPendingFiles: () => PendingFileItem[]
+  $el?: HTMLElement
+}>()
+
+function onAreaChange(payload: { total: number; pending: number }) {
+  hasFiles.value = payload.total > 0
+}
+
 const modelCompact = ref(false)
 const MODEL_COMPACT_THRESHOLD = 440
 
 let cardResizeObserver: ResizeObserver | null = null
 
 onMounted(() => {
-  if (inputCardRef.value) {
+  const el = createAreaRef.value?.$el
+  if (el) {
     cardResizeObserver = new ResizeObserver((entries) => {
       const width = entries[0]?.contentRect.width ?? 0
       modelCompact.value = width < MODEL_COMPACT_THRESHOLD
     })
-    cardResizeObserver.observe(inputCardRef.value)
+    cardResizeObserver.observe(el)
   }
 })
 
@@ -542,10 +402,7 @@ const parsedPrompt = computed(() => {
 })
 
 const canGenerate = computed(
-  () =>
-    !!parsedPrompt.value.topic ||
-    parsedPrompt.value.keywords.length > 0 ||
-    uploadedFiles.value.length > 0,
+  () => !!parsedPrompt.value.topic || parsedPrompt.value.keywords.length > 0 || hasFiles.value,
 )
 
 function onModelChange(val: unknown) {
@@ -589,255 +446,8 @@ function togglePlatform(value: string) {
   }
 }
 
-function triggerUpload(type: 'all' | 'image' | 'video') {
-  acceptType.value = type === 'image' ? 'image/*' : type === 'video' ? 'video/*' : 'image/*,video/*'
-  nextTick(() => {
-    fileInputRef.value?.click()
-  })
-}
-
-function handleNativeFileChange(e: Event) {
-  const input = e.target as HTMLInputElement
-  const files = Array.from(input.files || [])
-  addFiles(files)
-  input.value = ''
-}
-
-function addFiles(files: File[]) {
-  const valid: UploadedItem[] = []
-  for (const file of files) {
-    if (!file.type.startsWith('image/') && !file.type.startsWith('video/')) {
-      Message.warning(`不支持的文件类型：${file.name}，仅支持图片和视频`)
-      continue
-    }
-    if (file.type.startsWith('video/') && file.size > 50 * 1024 * 1024) {
-      Message.warning(`视频文件过大：${file.name}（最大 50MB）`)
-      continue
-    }
-    valid.push({
-      kind: 'file',
-      file,
-      name: file.name,
-      isImage: file.type.startsWith('image/'),
-    })
-  }
-  uploadedFiles.value.push(...valid)
-  if (uploadedFiles.value.length > 10) {
-    uploadedFiles.value = uploadedFiles.value.slice(0, 10)
-    Message.warning('最多上传 10 个文件')
-  }
-}
-
-function removeFile(idx: number) {
-  uploadedFiles.value.splice(idx, 1)
-}
-
-const viewerVisible = ref(false)
-const viewerIndex = ref(0)
-const viewerItems = ref<{ url: string; name: string }[]>([])
-
-function openViewer(idx: number) {
-  const target = uploadedFiles.value[idx]
-  if (!target || !target.isImage) return
-  const imageList = uploadedFiles.value.filter((i) => i.isImage)
-  viewerItems.value = imageList.map((i) => ({
-    url: i.kind === 'file' ? filePreview(i.file) : i.url,
-    name: i.name,
-  }))
-  viewerIndex.value = imageList.indexOf(target)
-  viewerVisible.value = true
-}
-
-function viewerPrev() {
-  if (viewerIndex.value > 0) viewerIndex.value--
-}
-
-function viewerNext() {
-  if (viewerIndex.value < viewerItems.value.length - 1) viewerIndex.value++
-}
-
-const editorVisible = ref(false)
-const editorTarget = ref<{ index: number; url: string; name: string } | null>(null)
-
-function openEditor(idx: number) {
-  const item = uploadedFiles.value[idx]
-  if (!item || item.kind !== 'file' || !item.isImage) return
-  editorTarget.value = {
-    index: idx,
-    url: filePreview(item.file),
-    name: item.name,
-  }
-  editorVisible.value = true
-}
-
-function closeEditor() {
-  editorVisible.value = false
-  editorTarget.value = null
-}
-
-function onEditorConfirm(result: { blob: Blob; name: string }) {
-  const t = editorTarget.value
-  if (t) {
-    const item = uploadedFiles.value[t.index]
-    if (item && item.kind === 'file') {
-      item.file = new File([result.blob], result.name, { type: 'image/jpeg' })
-      item.name = result.name
-    }
-  }
-  closeEditor()
-}
-
-const FILE_URL_PATTERN = /https?:\/\/[^\s<>"'（）()，。；！？、]+/gi
-const IMAGE_URL_PATTERN = /\.(png|jpe?g|gif|webp|avif|svg|bmp|ico)(\?.*)?$/i
-const FILE_URL_EXT_PATTERN =
-  /\.(png|jpe?g|gif|webp|avif|svg|bmp|ico|mp4|webm|mov|m4v|avi|mkv|flv|wmv|pdf|zip|rar|7z|tar|gz|mp3|wav|flac|aac|ogg|docx?|xlsx?|pptx?|txt)(\?.*)?$/i
-
-function extractFileLinks() {
-  const text = promptText.value
-  const urls = Array.from(new Set(text.match(FILE_URL_PATTERN) || []))
-    .map((u) => u.replace(/[.,;:!?，。；：！？、]+$/, ''))
-    .filter((u) => FILE_URL_EXT_PATTERN.test(u))
-  if (urls.length === 0) return
-  const existing = new Set(uploadedFiles.value.filter((i) => i.kind === 'link').map((i) => i.url))
-  for (const url of urls) {
-    if (existing.has(url)) continue
-    const path = url.split(/[?#]/)[0]
-    let name = path.split('/').pop() || url
-    try {
-      name = decodeURIComponent(name)
-    } catch {
-      /* 保留原始名称 */
-    }
-    uploadedFiles.value.push({
-      kind: 'link',
-      url,
-      name,
-      isImage: IMAGE_URL_PATTERN.test(url),
-    })
-    existing.add(url)
-  }
-  if (uploadedFiles.value.length > 10) {
-    uploadedFiles.value = uploadedFiles.value.slice(0, 10)
-  }
-  const cleaned = text.replace(FILE_URL_PATTERN, (match) => {
-    const url = match.replace(/[.,;:!?，。；：！？、]+$/, '')
-    return FILE_URL_EXT_PATTERN.test(url) ? '' : match
-  })
-  promptText.value = cleaned.replace(/ {2,}/g, ' ').replace(/[ \t]+(?=[，。；：！？、])/g, '')
-}
-
-watch(
-  promptText,
-  () => {
-    extractFileLinks()
-  },
-  { immediate: true },
-)
-
 const isMac = /Mac|iPhone|iPad|iPod/i.test(navigator.userAgent)
 const shortcutHint = computed(() => (isMac ? '⌘+Enter 换行' : 'Ctrl+Enter 换行'))
-
-function handleTextareaKeydown(e: KeyboardEvent) {
-  if (e.key !== 'Enter') return
-  if (e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) {
-    e.preventDefault()
-    const target = e.target as HTMLTextAreaElement
-    const start = target.selectionStart
-    const end = target.selectionEnd
-    target.value = target.value.slice(0, start) + '\n' + target.value.slice(end)
-    target.selectionStart = target.selectionEnd = start + 1
-    target.dispatchEvent(new Event('input', { bubbles: true }))
-    requestAnimationFrame(() => scrollCaretIntoView(target))
-    return
-  }
-  e.preventDefault()
-  generate()
-}
-
-function scrollCaretIntoView(target: HTMLTextAreaElement) {
-  const pos = target.selectionStart
-  if (pos == null) return
-  const cs = getComputedStyle(target)
-  const mirror = document.createElement('div')
-  mirror.style.position = 'absolute'
-  mirror.style.left = '-9999px'
-  mirror.style.top = '0'
-  mirror.style.visibility = 'hidden'
-  mirror.style.pointerEvents = 'none'
-  mirror.style.whiteSpace = 'pre-wrap'
-  mirror.style.overflowWrap = 'break-word'
-  mirror.style.boxSizing = cs.boxSizing
-  mirror.style.width = cs.width
-  mirror.style.fontFamily = cs.fontFamily
-  mirror.style.fontSize = cs.fontSize
-  mirror.style.fontWeight = cs.fontWeight
-  mirror.style.fontStyle = cs.fontStyle
-  mirror.style.lineHeight = cs.lineHeight
-  mirror.style.letterSpacing = cs.letterSpacing
-  mirror.style.wordSpacing = cs.wordSpacing
-  mirror.style.paddingTop = cs.paddingTop
-  mirror.style.paddingRight = cs.paddingRight
-  mirror.style.paddingBottom = cs.paddingBottom
-  mirror.style.paddingLeft = cs.paddingLeft
-  mirror.style.borderTopWidth = cs.borderTopWidth
-  mirror.style.borderRightWidth = cs.borderRightWidth
-  mirror.style.borderBottomWidth = cs.borderBottomWidth
-  mirror.style.borderLeftWidth = cs.borderLeftWidth
-  const before = document.createElement('span')
-  before.textContent = target.value.slice(0, pos)
-  const after = document.createElement('span')
-  after.textContent = target.value.slice(pos) || ' '
-  mirror.appendChild(before)
-  mirror.appendChild(after)
-  document.body.appendChild(mirror)
-  const caretTop = after.getBoundingClientRect().top - mirror.getBoundingClientRect().top
-  document.body.removeChild(mirror)
-
-  const lineHeight = parseFloat(cs.lineHeight) || 20
-  const visibleTop = target.scrollTop
-  const visibleBottom = visibleTop + target.clientHeight
-  if (caretTop < visibleTop + lineHeight) {
-    target.scrollTop = Math.max(0, caretTop - lineHeight)
-  } else if (caretTop + lineHeight > visibleBottom) {
-    target.scrollTop = caretTop + lineHeight - target.clientHeight
-  }
-}
-
-function handleTextareaPaste(e: ClipboardEvent) {
-  const files = Array.from(e.clipboardData?.files || [])
-  if (files.length > 0) {
-    e.preventDefault()
-    addFiles(files)
-  }
-}
-
-function itemName(item: UploadedItem): string {
-  return item.name
-}
-
-function itemMeta(item: UploadedItem): string {
-  if (item.kind === 'link') return item.isImage ? '图片链接' : '文件链接'
-  return `${fileExt(item.file!)} · ${fileSize(item.file!)}`
-}
-
-function fileExt(file: File): string {
-  const parts = file.name.split('.')
-  return parts.length > 1 ? parts.pop()!.toUpperCase() : 'FILE'
-}
-
-function fileSize(file: File): string {
-  if (file.size < 1024) return file.size + ' B'
-  if (file.size < 1024 * 1024) return (file.size / 1024).toFixed(1) + ' KB'
-  return (file.size / (1024 * 1024)).toFixed(1) + ' MB'
-}
-
-function filePreview(file: File): string {
-  return URL.createObjectURL(file)
-}
-
-function isImage(file: File): boolean {
-  return file.type.startsWith('image/')
-}
 
 function compressImage(file: File, maxWidth = 1920, quality = 0.8): Promise<File> {
   return new Promise((resolve, _reject) => {
@@ -901,27 +511,43 @@ async function fileToBase64(file: File): Promise<{ data: string; mime_type: stri
   })
 }
 
-async function itemToBase64(
-  item: UploadedItem,
-): Promise<{ data: string; mime_type: string } | null> {
+async function fetchUrlToBase64(url: string): Promise<{ data: string; mime_type: string } | null> {
   try {
-    if (item.kind === 'file' && item.file) {
-      return await fileToBase64(item.file)
-    }
-    if (item.kind === 'link' && item.url) {
-      const res = await fetch(item.url)
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const blob = await res.blob()
-      const file = new File([blob], item.name || 'file', {
-        type: blob.type || 'application/octet-stream',
-      })
-      return await fileToBase64(file)
-    }
+    const res = await fetch(url)
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    const blob = await res.blob()
+    const file = new File([blob], urlFileName(url), {
+      type: blob.type || 'application/octet-stream',
+    })
+    return await fileToBase64(file)
   } catch (err) {
     const e = err as { message?: string }
-    pushLog('err', `链接素材获取失败：${item.name}（${e.message || '网络错误'}）`)
+    pushLog('err', `链接素材获取失败：${url}（${e.message || '网络错误'}）`)
   }
   return null
+}
+
+async function buildFilesPayload(): Promise<{ data: string; mime_type: string }[] | undefined> {
+  const pendingFiles = createAreaRef.value?.getPendingFiles() ?? []
+  const urls = fileUrls.value
+  const total = pendingFiles.length + urls.length
+  if (total === 0) return undefined
+  pushLog('info', `正在编码 ${total} 个素材文件…`)
+  const tasks: Promise<{ data: string; mime_type: string } | null>[] = []
+  for (const p of pendingFiles) {
+    tasks.push(fileToBase64(p.file))
+  }
+  for (const url of urls) {
+    tasks.push(fetchUrlToBase64(url))
+  }
+  const results = await Promise.all(tasks)
+  const payload = results.filter((r): r is { data: string; mime_type: string } => r !== null)
+  if (payload.length > 0) {
+    pushLog('ok', `素材编码完成，共 ${payload.length} 个`)
+  } else {
+    pushLog('err', '所有素材均无法编码，本次生成将不带文件')
+  }
+  return payload
 }
 const isSaving = ref(false)
 const hasGenerated = ref(false)
@@ -963,7 +589,7 @@ async function generate() {
     Message.error('内容主题、关键词、上传文件至少填写一项')
     return
   }
-  if (uploadedFiles.value.length > 0 && !store.selectedModelSupportsFiles) {
+  if (hasFiles.value && !store.selectedModelSupportsFiles) {
     pushLog('err', '当前模型不支持文件上传，请切换到支持视觉/图片/视频的模型')
     Message.error('当前模型不支持文件上传，请切换到支持视觉/图片/视频的模型')
     return
@@ -982,7 +608,7 @@ async function generate() {
     ? `主题「${topic}」`
     : keywords.length > 0
       ? `关键词「${keywords.join('、')}」`
-      : `上传素材 ${uploadedFiles.value.length} 个`
+      : '上传素材'
   pushLog(
     'info',
     `开始生成任务 · ${inputDesc} · 平台 ${selectedPlatforms.value.map(platformLabel).join(' / ')}`,
@@ -992,15 +618,8 @@ async function generate() {
   const keywordsArray = keywords.length > 0 ? keywords : undefined
 
   let filesPayload: { data: string; mime_type: string }[] | undefined
-  if (uploadedFiles.value.length > 0) {
-    pushLog('info', `正在编码 ${uploadedFiles.value.length} 个素材文件…`)
-    const results = await Promise.all(uploadedFiles.value.map(itemToBase64))
-    filesPayload = results.filter((r): r is { data: string; mime_type: string } => r !== null)
-    if (filesPayload.length > 0) {
-      pushLog('ok', `素材编码完成，共 ${filesPayload.length} 个`)
-    } else {
-      pushLog('err', '所有素材均无法编码，本次生成将不带文件')
-    }
+  if (hasFiles.value) {
+    filesPayload = await buildFilesPayload()
   }
 
   try {
@@ -1707,267 +1326,38 @@ async function copyContent() {
   border-color: #007aff;
 }
 
-.chat-input-card {
-  background: #2c2c2e;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 16px;
-  padding: 14px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.2);
-  transition:
-    border-color 0.15s ease,
-    box-shadow 0.15s ease;
-}
-
-.chat-input-card--drag {
-  border-color: rgba(0, 122, 255, 0.65);
-  box-shadow:
-    0 0 0 3px rgba(0, 122, 255, 0.18),
-    0 2px 12px rgba(0, 0, 0, 0.2);
-}
-
-.chat-textarea {
-  border-radius: 10px;
-  border: 1px solid transparent;
-  background: #2c2c2e;
-  &:hover {
-    background: #2c2c2e;
-    border-color: transparent;
-  }
-  &:focus-within {
-    background: #2c2c2e;
-    border-color: transparent;
-    box-shadow: none;
-  }
-  :deep(.arco-textarea) {
-    border: none;
-    background: transparent;
-    padding: 4px 0;
-    font-size: 15px;
-    line-height: 1.65;
-    resize: none;
-    box-shadow: none;
-    color: #f2f2f7;
-    &::-webkit-scrollbar {
-      width: 6px;
-      height: 6px;
-    }
-    &::-webkit-scrollbar-track {
-      background: transparent;
-    }
-    &::-webkit-scrollbar-thumb {
-      background: rgba(255, 255, 255, 0.25);
-      border-radius: 3px;
-    }
-    &::-webkit-scrollbar-thumb:hover {
-      background: rgba(255, 255, 255, 0.4);
-    }
-    &::placeholder {
-      color: #8e8e93;
-    }
-  }
-  :deep(.arco-textarea:focus) {
-    box-shadow: none;
-  }
-}
-
-.uploaded-files {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-bottom: 10px;
-}
-
-.file-chip {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 10px;
-  background: #3a3a3c;
-  border-radius: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  max-width: 240px;
-}
-
-.file-thumb {
-  width: 36px;
-  height: 36px;
-  object-fit: cover;
-  border-radius: 6px;
-  flex-shrink: 0;
-}
-
-.file-icon {
-  width: 36px;
-  height: 36px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: #48484a;
-  border-radius: 6px;
-  color: #4098ff;
-  flex-shrink: 0;
-}
-
-.file-info {
-  min-width: 0;
-  flex: 1;
-}
-
-.file-name {
-  font-size: 13px;
-  font-weight: 500;
-  color: #f2f2f7;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.file-meta {
-  font-size: 11px;
-  color: #8e8e93;
-  margin-top: 2px;
-}
-
-.file-remove {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  border: none;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.1);
-  color: #aeaeb2;
-  cursor: pointer;
-  flex-shrink: 0;
-}
-
-.file-remove:hover {
-  background: rgba(255, 255, 255, 0.18);
-  color: #ffffff;
-}
-
-.file-actions {
-  position: absolute;
-  left: 4px;
-  right: 30px;
-  bottom: 4px;
-  display: flex;
-  gap: 4px;
-  opacity: 0;
-  transition: opacity 0.15s;
-}
-
-.file-chip:hover .file-actions {
-  opacity: 1;
-}
-
-.file-action-btn {
-  flex: 1;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 3px;
-  padding: 3px 6px;
-  border: none;
-  border-radius: 5px;
-  background: rgba(0, 0, 0, 0.62);
-  color: #ffffff;
-  font-size: 11px;
-  line-height: 1.4;
-  cursor: pointer;
-  backdrop-filter: blur(4px);
-  transition: background 0.15s;
-}
-
-.file-action-btn:hover {
-  background: rgba(0, 122, 255, 0.85);
-}
-
-.chat-toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-top: 10px;
-  padding-top: 10px;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.toolbar-left {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.toolbar-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  border: none;
-  border-radius: 8px;
-  background: transparent;
-  color: #aeaeb2;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.toolbar-btn:hover {
-  background: #3a3a3c;
-  color: #ffffff;
-}
-
-.chat-shortcut-hint {
-  margin-left: 8px;
-  flex-shrink: 0;
-  font-size: 11px;
-  color: #7a7a80;
-  white-space: nowrap;
-  user-select: none;
-}
-
-.toolbar-right {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.toolbar-right {
-  :deep(.chat-model-select) {
-    flex: 0 1 auto;
-    width: auto;
-    min-width: 0;
-    max-width: 240px;
-    border-radius: 14px;
-    background: #2c2c2e;
-    border-color: transparent;
-    color: #f2f2f7;
-    &:hover,
-    &:focus-within,
-    &.arco-select-view--focus {
-      background: #3a3a3c;
-      border-color: rgba(0, 122, 255, 0.45);
-    }
-    .arco-select-view-value {
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-      min-width: 0;
-    }
-    .provider-opt__model {
-      color: #aeaeb2;
-    }
-  }
-}
-
 .model-select-wrap {
   position: relative;
   display: inline-flex;
   align-items: center;
   flex: 0 1 auto;
   min-width: 0;
+}
+
+.model-select-wrap :deep(.chat-model-select) {
+  flex: 0 1 auto;
+  width: auto;
+  min-width: 0;
+  max-width: 240px;
+  border-radius: 14px;
+  background: #2c2c2e;
+  border-color: transparent;
+  color: #f2f2f7;
+  &:hover,
+  &:focus-within,
+  &.arco-select-view--focus {
+    background: #3a3a3c;
+    border-color: rgba(0, 122, 255, 0.45);
+  }
+  .arco-select-view-value {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+  }
+  .provider-opt__model {
+    color: #aeaeb2;
+  }
 }
 
 .model-select-icon {
@@ -2057,13 +1447,5 @@ async function copyContent() {
   background: #48484a;
   color: #8e8e93;
   cursor: not-allowed;
-}
-
-.hidden-file-input {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  opacity: 0;
-  pointer-events: none;
 }
 </style>

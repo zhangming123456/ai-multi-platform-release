@@ -107,6 +107,8 @@ func migrateSchema() error {
 		{"notifications", "channel", "ALTER TABLE notifications ADD COLUMN channel varchar(20) DEFAULT 'internal'"},
 		{"inspections", "ai_summary", "ALTER TABLE inspections ADD COLUMN ai_summary text"},
 		{"inspection_task_items", "ai_problem_desc", "ALTER TABLE inspection_task_items ADD COLUMN ai_problem_desc text"},
+		{"inspection_template_items", "standard_images", "ALTER TABLE inspection_template_items ADD COLUMN standard_images text"},
+		{"inspection_materials", "standard_images", "ALTER TABLE inspection_materials ADD COLUMN standard_images text"},
 	}
 	for _, m := range migrations {
 		exists, err := columnExists(db, m.table, m.column)

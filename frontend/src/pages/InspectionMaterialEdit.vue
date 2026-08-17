@@ -27,36 +27,20 @@
               />
             </a-form-item>
 
-            <a-form-item label="检查标准">
-              <a-textarea
-                v-model="form.standard"
-                placeholder="填写该项的检查标准..."
-                :auto-size="{ minRows: 3, maxRows: 6 }"
-                :maxlength="500"
-                show-word-limit
-                class="!rounded-lg"
+            <a-form-item label="检查标准与标准图">
+              <AttachmentInputArea
+                ref="standardAreaRef"
+                v-model="standardImages"
+                v-model:text="form.standard"
+                :upload="uploadImageFile"
+                :max-count="MAX_STANDARD_IMAGES"
+                :max-length="500"
+                :min-rows="3"
+                :max-rows="6"
+                placeholder="填写该项的检查标准...&#10;支持拖拽 / 粘贴图片，或粘贴图片链接自动识别为标准图"
               />
-            </a-form-item>
-
-            <a-form-item label="标准图">
-              <a-upload
-                :auto-upload="false"
-                :file-list="imageFiles"
-                list-type="picture-card"
-                accept="image/*"
-                :limit="1"
-                :show-remove-button="true"
-                @change="handleImageChange"
-              >
-                <template #upload-button>
-                  <div class="w-[70px] h-[70px] flex flex-col items-center justify-center gap-0.5">
-                    <IconPlus :size="16" />
-                    <span class="text-[10px] text-[#86868b]">标准图</span>
-                  </div>
-                </template>
-              </a-upload>
               <div class="text-[11px] text-[#86868b] mt-1.5">
-                建议上传清晰的检查标准示例图，单张不超过 10MB
+                单张不超过 10MB，最多 {{ MAX_STANDARD_IMAGES }} 张
               </div>
             </a-form-item>
 
@@ -155,20 +139,15 @@ import { useRoute, useRouter } from 'vue-router'
 import { Message } from '@arco-design/web-vue'
 import { IconPlus, IconDelete } from '@arco-design/web-vue/es/icon'
 import PageHeader from '@/components/layout/PageHeader.vue'
+import AttachmentInputArea from '@/components/AttachmentInputArea.vue'
+import { uploadImageFile } from '@/composables/useFileUpload'
 import type { InspectionMaterial, ScoreOption } from '@/types'
 import api from '@/utils/api'
-
-interface PhotoItem {
-  uid: string
-  name: string
-  url?: string
-  status: 'init' | 'done'
-  file?: File
-}
 
 const ALLOWED_SCORE_VALUES = [0, 0.5, 1, 2, 3, 4, 5]
 const MIN_SCORE = 0
 const MAX_SCORE = 5
+const MAX_STANDARD_IMAGES = 5
 
 const DEFAULT_SCORE_OPTIONS: ScoreOption[] = [
   { score: 0, label: '0分' },
@@ -196,7 +175,8 @@ const form = ref({
   score_options: cloneOptions(DEFAULT_SCORE_OPTIONS),
 })
 
-const imageFiles = ref<PhotoItem[]>([])
+const standardImages = ref<string[]>([])
+const standardAreaRef = ref<{ flushPending: () => Promise<boolean> }>()
 
 watch(
   () => form.value.score_type,
@@ -215,50 +195,6 @@ const canAddOption = computed(() => {
 
 function cloneOptions(options: ScoreOption[]): ScoreOption[] {
   return options.map((o) => ({ score: o.score, label: o.label }))
-}
-
-function handleImageChange(fileList: any[]) {
-  imageFiles.value = normalizeFileList(fileList)
-}
-
-function normalizeFileList(fileList: any[]): PhotoItem[] {
-  const newList: PhotoItem[] = []
-  for (const item of fileList) {
-    if (item.status === 'done' && item.response) {
-      newList.push({
-        uid: item.uid,
-        name: item.name,
-        url: item.response?.url || item.url,
-        status: 'done',
-      })
-      continue
-    }
-    if (item.file) {
-      newList.push({
-        uid: item.uid,
-        name: item.name,
-        url: item.url || URL.createObjectURL(item.file),
-        status: 'init',
-        file: item.file,
-      })
-    } else if (item.url) {
-      newList.push({
-        uid: item.uid,
-        name: item.name,
-        url: item.url,
-        status: 'done',
-      })
-    }
-  }
-  return newList
-}
-
-async function uploadImage(item: PhotoItem): Promise<string> {
-  if (!item.file) return item.url || ''
-  const formData = new FormData()
-  formData.append('file', item.file, item.name)
-  const res = await api.post('/uploads', formData)
-  return res.data?.url || ''
 }
 
 function onOptionScoreSelect(index: number, val: any) {
@@ -319,18 +255,17 @@ async function handleSave() {
     Message.warning(error)
     return
   }
+  if (standardAreaRef.value && !(await standardAreaRef.value.flushPending())) {
+    return
+  }
   saving.value = true
   try {
-    let standardImage = form.value.standard_image
-    const pending = imageFiles.value.filter((p) => p.status === 'init' && p.file)
-    if (pending.length > 0) {
-      standardImage = await uploadImage(pending[0])
-    }
     const payload = {
       category: form.value.category,
       title: form.value.title.trim(),
       standard: form.value.standard,
-      standard_image: standardImage,
+      standard_image: standardImages.value[0] || '',
+      standard_images: standardImages.value,
       score_type: form.value.score_type,
       max_score:
         form.value.score_type === 'pass_fail'
@@ -380,16 +315,13 @@ async function fetchDetail() {
               data.score_type === 'pass_fail' ? DEFAULT_PASS_FAIL_OPTIONS : DEFAULT_SCORE_OPTIONS,
             ),
     }
-    if (data.standard_image) {
-      imageFiles.value = [
-        {
-          uid: 'saved-0',
-          name: data.standard_image.split('/').pop() || data.standard_image,
-          url: data.standard_image,
-          status: 'done',
-        },
-      ]
-    }
+    const images =
+      data.standard_images && data.standard_images.length > 0
+        ? data.standard_images
+        : data.standard_image
+          ? [data.standard_image]
+          : []
+    standardImages.value = images
   } catch (e: any) {
     Message.error(e?.response?.data?.detail || '加载素材失败')
   } finally {

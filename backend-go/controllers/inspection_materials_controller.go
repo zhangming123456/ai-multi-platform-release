@@ -15,27 +15,29 @@ type InspectionMaterialsController struct {
 }
 
 type inspectionMaterialRequest struct {
-	Category      string               `json:"category"`
-	Title         string               `json:"title"`
-	Standard      string               `json:"standard"`
-	StandardImage string               `json:"standard_image"`
-	ScoreType     string               `json:"score_type"`
-	MaxScore      int                  `json:"max_score"`
-	ScoreOptions  []models.ScoreOption `json:"score_options"`
+	Category       string               `json:"category"`
+	Title          string               `json:"title"`
+	Standard       string               `json:"standard"`
+	StandardImage  string               `json:"standard_image"`
+	StandardImages []string             `json:"standard_images"`
+	ScoreType      string               `json:"score_type"`
+	MaxScore       int                  `json:"max_score"`
+	ScoreOptions   []models.ScoreOption `json:"score_options"`
 }
 
 type inspectionMaterialView struct {
-	ID            string               `json:"id"`
-	Category      string               `json:"category"`
-	Title         string               `json:"title"`
-	Standard      string               `json:"standard"`
-	StandardImage string               `json:"standard_image"`
-	ScoreType     string               `json:"score_type"`
-	MaxScore      int                  `json:"max_score"`
-	ScoreOptions  []models.ScoreOption `json:"score_options"`
-	IsActive      bool                 `json:"is_active"`
-	CreatedAt     string               `json:"created_at"`
-	UpdatedAt     string               `json:"updated_at"`
+	ID             string               `json:"id"`
+	Category       string               `json:"category"`
+	Title          string               `json:"title"`
+	Standard       string               `json:"standard"`
+	StandardImage  string               `json:"standard_image"`
+	StandardImages []string             `json:"standard_images"`
+	ScoreType      string               `json:"score_type"`
+	MaxScore       int                  `json:"max_score"`
+	ScoreOptions   []models.ScoreOption `json:"score_options"`
+	IsActive       bool                 `json:"is_active"`
+	CreatedAt      string               `json:"created_at"`
+	UpdatedAt      string               `json:"updated_at"`
 }
 
 // List GET /api/inspection-materials
@@ -127,7 +129,12 @@ func (c *InspectionMaterialsController) Update() {
 	material.Category = req.Category
 	material.Title = strings.TrimSpace(req.Title)
 	material.Standard = req.Standard
-	material.StandardImage = req.StandardImage
+	images := req.StandardImages
+	if len(images) == 0 && strings.TrimSpace(req.StandardImage) != "" {
+		images = []string{req.StandardImage}
+	}
+	material.StandardImages = models.MarshalStringSlice(images)
+	material.StandardImage = firstImage(images)
 	material.ScoreType = normalizeScoreType(req.ScoreType)
 	material.MaxScore = req.MaxScore
 	if len(req.ScoreOptions) > 0 {
@@ -164,15 +171,40 @@ func materialFromRequest(req *inspectionMaterialRequest) *models.InspectionMater
 	if len(options) == 0 {
 		options = models.DefaultScoreOptions(scoreType, maxScore)
 	}
-	return &models.InspectionMaterial{
-		Category:      req.Category,
-		Title:         strings.TrimSpace(req.Title),
-		Standard:      req.Standard,
-		StandardImage: req.StandardImage,
-		ScoreType:     scoreType,
-		MaxScore:      maxScore,
-		ScoreOptions:  models.MarshalScoreOptions(options),
+	images := req.StandardImages
+	if len(images) == 0 && strings.TrimSpace(req.StandardImage) != "" {
+		images = []string{req.StandardImage}
 	}
+	material := &models.InspectionMaterial{
+		Category:       req.Category,
+		Title:          strings.TrimSpace(req.Title),
+		Standard:       req.Standard,
+		StandardImages: models.MarshalStringSlice(images),
+		ScoreType:      scoreType,
+		MaxScore:       maxScore,
+		ScoreOptions:   models.MarshalScoreOptions(options),
+	}
+	if len(images) > 0 {
+		material.StandardImage = images[0]
+	}
+	return material
+}
+
+func firstImage(images []string) string {
+	if len(images) > 0 {
+		return images[0]
+	}
+	return ""
+}
+
+func effectiveStandardImages(stored, legacy string) []string {
+	if images := models.UnmarshalStringSlice(stored); len(images) > 0 {
+		return images
+	}
+	if strings.TrimSpace(legacy) != "" {
+		return []string{legacy}
+	}
+	return nil
 }
 
 func materialViewFromModel(m *models.InspectionMaterial) inspectionMaterialView {
@@ -180,17 +212,19 @@ func materialViewFromModel(m *models.InspectionMaterial) inspectionMaterialView 
 	if len(options) == 0 {
 		options = models.DefaultScoreOptions(m.ScoreType, m.MaxScore)
 	}
+	images := effectiveStandardImages(m.StandardImages, m.StandardImage)
 	return inspectionMaterialView{
-		ID:            m.ID,
-		Category:      m.Category,
-		Title:         m.Title,
-		Standard:      m.Standard,
-		StandardImage: m.StandardImage,
-		ScoreType:     m.ScoreType,
-		MaxScore:      m.MaxScore,
-		ScoreOptions:  options,
-		IsActive:      m.IsActive,
-		CreatedAt:     m.CreatedAt.Format(TimeFormat),
-		UpdatedAt:     m.UpdatedAt.Format(TimeFormat),
+		ID:             m.ID,
+		Category:       m.Category,
+		Title:          m.Title,
+		Standard:       m.Standard,
+		StandardImage:  firstImage(images),
+		StandardImages: images,
+		ScoreType:      m.ScoreType,
+		MaxScore:       m.MaxScore,
+		ScoreOptions:   options,
+		IsActive:       m.IsActive,
+		CreatedAt:      m.CreatedAt.Format(TimeFormat),
+		UpdatedAt:      m.UpdatedAt.Format(TimeFormat),
 	}
 }

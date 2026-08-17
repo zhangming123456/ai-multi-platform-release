@@ -258,68 +258,17 @@
 
                       <template v-if="expandedItemKeys.has(item.key)">
                         <a-form-item label="检查标准与标准图" field-class="!mb-2">
-                          <div
-                            class="standard-input-area"
-                            :class="{ 'standard-input-area--dragging': item.standardDragging }"
-                            @dragenter="(e: DragEvent) => handleStandardDragEnter(item, e)"
-                            @dragleave="handleStandardDragLeave(item)"
-                            @dragover="(e: DragEvent) => handleStandardDragOver(e)"
-                            @drop="(e: DragEvent) => handleStandardDrop(item, e)"
-                          >
-                            <div v-if="item.imageFiles.length > 0" class="feedback-thumbs">
-                              <div
-                                v-for="(photo, pIdx) in item.imageFiles"
-                                :key="photo.uid"
-                                class="feedback-thumb-item"
-                              >
-                                <img :src="photo.url" class="feedback-thumb-img" />
-                                <button
-                                  type="button"
-                                  class="feedback-thumb-remove"
-                                  @click="removeStandardImage(item, pIdx)"
-                                >
-                                  <IconClose :size="12" />
-                                </button>
-                                <span class="feedback-thumb-name">{{ photo.name }}</span>
-                              </div>
-                            </div>
-
-                            <a-textarea
-                              v-model="item.standard"
-                              placeholder="填写该项的检查标准（500 字以内）...&#10;支持拖拽/粘贴图片，或粘贴图片 URL 自动识别为标准图"
-                              :auto-size="{ minRows: 2, maxRows: 4 }"
-                              :maxlength="500"
-                              show-word-limit
-                              class="standard-textarea"
-                              @paste="(e: ClipboardEvent) => handleStandardPaste(item, e)"
-                              @input="(val: any) => handleStandardInput(item, val)"
-                            />
-
-                            <div class="standard-toolbar">
-                              <div class="standard-toolbar-left">
-                                <button
-                                  type="button"
-                                  class="standard-toolbar-btn"
-                                  @click="triggerStandardUpload(item)"
-                                >
-                                  <IconImage :size="16" />
-                                </button>
-                                <span class="standard-toolbar-tip">标准图</span>
-                                <span class="standard-toolbar-tip"
-                                  >{{ item.imageFiles.length }}/1</span
-                                >
-                                <span class="standard-toolbar-tip">单张≤10MB</span>
-                              </div>
-                            </div>
-
-                            <input
-                              :ref="(el: any) => setStandardFileInput(item, el)"
-                              type="file"
-                              accept="image/*"
-                              class="hidden"
-                              @change="(e: Event) => onStandardFileInputChange(item, e)"
-                            />
-                          </div>
+                          <AttachmentInputArea
+                            :ref="(el) => setStandardAreaRef(item, el)"
+                            v-model="item.standardImages"
+                            v-model:text="item.standard"
+                            :upload="uploadImageFile"
+                            :max-count="MAX_STANDARD_IMAGES"
+                            :max-length="500"
+                            :min-rows="2"
+                            :max-rows="4"
+                            placeholder="填写该项的检查标准（500 字以内）...&#10;支持拖拽 / 粘贴图片，或粘贴图片 URL 自动识别为标准图"
+                          />
                         </a-form-item>
                       </template>
 
@@ -747,20 +696,12 @@ import {
   IconOrderedList,
   IconCaretDown,
   IconStorage,
-  IconImage,
-  IconClose,
 } from '@arco-design/web-vue/es/icon'
 import PageHeader from '@/components/layout/PageHeader.vue'
+import AttachmentInputArea from '@/components/AttachmentInputArea.vue'
+import { uploadImageFile } from '@/composables/useFileUpload'
 import type { InspectionTemplate, InspectionMaterial, Paginated } from '@/types'
 import api from '@/utils/api'
-
-interface PhotoItem {
-  uid: string
-  name: string
-  url: string
-  status: 'done' | 'init'
-  file?: File
-}
 
 interface ScoreOptionRow {
   score: number
@@ -774,14 +715,13 @@ interface ItemRow {
   title: string
   standard: string
   standard_image: string
+  standardImages: string[]
   score_type: 'score' | 'pass_fail'
   score_options: ScoreOptionRow[]
   require_remark: boolean
   require_photo: boolean
   show_remark: boolean
   show_photo: boolean
-  imageFiles: PhotoItem[]
-  standardDragging: boolean
   category_precondition_enabled: boolean
   category_precondition: string
 }
@@ -1083,7 +1023,12 @@ function expandItem(key: number) {
 function autoExpandItemsWithData() {
   const next = new Set(expandedItemKeys.value)
   for (const item of items.value) {
-    if (item.standard || item.standard_image || item.require_remark || item.require_photo) {
+    if (
+      item.standard ||
+      item.standardImages.length > 0 ||
+      item.require_remark ||
+      item.require_photo
+    ) {
       next.add(item.key)
     }
   }
@@ -1156,7 +1101,6 @@ function setCategoryPrecondition(gIndex: number, val: any) {
 }
 
 // 多行文本输入清洗：禁止连续换行、换行+空格+换行
-const MAX_IMAGE_SIZE = 10 * 1024 * 1024 // 10MB
 function sanitizeMultiline(val: string): string {
   if (!val) return val
   // 将"换行+可选空格/tab+换行"模式（含连续换行）合并为单个换行
@@ -1208,6 +1152,15 @@ const form = ref({
 })
 const items = ref<ItemRow[]>([])
 let itemKeySeed = 0
+
+const standardAreaRefs = new Map<number, { flushPending: () => Promise<boolean> }>()
+function setStandardAreaRef(item: ItemRow, el: unknown) {
+  if (el) {
+    standardAreaRefs.set(item.key, el as { flushPending: () => Promise<boolean> })
+  } else {
+    standardAreaRefs.delete(item.key)
+  }
+}
 
 interface ItemGroup {
   category: string
@@ -1392,8 +1345,7 @@ function createRow(): ItemRow {
     require_photo: false,
     show_remark: true,
     show_photo: true,
-    imageFiles: [],
-    standardDragging: false,
+    standardImages: [],
     category_precondition_enabled: false,
     category_precondition: '',
   }
@@ -1452,224 +1404,8 @@ function removeOption(item: ItemRow, index: number) {
   item.score_options.splice(index, 1)
 }
 
-// ===== 检查标准 + 标准图一体化输入区 =====
-const FILE_URL_PATTERN = /https?:\/\/[^\s<>"'（）()，。；！？、]+/gi
-const IMAGE_URL_PATTERN = /\.(png|jpe?g|gif|webp|avif|svg|bmp|ico)(\?.*)?$/i
-const standardFileInputs = new WeakMap<ItemRow, HTMLInputElement | null>()
-const standardDragDepth = new WeakMap<ItemRow, number>()
-
-function setStandardFileInput(item: ItemRow, el: any) {
-  standardFileInputs.set(item, el as HTMLInputElement | null)
-}
-
-function triggerStandardUpload(item: ItemRow) {
-  const input = standardFileInputs.get(item)
-  if (input) {
-    input.value = ''
-    input.click()
-  }
-}
-
-async function onStandardFileInputChange(item: ItemRow, e: Event) {
-  const input = e.target as HTMLInputElement
-  if (!input.files || input.files.length === 0) return
-  await addStandardImage(item, Array.from(input.files))
-  input.value = ''
-}
-
-async function addStandardImage(item: ItemRow, files: File[]) {
-  const imageFiles = files.filter((f) => f.type.startsWith('image/'))
-  if (imageFiles.length === 0) return
-  const file = imageFiles[0]
-  if (file.size > MAX_IMAGE_SIZE) {
-    Message.warning('单张图片大小不能超过 10MB')
-    return
-  }
-  const fileToUse = file.size > 500 * 1024 ? await compressImage(file) : file
-  const old = item.imageFiles[0]
-  if (old && old.url.startsWith('blob:')) {
-    URL.revokeObjectURL(old.url)
-  }
-  item.imageFiles = [
-    {
-      uid: `standard-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      name: file.name || 'standard',
-      url: URL.createObjectURL(fileToUse),
-      status: 'init',
-      file: fileToUse,
-    },
-  ]
-  item.standard_image = ''
-  Message.success('标准图已更新')
-}
-
-function removeStandardImage(item: ItemRow, index: number) {
-  const photo = item.imageFiles[index]
-  if (photo && photo.url.startsWith('blob:')) {
-    URL.revokeObjectURL(photo.url)
-  }
-  item.imageFiles.splice(index, 1)
-  item.standard_image = ''
-}
-
-function handleStandardDragEnter(item: ItemRow, e: DragEvent) {
-  if (!e.dataTransfer?.types.includes('Files')) return
-  const depth = standardDragDepth.get(item) ?? 0
-  standardDragDepth.set(item, depth + 1)
-  item.standardDragging = true
-}
-
-function handleStandardDragLeave(item: ItemRow) {
-  const depth = (standardDragDepth.get(item) ?? 0) - 1
-  if (depth <= 0) {
-    standardDragDepth.set(item, 0)
-    item.standardDragging = false
-  } else {
-    standardDragDepth.set(item, depth)
-  }
-}
-
-function handleStandardDragOver(e: DragEvent) {
-  if (!e.dataTransfer?.types.includes('Files')) return
-  e.preventDefault()
-}
-
-function handleStandardDrop(item: ItemRow, e: DragEvent) {
-  standardDragDepth.set(item, 0)
-  item.standardDragging = false
-  if (!e.dataTransfer?.types.includes('Files')) return
-  e.preventDefault()
-  addStandardImage(item, Array.from(e.dataTransfer.files))
-}
-
-function handleStandardPaste(item: ItemRow, e: ClipboardEvent) {
-  const files = Array.from(e.clipboardData?.files || []).filter((f) => f.type.startsWith('image/'))
-  if (files.length > 0) {
-    e.preventDefault()
-    addStandardImage(item, files)
-    return
-  }
-  nextTick(() => {
-    normalizeStandardNewlines(item)
-    extractImageLinksFromStandard(item)
-  })
-}
-
-function handleStandardInput(item: ItemRow, val: any) {
-  const raw = typeof val === 'string' ? val : (val?.value ?? '')
-  const cleaned = sanitizeMultiline(raw)
-  if (cleaned !== raw) item.standard = cleaned
-  nextTick(() => {
-    normalizeStandardNewlines(item)
-    extractImageLinksFromStandard(item)
-  })
-}
-
-function normalizeStandardNewlines(item: ItemRow) {
-  const text = item.standard
-  const normalized = text.replace(/\n{3,}/g, '\n\n')
-  if (normalized !== text) {
-    item.standard = normalized
-  }
-}
-
-function extractImageLinksFromStandard(item: ItemRow) {
-  const text = item.standard
-  const urls = Array.from(new Set(text.match(FILE_URL_PATTERN) || []))
-    .map((u) => u.replace(/[.,;:!?，。；：！？、]+$/, ''))
-    .filter((u) => IMAGE_URL_PATTERN.test(u))
-  if (urls.length === 0) return
-  const url = urls[0]
-  const cleanedText = text
-    .replace(FILE_URL_PATTERN, (match) => {
-      const u = match.replace(/[.,;:!?，。；：！？、]+$/, '')
-      return IMAGE_URL_PATTERN.test(u) ? '' : match
-    })
-    .replace(/ +/g, ' ')
-    .replace(/\n{3,}/g, '\n\n')
-  if (item.imageFiles[0]?.url === url) {
-    if (cleanedText !== text) item.standard = cleanedText
-    return
-  }
-  const path = url.split(/[?#]/)[0]
-  let name = path.split('/').pop() || url
-  try {
-    name = decodeURIComponent(name)
-  } catch {
-    /* keep original */
-  }
-  const old = item.imageFiles[0]
-  if (old && old.url.startsWith('blob:')) {
-    URL.revokeObjectURL(old.url)
-  }
-  item.imageFiles = [
-    {
-      uid: `standard-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      name,
-      url,
-      status: 'done',
-    },
-  ]
-  item.standard_image = url
-  if (cleanedText !== text) item.standard = cleanedText
-  Message.success('已识别图片链接并添加为标准图')
-}
-
-async function compressImage(file: File, maxSize = 1600, quality = 0.8): Promise<File> {
-  if (!file.type.startsWith('image/')) return file
-  return new Promise((resolve) => {
-    const img = new Image()
-    const url = URL.createObjectURL(file)
-    img.onload = () => {
-      URL.revokeObjectURL(url)
-      let { width, height } = img
-      if (width <= maxSize && height <= maxSize) {
-        resolve(file)
-        return
-      }
-      if (width > height) {
-        height = Math.round((height * maxSize) / width)
-        width = maxSize
-      } else {
-        width = Math.round((width * maxSize) / height)
-        height = maxSize
-      }
-      const canvas = document.createElement('canvas')
-      canvas.width = width
-      canvas.height = height
-      const ctx = canvas.getContext('2d')
-      if (!ctx) {
-        resolve(file)
-        return
-      }
-      ctx.drawImage(img, 0, 0, width, height)
-      canvas.toBlob(
-        (blob) => {
-          if (!blob) {
-            resolve(file)
-            return
-          }
-          const compressed = new File([blob], file.name, { type: 'image/jpeg' })
-          resolve(compressed)
-        },
-        'image/jpeg',
-        quality,
-      )
-    }
-    img.onerror = () => {
-      URL.revokeObjectURL(url)
-      resolve(file)
-    }
-    img.src = url
-  })
-}
-
-async function uploadImage(item: PhotoItem): Promise<string> {
-  const formData = new FormData()
-  formData.append('file', item.file as File, item.name)
-  const res = await api.post('/uploads', formData)
-  return res.data?.url || ''
-}
+// ===== 检查标准 + 标准图一体化输入区（AttachmentInputArea 公共组件） =====
+const MAX_STANDARD_IMAGES = 5
 
 async function fetchDetail() {
   try {
@@ -1683,16 +1419,12 @@ async function fetchDetail() {
     }
     items.value = (data.items || []).map((it) => {
       itemKeySeed += 1
-      const imageFiles: PhotoItem[] = it.standard_image
-        ? [
-            {
-              uid: `saved-${itemKeySeed}`,
-              name: it.standard_image.split('/').pop() || 'standard',
-              url: it.standard_image,
-              status: 'done',
-            },
-          ]
-        : []
+      const standardImages: string[] =
+        it.standard_images && it.standard_images.length > 0
+          ? it.standard_images
+          : it.standard_image
+            ? [it.standard_image]
+            : []
       const scoreType = it.score_type === 'pass_fail' ? 'pass_fail' : 'score'
       return {
         key: itemKeySeed,
@@ -1701,6 +1433,7 @@ async function fetchDetail() {
         title: it.title || '',
         standard: it.standard || '',
         standard_image: it.standard_image || '',
+        standardImages,
         score_type: scoreType,
         score_options:
           it.score_options && it.score_options.length > 0
@@ -1712,8 +1445,6 @@ async function fetchDetail() {
         require_photo: it.require_photo,
         show_remark: it.show_remark ?? true,
         show_photo: it.show_photo ?? true,
-        imageFiles,
-        standardDragging: false,
         category_precondition_enabled: it.category_precondition_enabled ?? false,
         category_precondition: it.category_precondition || '',
       }
@@ -1847,22 +1578,19 @@ async function handleSave() {
       }
     }
   }
+  for (const areaRef of standardAreaRefs.values()) {
+    if (!(await areaRef.flushPending())) return
+  }
   saving.value = true
   try {
     const itemPayloads: any[] = []
     for (const item of items.value) {
-      let standardImage = ''
-      const pending = item.imageFiles.filter((p) => p.status === 'init' && p.file)
-      if (pending.length > 0) {
-        standardImage = await uploadImage(pending[0])
-      } else if (item.imageFiles.length > 0) {
-        standardImage = item.imageFiles[0].url
-      }
       itemPayloads.push({
         category: item.category.trim(),
         title: item.title.trim(),
         standard: item.standard,
-        standard_image: standardImage,
+        standard_image: item.standardImages[0] || '',
+        standard_images: item.standardImages,
         score_type: item.score_type,
         score_options: item.score_options.map((o) => ({
           score: Number(o.score) || 0,
@@ -1996,16 +1724,12 @@ function createRowFromMaterial(m: InspectionMaterial, fallbackCategory: string):
     m.score_options && m.score_options.length > 0
       ? m.score_options.map((o) => ({ score: o.score, label: o.label || '' }))
       : cloneOptions(scoreType === 'pass_fail' ? DEFAULT_PASS_FAIL_OPTIONS : DEFAULT_SCORE_OPTIONS)
-  const imageFiles: PhotoItem[] = m.standard_image
-    ? [
-        {
-          uid: `mat-${itemKeySeed}`,
-          name: m.standard_image.split('/').pop() || 'standard',
-          url: m.standard_image,
-          status: 'done' as const,
-        },
-      ]
-    : []
+  const standardImages: string[] =
+    m.standard_images && m.standard_images.length > 0
+      ? m.standard_images
+      : m.standard_image
+        ? [m.standard_image]
+        : []
   return {
     key: itemKeySeed,
     id: '',
@@ -2013,14 +1737,13 @@ function createRowFromMaterial(m: InspectionMaterial, fallbackCategory: string):
     title: m.title || '',
     standard: m.standard || '',
     standard_image: m.standard_image || '',
+    standardImages,
     score_type: scoreType,
     score_options: options,
     require_remark: false,
     require_photo: false,
     show_remark: true,
     show_photo: true,
-    imageFiles,
-    standardDragging: false,
     category_precondition_enabled: false,
     category_precondition: '',
   }
@@ -2161,116 +1884,5 @@ onUnmounted(() => {
   max-height: 3000px;
 }
 
-/* 检查标准 + 标准图一体化输入区 */
-.standard-input-area {
-  width: 100%;
-  border: 1px solid #e5e5ea;
-  border-radius: 10px;
-  background: #f5f5f7;
-  padding: 8px 10px;
-  transition:
-    border-color 0.2s ease,
-    background 0.2s ease;
-}
-.standard-input-area--dragging {
-  border-color: #007aff;
-  background: #eef5ff;
-}
-.standard-textarea {
-  background-color: transparent;
-}
-.standard-textarea :deep(.arco-textarea) {
-  background-color: transparent;
-  border: none;
-  box-shadow: none;
-  padding: 4px 0;
-  resize: none;
-}
-.standard-toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-top: 6px;
-}
-.standard-toolbar-left {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.standard-toolbar-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  border: none;
-  border-radius: 6px;
-  background: transparent;
-  color: #86868b;
-  cursor: pointer;
-  transition:
-    background 0.2s ease,
-    color 0.2s ease;
-}
-.standard-toolbar-btn:hover {
-  background: rgba(0, 0, 0, 0.06);
-  color: #1d1d1f;
-}
-.standard-toolbar-tip {
-  font-size: 12px;
-  color: #86868b;
-}
-
-/* 标准图预览缩略图 */
-.feedback-thumbs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 8px;
-}
-.feedback-thumb-item {
-  position: relative;
-  width: 64px;
-  height: 64px;
-  border-radius: 8px;
-  overflow: hidden;
-  background: #e5e5ea;
-}
-.feedback-thumb-img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-.feedback-thumb-remove {
-  position: absolute;
-  top: 2px;
-  right: 2px;
-  width: 18px;
-  height: 18px;
-  padding: 0;
-  border: none;
-  border-radius: 50%;
-  background: rgba(0, 0, 0, 0.6);
-  color: #fff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  z-index: 1;
-}
-.feedback-thumb-name {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  padding: 2px 4px;
-  background: rgba(0, 0, 0, 0.5);
-  color: #fff;
-  font-size: 10px;
-  line-height: 1.2;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
+/* 检查标准 + 标准图一体化输入区（AttachmentInputArea 公共组件内置样式） */
 </style>

@@ -29,6 +29,25 @@ func UnmarshalScoreOptions(raw string) []ScoreOption {
 	return options
 }
 
+func MarshalStringSlice(items []string) string {
+	if items == nil {
+		return ""
+	}
+	b, _ := json.Marshal(items)
+	return string(b)
+}
+
+func UnmarshalStringSlice(raw string) []string {
+	if raw == "" {
+		return nil
+	}
+	var items []string
+	if err := json.Unmarshal([]byte(raw), &items); err != nil {
+		return nil
+	}
+	return items
+}
+
 func DefaultScoreOptions(scoreType string, maxScore int) []ScoreOption {
 	if scoreType == "pass_fail" {
 		return []ScoreOption{{Score: 1, Label: "合格"}, {Score: 2, Label: "不合格"}}
@@ -51,17 +70,18 @@ func (t *InspectionTemplate) TableName() string {
 }
 
 type InspectionTemplateItem struct {
-	ID            string `orm:"column(id);pk;size(36)" json:"id"`
-	TemplateID    string `orm:"column(template_id);size(36)" json:"template_id"`
-	Category      string `orm:"column(category);size(100)" json:"category"`
-	Title         string `orm:"column(title);size(200)" json:"title"`
-	Standard      string `orm:"column(standard);type(text);null" json:"standard"`
-	StandardImage string `orm:"column(standard_image);size(500);null" json:"standard_image"`
-	ScoreType     string `orm:"column(score_type);size(20);default(score)" json:"score_type"`
-	MaxScore      int    `orm:"column(max_score);default(0)" json:"max_score"`
-	ScoreOptions  string `orm:"column(score_options);type(text);null" json:"-"`
-	RequireRemark bool   `orm:"column(require_remark);default(false)" json:"require_remark"`
-	RequirePhoto  bool   `orm:"column(require_photo);default(false)" json:"require_photo"`
+	ID             string `orm:"column(id);pk;size(36)" json:"id"`
+	TemplateID     string `orm:"column(template_id);size(36)" json:"template_id"`
+	Category       string `orm:"column(category);size(100)" json:"category"`
+	Title          string `orm:"column(title);size(200)" json:"title"`
+	Standard       string `orm:"column(standard);type(text);null" json:"standard"`
+	StandardImage  string `orm:"column(standard_image);size(500);null" json:"standard_image"`
+	StandardImages string `orm:"column(standard_images);type(text);null" json:"-"`
+	ScoreType      string `orm:"column(score_type);size(20);default(score)" json:"score_type"`
+	MaxScore       int    `orm:"column(max_score);default(0)" json:"max_score"`
+	ScoreOptions   string `orm:"column(score_options);type(text);null" json:"-"`
+	RequireRemark  bool   `orm:"column(require_remark);default(false)" json:"require_remark"`
+	RequirePhoto   bool   `orm:"column(require_photo);default(false)" json:"require_photo"`
 	// 字段显示开关：默认开启，关闭后巡店时该字段不展示
 	ShowRemark bool `orm:"column(show_remark);default(true)" json:"show_remark"`
 	ShowPhoto  bool `orm:"column(show_photo);default(true)" json:"show_photo"`

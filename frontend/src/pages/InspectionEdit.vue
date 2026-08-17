@@ -552,111 +552,53 @@
                       </div>
 
                       <!-- 反馈问题 + 巡店图片（创作内容风格一体化输入区） -->
-                      <div
+                      <AttachmentInputArea
                         v-if="row.show_remark || row.show_photo"
-                        class="feedback-input-area"
-                        :class="{ 'feedback-input-area--disabled': !isCategoryEditable(catGroup) }"
+                        :ref="(el: any) => setScoreAreaRef(row, el)"
+                        v-model="row.photos"
+                        v-model:text="row.comment"
+                        :upload="uploadImageFile"
+                        :max-count="MAX_ROW_PHOTOS"
+                        :disabled="!isCategoryEditable(catGroup)"
+                        :show-textarea="row.show_remark"
+                        :show-images="row.show_photo"
+                        :max-length="300"
+                        :min-rows="3"
+                        :max-rows="8"
+                        :placeholder="commentPlaceholder(row)"
+                        @update:text="onRowCommentInput(row, $event)"
                       >
-                        <!-- 已上传图片预览 -->
-                        <div v-if="row.photos.length > 0" class="feedback-thumbs">
-                          <div
-                            v-for="(photo, pIdx) in row.photos"
-                            :key="photo.uid"
-                            class="feedback-thumb-item"
+                        <template #toolbar-right>
+                          <a-button
+                            v-if="form.store_id && isCategoryEditable(catGroup)"
+                            size="mini"
+                            type="text"
+                            :loading="row._aiScoring"
+                            :disabled="!selectedPlanId || !selectedModelId"
+                            class="!text-[#007AFF] !px-1.5 !h-5 !text-[11px]"
+                            @click.stop="handleSingleItemAI(row)"
                           >
-                            <img :src="photo.url" class="feedback-thumb-img" />
-                            <button
-                              v-if="isCategoryEditable(catGroup)"
-                              type="button"
-                              class="feedback-thumb-remove"
-                              @click="removeRowPhoto(row, pIdx)"
-                            >
-                              <IconClose :size="12" />
-                            </button>
-                            <span class="feedback-thumb-name">{{ photo.name }}</span>
-                          </div>
-                        </div>
-
-                        <!-- 反馈问题 textarea -->
-                        <a-textarea
-                          v-if="row.show_remark"
-                          v-model="row.comment"
-                          :placeholder="commentPlaceholder(row)"
-                          :auto-size="{ minRows: 3, maxRows: 8 }"
-                          :max-length="300"
-                          show-word-limit
-                          :disabled="!isCategoryEditable(catGroup)"
-                          class="feedback-textarea"
-                          @paste="(e: ClipboardEvent) => handleCommentPaste(row, e)"
-                          @input="(val: string) => handleCommentInput(row, val)"
-                          @keydown="(e: KeyboardEvent) => handleCommentKeydown(row, e)"
-                        />
-
-                        <!-- 工具栏 -->
-                        <div class="feedback-toolbar">
-                          <div class="feedback-toolbar-left">
-                            <template v-if="row.show_photo">
-                              <button
-                                type="button"
-                                class="feedback-toolbar-btn"
-                                :disabled="!isCategoryEditable(catGroup) || row.photos.length >= 10"
-                                @click="triggerRowUpload(row)"
-                              >
-                                <IconImage :size="16" />
-                              </button>
-                              <span class="text-[12px] text-[#86868b]">图片</span>
-                              <span class="text-[11px] text-[#86868b]">
-                                {{ row.photos.length }}/10
-                              </span>
-                              <span class="text-[11px] text-[#86868b]"> 单张≤10MB </span>
-                            </template>
-                          </div>
-                          <div class="feedback-toolbar-right">
-                            <a-button
-                              v-if="
-                                form.store_id &&
-                                isCategoryEditable(catGroup) &&
-                                (row.show_remark || row.show_photo)
-                              "
-                              size="mini"
-                              type="text"
-                              :loading="row._aiScoring"
-                              :disabled="!selectedPlanId || !selectedModelId"
-                              class="!text-[#007AFF] !px-1.5 !h-5 !text-[11px]"
-                              @click.stop="handleSingleItemAI(row)"
-                            >
-                              <template #icon><IconRobot :size="12" /></template>
-                              AI 生成
-                            </a-button>
-                            <span
-                              v-if="isRowPassed(row) && row.require_remark"
-                              class="text-[12px] text-[#FF3B30]"
-                              >反馈必填</span
-                            >
-                            <span v-else-if="!isRowPassed(row)" class="text-[12px] text-[#FF3B30]"
-                              >反馈必填</span
-                            >
-                            <span
-                              v-if="isRowPassed(row) && row.require_photo"
-                              class="text-[12px] text-[#FF3B30]"
-                              >图片必填</span
-                            >
-                            <span v-else-if="!isRowPassed(row)" class="text-[12px] text-[#FF3B30]"
-                              >图片必填</span
-                            >
-                          </div>
-                        </div>
-
-                        <!-- 隐藏的文件输入 -->
-                        <input
-                          :ref="(el: any) => setRowFileInput(row.item_id, el)"
-                          type="file"
-                          accept="image/*"
-                          multiple
-                          class="hidden"
-                          @change="(e: Event) => onRowFileInputChange(row, e)"
-                        />
-                      </div>
+                            <template #icon><IconRobot :size="12" /></template>
+                            AI 生成
+                          </a-button>
+                          <span
+                            v-if="isRowPassed(row) && row.require_remark"
+                            class="text-[12px] text-[#FF3B30]"
+                            >反馈必填</span
+                          >
+                          <span v-else-if="!isRowPassed(row)" class="text-[12px] text-[#FF3B30]"
+                            >反馈必填</span
+                          >
+                          <span
+                            v-if="isRowPassed(row) && row.require_photo"
+                            class="text-[12px] text-[#FF3B30]"
+                            >图片必填</span
+                          >
+                          <span v-else-if="!isRowPassed(row)" class="text-[12px] text-[#FF3B30]"
+                            >图片必填</span
+                          >
+                        </template>
+                      </AttachmentInputArea>
 
                       <!-- AI 整改建议 -->
                       <div
@@ -869,6 +811,9 @@ import {
   IconExclamationCircle,
 } from '@arco-design/web-vue/es/icon'
 import PageHeader from '@/components/layout/PageHeader.vue'
+import AttachmentInputArea from '@/components/AttachmentInputArea.vue'
+import { uploadImageFile } from '@/composables/useFileUpload'
+import { extractImageUrlsFromText, cleanUrlsFromText } from '@/composables/useUrlExtractor'
 import { useTokenPlanStore, parseModelField } from '@/stores/tokenPlan'
 import { useUserStore } from '@/stores/user'
 import type {
@@ -951,7 +896,7 @@ interface ScoreRow {
   show_photo: boolean
   comment: string
   ai_generated: boolean
-  photos: PhotoItem[]
+  photos: string[]
   ai_suggestion?: string
   _aiScoring?: boolean
   _aiScore?: number
@@ -991,6 +936,15 @@ const form = ref({
 const storeOptions = ref<{ label: string; value: string }[]>([])
 const templateOptions = ref<{ label: string; value: string }[]>([])
 const scoreRows = ref<ScoreRow[]>([])
+
+const scoreAreaRefs = new Map<string, { flushPending: () => Promise<boolean> }>()
+function setScoreAreaRef(row: ScoreRow, el: unknown) {
+  if (el) {
+    scoreAreaRefs.set(row.item_id, el as { flushPending: () => Promise<boolean> })
+  } else {
+    scoreAreaRefs.delete(row.item_id)
+  }
+}
 
 // 分类分组状态
 interface CategoryGroup {
@@ -1084,7 +1038,14 @@ function isCategoryEditable(cat: CategoryGroup): boolean {
 const allRowPhotos = computed<PhotoItem[]>(() => {
   const result: PhotoItem[] = []
   for (const row of scoreRows.value) {
-    result.push(...row.photos)
+    for (const url of row.photos) {
+      result.push({
+        uid: `${row.item_id}-${url}`,
+        name: url.split('/').pop() || url,
+        url,
+        status: 'done' as const,
+      })
+    }
   }
   return result
 })
@@ -1289,9 +1250,7 @@ function handleAIKeydown(e: KeyboardEvent) {
 
 function extractImageLinksFromAIKeywords() {
   const text = aiKeywords.value
-  const urls = Array.from(new Set(text.match(FILE_URL_PATTERN) || []))
-    .map((u) => u.replace(/[.,;:!?，。；：！？、]+$/, ''))
-    .filter((u) => IMAGE_URL_PATTERN.test(u))
+  const urls = extractImageUrlsFromText(text)
   if (urls.length === 0) return
   const existing = new Set(aiPhotos.value.map((p) => p.url))
   const remaining = 10 - aiPhotos.value.length
@@ -1315,11 +1274,8 @@ function extractImageLinksFromAIKeywords() {
     existing.add(url)
     addedCount++
   }
-  const cleaned = text.replace(FILE_URL_PATTERN, (match) => {
-    const url = match.replace(/[.,;:!?，。；：！？、]+$/, '')
-    return IMAGE_URL_PATTERN.test(url) ? '' : match
-  })
-  aiKeywords.value = cleaned.replace(/ +/g, ' ').replace(/\n{3,}/g, '\n\n')
+  const cleaned = cleanUrlsFromText(text)
+  if (cleaned !== text) aiKeywords.value = cleaned
 }
 
 function normalizeAIKeywordsNewlines() {
@@ -1698,12 +1654,7 @@ async function fetchDetail() {
           comment: s.comment || '',
           ai_generated: !!s.ai_generated,
           ai_suggestion: s.ai_suggestion || '',
-          photos: (s.photos || []).map((url, index) => ({
-            uid: `score-saved-${index}`,
-            name: url.split('/').pop() || url,
-            url,
-            status: 'done' as const,
-          })),
+          photos: s.photos || [],
         }
       })
       // 如果有 template_id，尝试从模板拉取分类前置条件覆盖默认值
@@ -1743,181 +1694,11 @@ function onStoreChange(storeId: any) {
 }
 
 const MAX_IMAGE_SIZE = 10 * 1024 * 1024 // 10MB
-const FILE_URL_PATTERN = /https?:\/\/[^\s<>"'（）()，。；！？、]+/gi
-const IMAGE_URL_PATTERN = /\.(png|jpe?g|gif|webp|avif|svg|bmp|ico)(\?.*)?$/i
+const MAX_ROW_PHOTOS = 10
 
-// ===== 反馈问题输入交互（与创作内容一致） =====
-// 粘贴图片 -> 自动添加为巡店图片
-function handleCommentPaste(row: ScoreRow, e: ClipboardEvent) {
-  if (!isCategoryEditableForRow(row)) return
-  const files = Array.from(e.clipboardData?.files || [])
-  const imageFiles = files.filter((f) => f.type.startsWith('image/'))
-  if (imageFiles.length > 0) {
-    e.preventDefault()
-    const remaining = 10 - row.photos.length
-    if (remaining <= 0) {
-      Message.warning('最多上传 10 张图片')
-      return
-    }
-    const accept = imageFiles.slice(0, remaining)
-    let hasOversize = false
-    for (const file of accept) {
-      if (file.size > MAX_IMAGE_SIZE) {
-        hasOversize = true
-        continue
-      }
-      row.photos.push({
-        uid: `${row.item_id}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        name: file.name || 'pasted-image',
-        url: URL.createObjectURL(file),
-        status: 'init',
-        file,
-      })
-    }
-    if (hasOversize) Message.warning('单张图片大小不能超过 10MB')
-    return
-  }
-  // 粘贴纯文本时，先执行一次图片链接提取（在 paste 后 nextTick 中处理）
-  nextTick(() => {
-    extractImageLinksFromComment(row)
-    normalizeCommentNewlines(row)
-  })
-}
-
-// 从反馈问题文本中提取图片 URL -> 转为巡店图片，并从文本中移除
-function extractImageLinksFromComment(row: ScoreRow) {
-  if (!isCategoryEditableForRow(row)) return
-  const text = row.comment
-  const urls = Array.from(new Set(text.match(FILE_URL_PATTERN) || []))
-    .map((u) => u.replace(/[.,;:!?，。；：！？、]+$/, ''))
-    .filter((u) => IMAGE_URL_PATTERN.test(u))
-  if (urls.length === 0) return
-  const existing = new Set(row.photos.map((p) => p.url))
-  const remaining = 10 - row.photos.length
-  let addedCount = 0
-  for (const url of urls) {
-    if (existing.has(url)) continue
-    if (addedCount >= remaining) break
-    const path = url.split(/[?#]/)[0]
-    let name = path.split('/').pop() || url
-    try {
-      name = decodeURIComponent(name)
-    } catch {
-      /* keep original */
-    }
-    row.photos.push({
-      uid: `${row.item_id}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      name,
-      url,
-      status: 'done',
-    })
-    existing.add(url)
-    addedCount++
-  }
-  // 从文本中移除图片 URL
-  const cleaned = text.replace(FILE_URL_PATTERN, (match) => {
-    const url = match.replace(/[.,;:!?，。；：！？、]+$/, '')
-    return IMAGE_URL_PATTERN.test(url) ? '' : match
-  })
-  row.comment = cleaned.replace(/ +/g, ' ').replace(/\n{3,}/g, '\n\n')
-}
-
-// 连续换行归一化：空行不超过 1 个（即最多 \n\n）
-function normalizeCommentNewlines(row: ScoreRow) {
-  const text = row.comment
-  const normalized = text.replace(/\n{3,}/g, '\n\n')
-  if (normalized !== text) {
-    row.comment = normalized
-  }
-}
-
-// 限制键盘输入：不能连续换行超过 2 个；Enter 不触发保存（与创作内容一致但不需要发送逻辑）
-function handleCommentKeydown(row: ScoreRow, e: KeyboardEvent) {
-  if (!isCategoryEditableForRow(row)) return
-  if (e.key === 'Enter') {
-    // 如果不按 Ctrl/Meta/Shift/Alt，则允许正常换行；但需要前置检查是否已有 \n\n 前导
-    if (!e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey) {
-      const target = e.target as HTMLTextAreaElement
-      const start = target.selectionStart
-      const before = target.value.slice(0, start)
-      // 如果光标前已有两个连续换行，阻止继续换行
-      if (before.endsWith('\n\n')) {
-        e.preventDefault()
-      }
-    }
-    return
-  }
-}
-
-function handleCommentInput(row: ScoreRow, val: string | any) {
-  if (typeof val !== 'string') return
-  row.ai_generated = false
-  // 延迟到 nextTick，确保 v-model 已完成同步再修改 row.comment
-  nextTick(() => {
-    normalizeCommentNewlines(row)
-    extractImageLinksFromComment(row)
-  })
-}
-
-// ===== 创作内容风格图片上传（原生 input） =====
-const rowFileInputs: Record<string, HTMLInputElement | null> = {}
-
-function setRowFileInput(itemId: string, el: any) {
-  rowFileInputs[itemId] = el as HTMLInputElement | null
-}
-
-function triggerRowUpload(row: ScoreRow) {
-  if (!isCategoryEditableForRow(row)) return
-  if (row.photos.length >= 10) {
-    Message.warning('最多上传 10 张图片')
-    return
-  }
-  const input = rowFileInputs[row.item_id]
-  if (input) {
-    input.value = ''
-    input.click()
-  }
-}
-
-function isCategoryEditableForRow(row: ScoreRow): boolean {
-  const idx = scoreRows.value.indexOf(row)
-  if (idx < 0) return true
-  const cat = categoryGroups.value.find((g) => g.rowIndices.includes(idx))
-  if (!cat) return true
-  return isCategoryEditable(cat)
-}
-
-function onRowFileInputChange(row: ScoreRow, e: Event) {
-  const input = e.target as HTMLInputElement
-  if (!input.files || input.files.length === 0) return
-  row.ai_generated = false
-  const remaining = 10 - row.photos.length
-  if (remaining <= 0) {
-    Message.warning('最多上传 10 张图片')
-    return
-  }
-  const files = Array.from(input.files).slice(0, remaining)
-  let hasOversize = false
-  for (const file of files) {
-    if (file.size > MAX_IMAGE_SIZE) {
-      hasOversize = true
-      continue
-    }
-    row.photos.push({
-      uid: `${row.item_id}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      name: file.name,
-      url: URL.createObjectURL(file),
-      status: 'init',
-      file,
-    })
-  }
-  if (hasOversize) {
-    Message.warning('单张图片大小不能超过 10MB')
-  }
-}
-
-function removeRowPhoto(row: ScoreRow, index: number) {
-  row.photos.splice(index, 1)
+// ===== 反馈问题 + 巡店图片一体化输入区（AttachmentInputArea 公共组件） =====
+// 用户编辑文本后标记为非 AI 生成内容（图片提取 / 换行归一化由组件内置处理）
+function onRowCommentInput(row: ScoreRow, _val: string) {
   row.ai_generated = false
 }
 
@@ -2368,32 +2149,12 @@ function computeRecordAIGenerated(): boolean {
   return hasAIScore || issuesStillAI || suggestionStillAI
 }
 
-async function uploadPhoto(item: PhotoItem): Promise<string> {
-  const formData = new FormData()
-  formData.append('file', item.file as File, item.name)
-  const res = await api.post('/uploads', formData)
-  return res.data?.url || ''
-}
-
-async function uploadRowPhotos(row: ScoreRow): Promise<string[]> {
-  const urls: string[] = []
-  for (const item of row.photos) {
-    if (item.status === 'done') {
-      if (item.url) urls.push(item.url)
-    } else if (item.file) {
-      const url = await uploadPhoto(item)
-      if (url) urls.push(url)
-    }
-  }
-  return urls
-}
-
 async function handleSingleItemAI(row: ScoreRow) {
   if (!selectedPlanId.value || !selectedModelId.value) {
     Message.warning('请先在 AI 设置中选择模型配置')
     return
   }
-  const hasImageInput = row.standard_image || row.photos.some((p) => p.url || p.file)
+  const hasImageInput = row.standard_image || row.photos.length > 0
   if (hasImageInput && !selectedModelSupportsVision.value) {
     Message.warning('当前模型不支持视觉理解，无法分析图片。请在模型配置中选用支持视觉理解的模型')
     return
@@ -2423,13 +2184,8 @@ async function handleSingleItemAI(row: ScoreRow) {
 
   try {
     const photos: { data: string; mime_type: string; url?: string }[] = []
-    for (const p of row.photos) {
-      if (p.file) {
-        const encoded = await fileToBase64(p.file)
-        photos.push(encoded)
-      } else if (p.url) {
-        photos.push({ data: '', mime_type: 'image/jpeg', url: p.url })
-      }
+    for (const url of row.photos) {
+      photos.push({ data: '', mime_type: 'image/jpeg', url })
     }
     const bodyWithPhotos = {
       ...requestBody,
@@ -2619,15 +2375,9 @@ function validateRows(): { msg: string; rowIndex: number } | null {
           return { msg: `「${row.item_name}」非满分必填巡店图片`, rowIndex: rowIdx }
         }
       }
-      // 单张图片大小校验
-      for (const p of row.photos) {
-        if (p.file && p.file.size > MAX_IMAGE_SIZE) {
-          return { msg: `「${row.item_name}」巡店图片单张不能超过 10MB`, rowIndex: rowIdx }
-        }
-      }
       // 图片数量上限校验
-      if (row.show_photo && row.photos.length > 10) {
-        return { msg: `「${row.item_name}」巡店图片最多 10 张`, rowIndex: rowIdx }
+      if (row.show_photo && row.photos.length > MAX_ROW_PHOTOS) {
+        return { msg: `「${row.item_name}」巡店图片最多 ${MAX_ROW_PHOTOS} 张`, rowIndex: rowIdx }
       }
     }
   }
@@ -2635,20 +2385,22 @@ function validateRows(): { msg: string; rowIndex: number } | null {
 }
 
 async function doSave() {
+  for (const areaRef of scoreAreaRefs.values()) {
+    if (!(await areaRef.flushPending())) return
+  }
   saving.value = true
   try {
     const scores = []
     const allPhotoUrls: string[] = []
     for (const r of scoreRows.value) {
-      const rowPhotos = await uploadRowPhotos(r)
-      allPhotoUrls.push(...rowPhotos)
+      allPhotoUrls.push(...r.photos)
       scores.push({
         item_id: r.item_id,
         score: Number(r.score) || 0,
         comment: r.comment,
         ai_generated: r.ai_generated,
         ai_suggestion: r.ai_suggestion || '',
-        photos: rowPhotos,
+        photos: r.photos,
       })
     }
     const payload = {
@@ -2940,56 +2692,6 @@ function nowLocalString() {
   opacity: 0.6;
   pointer-events: none;
 }
-.feedback-input-area--dragging {
-  border-color: #007aff;
-  background: #eef5ff;
-}
-
-.feedback-thumbs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 8px;
-}
-.feedback-thumb-item {
-  position: relative;
-  width: 64px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-}
-.feedback-thumb-img {
-  width: 64px;
-  height: 64px;
-  object-fit: cover;
-  border-radius: 8px;
-  border: 1px solid #e5e5ea;
-}
-.feedback-thumb-remove {
-  position: absolute;
-  top: -6px;
-  right: -6px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 18px;
-  height: 18px;
-  border: none;
-  border-radius: 50%;
-  background: #ff3b30;
-  color: #fff;
-  cursor: pointer;
-  z-index: 1;
-}
-.feedback-thumb-name {
-  font-size: 10px;
-  color: #86868b;
-  max-width: 64px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
 
 .feedback-textarea {
   background-color: transparent;
@@ -3045,35 +2747,11 @@ function nowLocalString() {
   padding-top: 6px;
   border-top: 1px solid #e5e5ea;
 }
-.feedback-toolbar-left {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-.feedback-toolbar-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 8px;
-  border: none;
-  border-radius: 8px;
-  background: transparent;
-  color: #86868b;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-.feedback-toolbar-btn:hover:not(:disabled) {
-  background: #e5e5ea;
-  color: #1d1d1f;
-}
-.feedback-toolbar-btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
 .feedback-toolbar-right {
   display: flex;
   align-items: center;
   gap: 8px;
+  margin-left: auto;
 }
 
 /* 校验出错行闪烁高亮 */

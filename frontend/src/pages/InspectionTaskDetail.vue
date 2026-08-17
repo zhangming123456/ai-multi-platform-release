@@ -297,26 +297,15 @@
           class="rounded-lg border border-[#E5E5EA] p-3"
         >
           <div class="font-medium text-[14px] text-[#1D1D1F] mb-2">{{ item.item_name }}</div>
-          <a-upload
-            :auto-upload="false"
-            :file-list="rectifyFiles[item.id]"
-            list-type="picture-card"
-            accept="image/*"
-            :limit="5"
-            @change="(files: any[]) => handleRectifyFileChange(item.id, files)"
-          >
-            <template #upload-button>
-              <div class="w-[70px] h-[70px] flex flex-col items-center justify-center gap-0.5">
-                <IconPlus :size="16" />
-                <span class="text-[10px] text-[#86868b]">上传</span>
-              </div>
-            </template>
-          </a-upload>
-          <a-textarea
-            v-model="rectifyComments[item.id]"
-            placeholder="整改说明（选填）"
-            :auto-size="{ minRows: 2, maxRows: 4 }"
-            class="mt-2 !rounded-lg"
+          <AttachmentInputArea
+            :ref="(el) => setRectifyAreaRef(item, el)"
+            v-model="rectifyPhotos[item.id]"
+            v-model:text="rectifyComments[item.id]"
+            :upload="uploadImageFile"
+            :max-count="MAX_RECTIFY_PHOTOS"
+            :min-rows="2"
+            :max-rows="4"
+            placeholder="整改说明（选填）...&#10;支持拖拽 / 粘贴图片，或粘贴图片链接自动识别"
           />
         </div>
       </div>
@@ -359,8 +348,9 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Message } from '@arco-design/web-vue'
-import { IconPlus } from '@arco-design/web-vue/es/icon'
 import PageHeader from '@/components/layout/PageHeader.vue'
+import AttachmentInputArea from '@/components/AttachmentInputArea.vue'
+import { uploadImageFile } from '@/composables/useFileUpload'
 import { formatDateTime } from '@/utils/time'
 import { useTokenPlanStore, parseModelField } from '@/stores/tokenPlan'
 import { useUserStore } from '@/stores/user'
@@ -372,14 +362,6 @@ interface ModelOption {
   planName: string
   modelId: string
   hasVision: boolean
-}
-
-interface PhotoItem {
-  uid: string
-  name: string
-  url?: string
-  status: 'init' | 'done'
-  file?: File
 }
 
 const route = useRoute()
@@ -397,8 +379,19 @@ const rechecking = ref(false)
 const confirming = ref(false)
 const submitVisible = ref(false)
 const confirmVisible = ref(false)
-const rectifyFiles = ref<Record<string, PhotoItem[]>>({})
+const MAX_RECTIFY_PHOTOS = 5
+const rectifyPhotos = ref<Record<string, string[]>>({})
 const rectifyComments = ref<Record<string, string>>({})
+
+const rectifyAreaRefs = new Map<string, { flushPending: () => Promise<boolean> }>()
+function setRectifyAreaRef(item: { id: string }, el: unknown) {
+  if (el) {
+    rectifyAreaRefs.set(item.id, el as { flushPending: () => Promise<boolean> })
+  } else {
+    rectifyAreaRefs.delete(item.id)
+  }
+}
+
 const confirmResults = ref<Record<string, boolean>>({})
 const confirmComments = ref<Record<string, string>>({})
 
@@ -546,68 +539,34 @@ function onModelChange(val: unknown) {
   selectedModelId.value = val.slice(idx + 1)
 }
 
-function normalizeFileList(fileList: any[]): PhotoItem[] {
-  const newList: PhotoItem[] = []
-  for (const item of fileList) {
-    if (item.status === 'done' && item.url) {
-      newList.push({ uid: item.uid, name: item.name, url: item.url, status: 'done' })
-    } else if (item.file) {
-      newList.push({
-        uid: item.uid,
-        name: item.name,
-        url: item.url || URL.createObjectURL(item.file),
-        status: 'init',
-        file: item.file,
-      })
-    } else if (item.url) {
-      newList.push({ uid: item.uid, name: item.name, url: item.url, status: 'done' })
-    }
-  }
-  return newList
-}
-
-function handleRectifyFileChange(itemId: string, fileList: any[]) {
-  rectifyFiles.value[itemId] = normalizeFileList(fileList)
-}
-
-async function uploadPhoto(item: PhotoItem): Promise<string> {
-  if (!item.file) return item.url || ''
-  const formData = new FormData()
-  formData.append('file', item.file, item.name)
-  const res = await api.post('/uploads', formData)
-  return res.data?.url || ''
-}
-
 function openSubmitModal() {
   if (selectedItems.value.length === 0) {
     Message.warning('请先选择要提交整改的问题项')
     return
   }
-  rectifyFiles.value = {}
+  rectifyPhotos.value = {}
   rectifyComments.value = {}
   for (const item of selectedItems.value) {
-    rectifyFiles.value[item.id] = []
+    rectifyPhotos.value[item.id] = []
     rectifyComments.value[item.id] = ''
   }
   submitVisible.value = true
 }
 
 async function handleSubmitRectify() {
+  for (const areaRef of rectifyAreaRefs.values()) {
+    if (!(await areaRef.flushPending())) return
+  }
   const payloadItems = []
   for (const item of selectedItems.value) {
-    const files = rectifyFiles.value[item.id] || []
-    if (files.length === 0) {
+    const photos = rectifyPhotos.value[item.id] || []
+    if (photos.length === 0) {
       Message.warning(`「${item.item_name}」请上传整改照片`)
       return
     }
-    const urls: string[] = []
-    for (const f of files) {
-      const url = await uploadPhoto(f)
-      if (url) urls.push(url)
-    }
     payloadItems.push({
       item_id: item.id,
-      photos: urls,
+      photos,
       comment: rectifyComments.value[item.id] || '',
     })
   }

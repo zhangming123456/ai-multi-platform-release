@@ -1,6 +1,18 @@
 # 文本域与图片上传结合技术文档
 
-> **版本**：v1.1 · **更新**：2026-07-31 · **核心文件**：`ContentCreate.vue` / `InspectionEdit.vue` / `ai_service.py` / `ImageViewerModal.vue` / `ImageEditorModal.vue`
+> **版本**：v1.4 · **更新**：2026-08-17 · **核心文件**：`AttachmentInputArea.vue` / `ContentCreate.vue` / `InspectionEdit.vue` / `useFileUpload.ts` / `useUrlExtractor.ts` / `ai_service.py` / `ImageViewerModal.vue` / `ImageEditorModal.vue`
+>
+> **v1.4 变更**：
+>
+> 1. **卡片式附件区域**：附件展示从网格缩略图改为横向卡片条。每张卡片固定 68px 高、220px 宽、8px 圆角，左侧 52×52px 方形缩略图/视频首帧/文件图标，右侧文件名 + 扩展名/类型 · 大小，右上角固定删除按钮（hover 额外显示图片编辑按钮）。支持横向滚动，light/dark 主题均适配。
+>
+> **v1.3 变更**：
+>
+> 1. **上传模式双轨制**：组件支持 `uploadMode: 'auto' | 'manual'`（默认 **manual**）。手动模式下选中文件仅暂存（显示"待上传"徽标），由父级在表单提交前调用 `flushPending()` 批量上传后提交；`auto` 模式保留选中即上传的旧行为。
+> 2. **多文件类型**：新增 `fileTypes: ('image' | 'video' | 'file')[]` 配置（默认 `['image']`），按类型生成 accept、大小限制（图片 10MB / 视频 50MB / 其它 20MB）与工具栏图标；类型化预览（图片缩略图 / 视频首帧 / 其它文件图标+文件名+大小）。
+> 3. **ContentCreate 接入组件**：创作内容页改用公共组件（`theme="dark"` 深色主题、`enterBehavior="send"` 回车发送），保留模型选择 + 发送按钮视觉交互；组件在未传 `upload` 时仅收集文件，通过 `getPendingFiles()` 取 File 列表走 base64 直发 AI。
+>
+> **v1.2 变更**：将原 `FileAttachmentArea.vue` 重构为公共组件 `AttachmentInputArea.vue`，按「创作内容风格一体化输入区」的样式与交互，供素材编辑、模板编辑、巡店编辑、整改弹窗等场景复用；上传函数由业务页面通过 props 注入，文本/图片支持独立显隐开关，操作按钮改为 icon + tooltip 提示。
 
 ## 1. 概述
 
@@ -17,12 +29,13 @@
 
 ### 1.2 核心页面
 
-| 页面           | 文件                         | 特点                                                                                |
-| -------------- | ---------------------------- | ----------------------------------------------------------------------------------- |
-| **创作内容**   | `ContentCreate.vue`          | 最完整实现：textarea + 拖拽 + 粘贴 + 工具栏上传 + URL 提取 + 图片压缩 + base64 编码 |
-| **巡店编辑**   | `InspectionEdit.vue`         | 每个检查项独立的 textarea + 图片上传，支持粘贴/URL提取/AI分析                       |
-| **素材标准图** | `InspectionMaterialEdit.vue` | textarea 填写检查标准 + `a-upload` 上传标准图                                       |
-| **模板编辑**   | `InspectionTemplateEdit.vue` | 多个检查项各自有 textarea + `a-upload`                                              |
+| 页面         | 文件                         | 特点                                                                                                                                                                       |
+| ------------ | ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **创作内容** | `ContentCreate.vue`          | 使用 `AttachmentInputArea`（`theme="dark"` + `enter-behavior="send"`）：textarea + 拖拽 + 粘贴 + 工具栏上传 + URL 提取 + 多文件类型 + base64 直发（不传 `upload`，仅收集） |
+| **素材编辑** | `InspectionMaterialEdit.vue` | 使用 `AttachmentInputArea`（手动模式）："检查标准与标准图"一体化输入区，提交前 `flushPending()`                                                                            |
+| **模板编辑** | `InspectionTemplateEdit.vue` | 使用 `AttachmentInputArea`（手动模式）：每个检查项一个一体化输入区，v-for 内函数 ref + Map 收集，保存前统一 `flushPending()`                                               |
+| **巡店编辑** | `InspectionEdit.vue`         | 使用 `AttachmentInputArea`（手动模式）：每个检查项"反馈问题 + 巡店图片"，支持 `show-textarea` / `show-images` 独立开关，保存前 `flushPending()`                            |
+| **整改弹窗** | `InspectionTaskDetail.vue`   | 使用 `AttachmentInputArea`（手动模式）："整改说明 + 整改图片"，提交整改前 `flushPending()`                                                                                 |
 
 ---
 
@@ -53,34 +66,174 @@
 └─────────────────────────────────────────┘
 ```
 
-### 2.2 核心类型定义
+### 2.1.1 公共组件 AttachmentInputArea（v1.2 新增）
 
-```typescript
-// 上传项基础类型
-interface UploadedItemBase {
-  uid: string // 唯一标识
-  name: string // 文件名
-  url: string // 预览 URL（ObjectURL 或原始 URL）
-  status: 'done' | 'init'
-}
+为统一「文本 + 图片」一体化输入体验，将原 `FileAttachmentArea.vue` 重构为公共组件 `AttachmentInputArea.vue`（`frontend/src/components/AttachmentInputArea.vue`）。组件自带 textarea、图片缩略图预览、工具栏与操作按钮，业务页面通过 **props（含上传函数）+ slot** 定制不同场景。
 
-// 本地文件上传项（含 File 对象）
-interface UploadedFileItem extends UploadedItemBase {
-  kind: 'file'
-  file: File
-}
-
-// URL 链接项（从文本中提取）
-interface UploadedLinkItem extends UploadedItemBase {
-  kind: 'link'
-  url: string // 原始 URL
-}
-
-// 联合类型
-type UploadedItem = UploadedFileItem | UploadedLinkItem
+```
+┌─────────────────────────────────────────────┐
+│  #title 插槽（可选，标题说明区）              │
+├─────────────────────────────────────────────┤
+│  #empty 插槽 / 附件卡片区（aia-cards）        │
+│  ├─ 横向卡片条，超出可滚动                    │
+│  ├─ 每张卡片：左侧 52×52 缩略图              │
+│  │             右侧文件名 + 扩展名/类型 · 大小 │
+│  │             右上角固定删除按钮             │
+│  │             hover 时额外显示图片编辑按钮    │
+│  ├─ pending 项：缩略图叠加 spinner + "待上传"  │
+│  └─ uploading 项：缩略图叠加 spinner + "上传中..."│
+├─────────────────────────────────────────────┤
+│  文本输入区（a-textarea，透明无边框）         │
+│  ├─ auto-size 自动高度（minRows/maxRows）     │
+│  ├─ 粘贴图片自动识别、URL 自动提取            │
+│  └─ 连续换行守卫（Enter 防连续空行）          │
+├─────────────────────────────────────────────┤
+│  工具栏（aia-toolbar）                        │
+│  ├─ #toolbar-left：上传按钮 + 计数 + 提示     │
+│  └─ #toolbar-right：业务自定义按钮（发送等）   │
+└─────────────────────────────────────────────┘
 ```
 
+#### Props
+
+| Prop                  | 类型                               | 默认值                              | 说明                                                                                                                |
+| --------------------- | ---------------------------------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `modelValue`          | `string[]`                         | 必传                                | 附件 URL 数组（v-model 绑定）                                                                                       |
+| `upload`              | `(file: File) => Promise<string>`  | 可选（默认 undefined）              | 文件上传函数，由业务页面注入；**不传时组件仅收集文件**（供 `getPendingFiles()` 取 File 走 base64 直发），不执行上传 |
+| `uploadMode`          | `'auto' \| 'manual'`               | `'manual'`                          | 上传模式：`auto` 选中即上传；`manual` 暂存 pending，提交前父级调 `flushPending()` 批量上传                          |
+| `fileTypes`           | `('image' \| 'video' \| 'file')[]` | `['image']`                         | 允许的文件类型集合，驱动 accept、大小限制与工具栏图标                                                               |
+| `text`                | `string`                           | `''`                                | 文本内容（`v-model:text` 绑定）                                                                                     |
+| `maxCount`            | `number`                           | `0`（不限）                         | 最大附件数量                                                                                                        |
+| `disabled`            | `boolean`                          | `false`                             | 禁用态（隐藏操作按钮、上传按钮禁用）                                                                                |
+| `bordered`            | `boolean`                          | `true`                              | 是否显示卡片边框                                                                                                    |
+| `compact`             | `boolean`                          | `false`                             | 紧凑模式（缩略图 60px）                                                                                             |
+| `placeholder`         | `string`                           | 内置默认                            | textarea 占位符                                                                                                     |
+| `hint`                | `string`                           | `支持拖拽 / 粘贴图片，链接自动识别` | 工具栏提示文字                                                                                                      |
+| `maxLength`           | `number`                           | `0`（不限）                         | 文本最大字数（>0 时显示字数统计）                                                                                   |
+| `showWordLimit`       | `boolean`                          | `true`                              | 是否显示字数统计                                                                                                    |
+| `minRows` / `maxRows` | `number`                           | `2` / `5`                           | textarea 自动高度行数范围                                                                                           |
+| `showTextarea`        | `boolean`                          | `true`                              | 独立开关：是否显示文本输入区                                                                                        |
+| `showImages`          | `boolean`                          | `true`                              | 独立开关：是否显示附件预览区                                                                                        |
+| `extractUrls`         | `boolean`                          | `true`                              | 是否从文本中自动提取图片/视频/文件 URL 并转为缩略图（内置逻辑）                                                     |
+| `accept`              | `string`                           | 由 `fileTypes` 生成                 | 文件选择器 accept（可覆盖）                                                                                         |
+| `theme`               | `'light' \| 'dark'`                | `'light'`                           | 主题：`dark` 深色背景适配创作内容页                                                                                 |
+| `enterBehavior`       | `'newline' \| 'send'`              | `'newline'`                         | 回车行为：`send` 时 Enter 触发 `@enter`，Cmd/Ctrl+Enter 换行                                                        |
+
+#### Emits
+
+| Event               | 参数                                 | 说明                                        |
+| ------------------- | ------------------------------------ | ------------------------------------------- |
+| `update:modelValue` | `string[]`                           | 附件数组变化（添加/删除/编辑替换/URL 提取） |
+| `update:text`       | `string`                             | 文本内容变化（含 URL 提取后的文本清理）     |
+| `enter`             | `无`                                 | `enterBehavior="send"` 时回车触发           |
+| `change`            | `{ total: number, pending: number }` | 附件数量变化（总数 / 待上传数）             |
+
+#### Slots
+
+| Slot             | 作用域 | 说明                                   |
+| ---------------- | ------ | -------------------------------------- |
+| `#title`         | 无     | 标题/说明区，渲染于输入区顶部          |
+| `#empty`         | 无     | 空状态占位（无附件时）                 |
+| `#toolbar-left`  | 无     | 工具栏左侧扩展（上传按钮之后）         |
+| `#toolbar-right` | 无     | 工具栏右侧扩展（发送按钮、模型选择等） |
+
+#### 上传函数注入
+
+组件不直接请求后端，由业务页面通过 `upload` prop 注入（可复用 `useFileUpload.ts` 的 `uploadImageFile`）：
+
+```typescript
+// composables/useFileUpload.ts
+export async function uploadImageFile(file: File): Promise<string> {
+  const formData = new FormData()
+  formData.append('file', file, file.name)
+  const res = await api.post('/uploads', formData)
+  return res.data?.url || ''
+}
+```
+
+业务页面使用（手动模式示例）：
+
+```vue
+<script setup lang="ts">
+import { ref } from 'vue'
+import AttachmentInputArea from '@/components/AttachmentInputArea.vue'
+import { uploadImageFile } from '@/composables/useFileUpload'
+
+const images = ref<string[]>([])
+const content = ref('')
+const areaRef = ref<{ flushPending: () => Promise<boolean> }>()
+
+async function handleSave() {
+  if (areaRef.value && !(await areaRef.value.flushPending())) return
+  // 此时 pending 文件已上传，images 中为正式 URL，继续提交表单
+}
+</script>
+
+<template>
+  <AttachmentInputArea
+    ref="areaRef"
+    v-model="images"
+    v-model:text="content"
+    :upload="uploadImageFile"
+    :max-count="10"
+    :max-length="300"
+    :min-rows="3"
+    :max-rows="8"
+    placeholder="（选填）请输入反馈问题，300 字内"
+  >
+    <template #toolbar-right>
+      <a-button size="mini" type="text" @click="handleAI">AI 生成</a-button>
+    </template>
+  </AttachmentInputArea>
+</template>
+```
+
+> **注意**：`v-model` 绑定附件数组，`v-model:text` 绑定文本内容，两者相互独立。URL 提取逻辑已内置（`extractUrls` 默认开启），父级无需再自行提取。
+
+#### 组件暴露方法（defineExpose）
+
+| 方法                | 说明                                                                                                                     |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `handlePaste(e)`    | 处理剪贴板粘贴图片，返回 `boolean`（是否处理了图片粘贴）                                                                 |
+| `pickFiles()`       | 触发隐藏的文件选择器                                                                                                     |
+| `addFiles(files)`   | 添加文件（校验 → 压缩 → 按 uploadMode 上传或暂存）                                                                       |
+| `flushPending()`    | **手动模式**：批量上传全部 pending 文件（upload 未传时直接跳过并返回 `true`），全部成功返回 `true`，任一失败返回 `false` |
+| `getPendingFiles()` | **手动模式**：返回待上传的 `{ file, type, name, size }[]`（供 base64 直发场景取 File）                                   |
+
+### 2.2 核心类型定义（组件内部）
+
+`AttachmentInputArea.vue` 内部使用「附件项 + 待上传项」两类模型：
+
+```typescript
+type AttachmentFileType = 'image' | 'video' | 'file'
+
+// 待上传项（手动模式暂存，upload 未传时也用于收集 File）
+interface PendingItem {
+  key: string // 唯一标识
+  file: File
+  type: AttachmentFileType
+  name: string
+  size: number
+}
+
+// 预览附件项（displayItems computed 合并 images 与 pending）
+interface DisplayItem {
+  key: string
+  type: AttachmentFileType
+  name: string
+  size?: number
+  url: string // 已上传 URL
+  pending?: boolean // true 表示未上传（待上传徽标）
+  file?: File // pending 时持有原始 File
+}
+```
+
+- `images`（`v-model` 绑定的 URL 数组）与 `pendingItems`（待上传项）合并为 `displayItems` 统一渲染
+- 按类型分类的 computed：`imageItems` / `videoItems` / `fileItems`，驱动查看器、视频播放弹窗与文件项展示
+
 ### 2.3 文件上传触发
+
+> **v1.3 说明**：以下 2.3 ~ 2.6 节展示的上传触发、文件校验、拖拽、粘贴逻辑原为 `ContentCreate.vue` 独立实现；现已被 `AttachmentInputArea.vue` 公共组件内聚（`pickFiles()` / `addFiles()` / 拖拽 / 粘贴）。各使用页面通过组件复用，不再各自实现。
 
 ```typescript
 const acceptType = ref('image/*,video/*')
@@ -215,52 +368,253 @@ function handleTextareaPaste(e: ClipboardEvent) {
 }
 ```
 
-### 2.7 URL 自动提取
+### 2.7 URL 自动提取（useUrlExtractor）
 
-从文本中识别图片/文件 URL，转为附件并从文本中移除：
+从文本中识别图片/视频/文件 URL，转为附件并从文本中移除。该逻辑已抽取至 `useUrlExtractor.ts` 并被组件（`extractUrls` 默认开启）与 ContentCreate 复用：
 
 ```typescript
-const FILE_URL_PATTERN = /https?:\/\/[^\s<>"'（）()，。；！？、]+/gi
+// composables/useUrlExtractor.ts
 const IMAGE_URL_PATTERN = /\.(png|jpe?g|gif|webp|avif|svg|bmp|ico)(\?.*)?$/i
 const VIDEO_URL_PATTERN = /\.(mp4|mov|m4v|webm|avi|mkv)(\?.*)?$/i
+const FILE_URL_EXT_PATTERN = /\.(pdf|docx?|xlsx?|pptx?|zip|rar|7z|txt|md|csv|json)(\?.*)?$/i
 
-function extractFileLinksFromText() {
-  const text = promptText.value
-  const urls = Array.from(new Set(text.match(FILE_URL_PATTERN) || []))
-    .map((u) => u.replace(/[.,;:!?，。；：！？、]+$/, ''))
-    .filter((u) => IMAGE_URL_PATTERN.test(u) || VIDEO_URL_PATTERN.test(u))
-  if (urls.length === 0) return
-  const existing = new Set(uploadedItems.value.map((i) => (i.kind === 'link' ? i.url : '')))
-  const remaining = MAX_FILES - uploadedItems.value.length
-  let addedCount = 0
-  for (const url of urls) {
-    if (existing.has(url)) continue
-    if (addedCount >= remaining) break
-    const path = url.split(/[?#]/)[0]
-    let name = path.split('/').pop() || url
-    try {
-      name = decodeURIComponent(name)
-    } catch {
-      /* keep original */
-    }
-    uploadedItems.value.push({
-      kind: 'link',
-      uid: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      name,
-      url,
-      status: 'done',
+// 根据 URL 扩展名推断类型：'image' | 'video' | 'file' | null
+function typeFromUrl(url: string): AttachmentFileType | null
+
+// 从文本中提取指定类型的 URL 列表（去重、清洗尾部标点）
+function extractUrlsFromText(text: string, types: AttachmentFileType[]): string[]
+
+// 从文本中移除指定类型的 URL
+function cleanUrlsFromText(text: string, types: AttachmentFileType[]): string
+
+// 从 URL 提取文件名（解码）
+function urlFileName(url: string): string
+```
+
+组件内置的提取流程（`extractUrls` 开启时）：
+
+```typescript
+const urlTypes = props.fileTypes // 按配置的 fileTypes 过滤 URL
+const urls = extractUrlsFromText(text, urlTypes)
+const cleaned = cleanUrlsFromText(text, urlTypes)
+// 新 URL 追加到 images，text 同步清理
+```
+
+> 兼容保留：`extractImageUrlsFromText(text)` 为仅提取图片 URL 的旧签名。
+
+### 2.7.1 手动上传模式与 flushPending（v1.3）
+
+`uploadMode: 'manual'`（默认）下，选中文件**只进入 `pendingItems` 暂存**，不发起上传；父级在表单提交前调用 `flushPending()` 将全部 pending 文件批量上传为正式 URL，再提交表单，避免「选择即上传」造成孤儿文件。
+
+组件内部关键逻辑：
+
+```typescript
+// 手动模式：addFiles 只暂存，不调用 upload
+function addFiles(files: File[]) {
+  for (const file of accept) {
+    pendingItems.value.push({
+      key: genKey(),
+      file,
+      type: typeFromFile(file),
+      name: file.name,
+      size: file.size,
     })
-    existing.add(url)
-    addedCount++
   }
-  // 从文本中移除已提取的 URL
-  const cleaned = text.replace(FILE_URL_PATTERN, (match) => {
-    const url = match.replace(/[.,;:!?，。；：！？、]+$/, '')
-    return IMAGE_URL_PATTERN.test(url) || VIDEO_URL_PATTERN.test(url) ? '' : match
-  })
-  promptText.value = cleaned.replace(/ +/g, ' ').replace(/\n{3,}/g, '\n\n')
+  emitChange()
+}
+
+// 提交前批量上传：全部成功返回 true，任一失败返回 false（父级中断提交）
+async function flushPending(): Promise<boolean> {
+  const targets = pendingItems.value
+  if (targets.length === 0) return true
+  if (!props.upload) {
+    pendingItems.value = [] // 未配置上传函数：仅收集场景，直接清空暂存
+    emitChange()
+    return true
+  }
+  const results = await Promise.all(
+    targets.map(async (item) => {
+      const url = await props.upload(item.file)
+      if (!url) return false
+      images.value.push(url)
+      URL.revokeObjectURL(previewUrl(item))
+      return true
+    }),
+  )
+  if (results.every(Boolean)) pendingItems.value = []
+  emitChange()
+  return results.every(Boolean)
+}
+
+// 供 base64 直发场景取 File 列表
+function getPendingFiles(): PendingItem[] {
+  return pendingItems.value
 }
 ```
+
+**父级接入模式**（v-for 内多组件场景）：
+
+```typescript
+// 模板：:ref="(el) => setAreaRef(item, el)" —— 函数 ref + Map 收集（比字符串 ref 更可靠）
+const areaRefs = new Map<string, { flushPending: () => Promise<boolean> }>()
+function setAreaRef(item: { id: string }, el: unknown) {
+  if (el) areaRefs.set(item.id, el as { flushPending: () => Promise<boolean> })
+  else areaRefs.delete(item.id)
+}
+
+// 提交表单前统一 flush
+async function handleSave() {
+  for (const ref of areaRefs.values()) {
+    if (!(await ref.flushPending())) return // 任一上传失败则中断提交
+  }
+  // 继续提交表单（此时 v-model 数组已含全部正式 URL）
+}
+```
+
+### 2.7.2 多文件类型配置（v1.3）
+
+`fileTypes: ('image' | 'video' | 'file')[]` 数组（默认 `['image']`）驱动组件三类能力：
+
+| fileTypes   | 生成 accept                       | 大小限制       | 工具栏图标             | 预览样式                   |
+| ----------- | --------------------------------- | -------------- | ---------------------- | -------------------------- |
+| `['image']` | `image/jpeg,image/png,image/webp` | 图片 10MB      | IconImage + 提示       | 图片缩略图（点击查看大图） |
+| `['video']` | `video/*`                         | 视频 50MB      | IconVideoCamera + 提示 | 视频首帧（点击播放弹窗）   |
+| `['file']`  | 通用文件 MIME（audio/pdf/doc 等） | 其它 20MB      | IconPlus + 提示        | 文件图标 + 文件名 + 大小   |
+| 多类型混合  | 上述 MIME 拼接                    | 按类型分别限制 | IconPlus + 提示        | 类型化混合渲染             |
+
+```typescript
+// 类型判定与校验
+function typeFromFile(file: File): AttachmentFileType {
+  if (file.type.startsWith('image/')) return 'image'
+  if (file.type.startsWith('video/')) return 'video'
+  return 'file'
+}
+
+const FILE_TYPE_LIMITS: Record<AttachmentFileType, number> = {
+  image: 10 * 1024 * 1024, // 10MB
+  video: 50 * 1024 * 1024, // 50MB
+  file: 20 * 1024 * 1024, // 20MB
+}
+```
+
+类型化预览（统一以横向卡片展示）：
+
+- **图片**：`<img>` 缩略图置于卡片左侧，点击整张卡片打开 `ImageViewerModal`（滚轮缩放、拖拽平移、多图翻页）
+- **视频**：`<video preload="metadata" muted>` 首帧置于卡片左侧，点击整张卡片打开视频播放弹窗
+- **其它文件**：卡片左侧显示 `IconFile`，点击整张卡片在新窗口打开/下载
+- 所有卡片右上角始终显示删除按钮；hover 时图片卡片额外显示编辑按钮
+
+### 2.7.3 卡片式附件区域（v1.4）
+
+附件展示区由网格缩略图改为横向卡片条，核心结构与样式：
+
+```vue
+<div class="aia-cards">
+  <div
+    v-for="(item, index) in displayItems"
+    :key="item.key"
+    class="aia-card"
+    :class="{ 'aia-card--pending': item.pending, 'aia-card--uploading': isUploading(item.key) }"
+    @click="openViewer(index)"
+  >
+    <div class="aia-card__thumb">
+      <!-- image / video / file icon -->
+      <a-spin v-if="item.pending || isUploading(item.key)" :size="16" />
+    </div>
+    <div class="aia-card__info">
+      <span class="aia-card__name">{{ item.name }}</span>
+      <span class="aia-card__meta">{{ cardMeta(item) }}</span>
+    </div>
+    <div class="aia-card__actions">
+      <button v-if="item.type === 'image'" @click.stop="openEditor(index)">编辑</button>
+      <button @click.stop="removeItem(index)">删除</button>
+    </div>
+  </div>
+</div>
+```
+
+**尺寸规范**：
+
+| 元素                         | 尺寸 / 样式                                            |
+| ---------------------------- | ------------------------------------------------------ |
+| 卡片容器 `.aia-card`         | 宽 220px，高 68px，圆角 8px，间距 12px                 |
+| 缩略图 `.aia-card__thumb`    | 52×52px，圆角 6px                                      |
+| 文件名 `.aia-card__name`     | 13px，单行截断，深灰/浅色（dark 为 #f2f2f7）           |
+| 元信息 `.aia-card__meta`     | 11px，格式为 `扩展名 · 大小` 或 `待上传` / `上传中...` |
+| 操作按钮 `.aia-card__action` | 20×20px，圆形白底，阴影，默认隐藏，hover 卡片时显示    |
+| 滚动容器 `.aia-cards`        | `flex-wrap: nowrap; overflow-x: auto;`                 |
+
+**状态样式**：
+
+- **正常已上传**：白色背景（light）/ #3a3a3c（dark），显示扩展名 + 文件大小
+- **pending（手动模式）**：显示蓝色 `待上传` 文案 + 缩略图 spinner
+- **uploading（auto 模式）**：显示蓝色 `上传中...` 文案 + 缩略图 spinner
+- **hover**：卡片背景微亮，操作按钮淡入
+
+**交互**：
+
+- 点击整张卡片触发查看（图片 → 查看器 / 视频 → 播放弹窗 / 文件 → 新窗口）
+- 删除按钮始终可见（图中为右上角固定 ×）；编辑按钮仅在图片卡片 hover 时出现
+- 横向排列，超出容器宽度时底部出现滚动条
+
+### 2.7.4 ContentCreate 接入与 base64 直发（v1.3）
+
+创作内容页不再独立实现输入区，改用公共组件（视觉保持）：
+
+```vue
+<AttachmentInputArea
+  ref="createAreaRef"
+  v-model="fileUrls"
+  v-model:text="promptText"
+  theme="dark"
+  :file-types="['image', 'video']"
+  :max-count="MAX_UPLOAD_FILES"
+  :enter-behavior="'send'"
+  placeholder="输入创作需求，使用 #标签 添加关键词，例如：写一篇小红书文案 #穿搭 #夏季"
+  @enter="generate"
+  @change="onAreaChange"
+>
+  <template #toolbar-right>
+    <!-- 模型选择 a-select + 发送按钮（视觉与旧实现一致） -->
+  </template>
+</AttachmentInputArea>
+```
+
+**关键差异：不传 `upload`** —— 组件仅收集文件（`pendingItems`），AI 直发时通过 `getPendingFiles()` 取 File 列表，与文本中提取的 URL 一起编码为 base64：
+
+```typescript
+interface PendingFileItem {
+  file: File
+  type: string
+  name: string
+  size: number
+}
+
+// pending 文件 → base64（图片先压缩）
+async function fileToBase64(file: File): Promise<{ data: string; mime_type: string }>
+
+// URL 链接 → fetch → blob → base64
+async function fetchUrlToBase64(url: string): Promise<{ data: string; mime_type: string } | null>
+
+async function buildFilesPayload(): Promise<{ data: string; mime_type: string }[] | undefined> {
+  const pendingFiles = createAreaRef.value?.getPendingFiles() ?? []
+  const urls = fileUrls.value
+  if (pendingFiles.length + urls.length === 0) return undefined
+  const tasks = [
+    ...pendingFiles.map((p) => fileToBase64(p.file)),
+    ...urls.map((url) => fetchUrlToBase64(url)),
+  ]
+  const results = await Promise.all(tasks)
+  return results.filter((r): r is { data: string; mime_type: string } => r !== null)
+}
+```
+
+**交互保留**：
+
+- `enterBehavior="send"`：Enter 直接触发 `@enter="generate"`（发送），Cmd/Ctrl+Enter 换行；快捷键提示文案由 `hint` 传入
+- `theme="dark"`：深色背景（#2c2c2e）与文字，适配创作页暗色卡片
+- `#toolbar-right` slot 承载模型选择器 + 发送按钮，布局与旧实现一致
+- 模型不支持文件上传时（`!store.selectedModelSupportsFiles`），`generate()` 提前拦截并提示
 
 ### 2.8 图片压缩
 
@@ -337,7 +691,7 @@ function fileToBase64(file: File): Promise<string> {
 
 ### 2.10 发送请求
 
-将文本和文件一起发送给 AI 接口：
+> **v1.3 说明**：以下代码为旧版 `ContentCreate.vue` 独立实现（遍历 `uploadedItems`）。当前创作页已改用公共组件，文件收集统一走 `buildFilesPayload()`（组件 `getPendingFiles()` + URL 转 base64，见 2.7.3），逻辑等价：本地文件先压缩再编码，URL 通过 fetch 转 base64，合并为 `{ data, mime_type }[]` 随 SSE 请求发送。
 
 ```typescript
 async function startAiGeneration() {
@@ -385,38 +739,26 @@ async function startAiGeneration() {
 
 ### 2.11 图片查看与编辑（Fabric.js）
 
-附件预览区为每张图片提供「查看」与「编辑」两个入口，编辑能力基于 [Fabric.js](https://fabricjs.com/) 实现，支持裁剪、旋转、压缩。
+附件预览区为每张图片提供「查看」与「编辑」两个入口。编辑能力基于 [Fabric.js](https://fabricjs.com/) 实现，支持裁剪、旋转、压缩。
 
-> **默认不编辑**：图片上传后**默认直接使用原始图片**，不进入编辑流程。只有用户主动点击「编辑」按钮时才打开编辑器，编辑属于可选操作，非必经环节。
+> **默认不编辑**：图片上传后**默认直接使用原始图片**。用户可通过「编辑」按钮进入编辑器。图片编辑为可选操作，非提交环节的必经步骤。
 
-#### 2.11.1 依赖安装
+#### 2.11.1 功能说明
 
-```bash
-npm install fabric
-```
+- **Fabric.js 集成**：利用 Canvas 技术实现前端图片裁剪框选、角度旋转，并根据调整后的预览图实时导出数据。
+- **裁剪（Crop）**：通过交互式 `Rect` 矩形框定义裁剪区域，支持拖拽调节框选范围。
+- **旋转（Rotate）**：支持 90° 步进旋转以及自定义角度旋转，并自动适配画布布局。
+- **压缩（Compress）**：提供质量滑块（Quality Slider），可在导出前通过 `toDataURL` 压缩 JPEG 质量。
 
-Fabric.js v6 原生支持 ESM 与 TypeScript，无需额外类型包。Vite 下直接引入即可：
+#### 2.11.2 交互流程
 
-```typescript
-import { Canvas, Image as FabricImage, Rect } from 'fabric'
-```
-
-#### 2.11.2 组件拆分
-
-| 组件       | 文件                   | 职责                                                     |
-| ---------- | ---------------------- | -------------------------------------------------------- |
-| 图片查看器 | `ImageViewerModal.vue` | 大图预览、缩放、拖拽、多图翻页（轻量，纯 CSS transform） |
-| 图片编辑器 | `ImageEditorModal.vue` | 裁剪、旋转、压缩（基于 Fabric.js Canvas）                |
-
-```
-附件预览区（chat-attachments）
-  └─ 每个图片缩略图 hover 时显示操作层
-       ├─ [查看] → ImageViewerModal（只读预览，默认行为）
-       ├─ [编辑] → ImageEditorModal（Fabric.js 画布，可选操作）
-       └─ [删除] → 移除附件
-```
-
-> 未点击「编辑」的图片始终以原始 `File` 参与后续 base64 编码发送，无需经过 Fabric.js 画布。
+1. **上传/粘贴**：图片进入附件预览区。
+2. **hover 悬浮**：预览缩略图上悬浮显示「查看」与「编辑」图标。
+3. **编辑入口**：点击「编辑」，打开 `ImageEditorModal`。
+4. **画布调整**：在 Fabric.js 画布内进行裁剪/旋转操作。
+5. **实时预览**：编辑器提供即时预览效果。
+6. **确认应用**：点击确认，导出编辑后的图片数据流（Blob/Base64）并覆盖本地附件原图。
+7. **取消/关闭**：丢弃所有临时编辑，保留原图不变。
 
 #### 2.11.3 图片查看器
 
@@ -586,7 +928,7 @@ function exportImage(): Promise<Blob> {
 
 #### 2.11.8 与上传流程集成
 
-编辑完成后，将导出结果替换 `uploadedItems` 中的原始 `File`：
+> **v1.3 说明**：当前图片编辑入口与流程已内聚至 `AttachmentInputArea.vue`：已上传图片（非 pending）在 `upload` 配置后显示编辑按钮；编辑确认后，组件内替换对应附件项（pending 分支替换 `PendingItem.file`，上传分支替换 `images` URL 并重新上传），父级无需介入。旧版基于 `uploadedItems` 的实现如下：
 
 ```typescript
 async function confirmEdit(index: number) {
@@ -608,6 +950,8 @@ async function confirmEdit(index: number) {
 > 后续 `startAiGeneration()` 会读取更新后的 `item.file`，自动将编辑结果（裁剪/旋转/压缩后的 base64）发送给 AI 接口。
 >
 > **默认不编辑场景**：用户从未点击「编辑」时，`uploadedItems` 中的 `item.file` 保持为上传时的原始 `File`，`startAiGeneration()` 直接对其执行上传前压缩与 base64 编码，完全绕过 Fabric.js 编辑器。
+>
+> **v1.3 对应**：组件内 `handleEditorConfirm` 的 pending 分支（`item.pending && item.file`）将编辑结果替换 `PendingItem.file`（随后 `flushPending()` / `getPendingFiles()` 使用编辑后文件）；上传分支重新执行 `props.upload` 替换 `images` URL。
 
 ---
 
@@ -759,28 +1103,44 @@ Authorization: Bearer <token>
 
 ## 5. 使用指南
 
-### 5.1 创作内容页面
+### 5.1 创作内容页面（AttachmentInputArea）
 
-1. **输入创作需求**：在 textarea 中输入文本
-2. **添加图片/视频**：
-   - 点击工具栏"图片"或"视频"按钮选择文件
+1. **输入创作需求**：在输入区 textarea 中输入文本，支持 `#标签` 提取关键词
+2. **添加图片/视频/文件**：
+   - 点击工具栏上传按钮（多类型为 IconPlus）选择文件
    - 拖拽文件到输入区
    - 从剪贴板粘贴图片（Ctrl+V）
-   - 在文本中粘贴图片 URL，自动提取为附件
-3. **查看/编辑图片**：
-   - 悬停缩略图，点击"查看"打开大图预览（滚轮缩放、拖拽平移、多图翻页）
-   - 点击"编辑"打开 Fabric.js 编辑器（裁剪、旋转、压缩）
-4. **选择目标平台**：勾选需要发布的平台
-5. **点击发送**：AI 将基于文本和（编辑后的）图片生成多平台适配内容
+   - 在文本中粘贴图片/视频/文件 URL，自动提取为附件并清理文本
+3. **查看附件**：点击横向卡片打开对应预览（图片 → 大图 / 视频 → 播放弹窗 / 文件 → 新窗口）
+4. **编辑/删除**：右上角固定删除按钮；图片卡片 hover 时额外显示编辑按钮
+5. **回车发送**：Enter 直接触发 AI 生成，Cmd/Ctrl+Enter 换行
+6. **选择模型与平台**：工具栏右侧模型选择器切换模型，勾选目标平台
+7. **点击发送**：本地文件与 URL 统一转为 base64（`buildFilesPayload()`）随 SSE 请求发送，AI 基于文本与附件生成多平台适配内容
 
-### 5.2 巡店编辑页面
+### 5.2 巡店编辑页面（AttachmentInputArea，手动模式）
 
-1. **填写检查项反馈**：在每个检查项的 textarea 中输入备注
-2. **上传巡店图片**：
-   - 点击"图片"按钮选择文件
-   - 粘贴剪贴板图片
-   - 粘贴图片 URL 自动提取
-3. **AI 巡店分析**：上传图片后，AI 自动分析并生成评分和建议
+1. **填写检查项反馈**：每个检查项的"反馈问题 + 巡店图片"一体化输入区内填写
+2. **添加巡店图片**：
+   - 点击工具栏 "+" 按钮选择文件，文件以卡片形式进入"待上传"状态（**不会立即上传**）
+   - 拖拽图片到输入区、粘贴剪贴板图片
+   - 在文本中粘贴图片 URL，自动提取为卡片并清理文本
+3. **提交表单**：点击保存/开始 AI 巡店时，页面先对每个输入区调用 `flushPending()` 批量上传"待上传"文件（任一失败则中断），再提交表单/发起分析
+4. **查看/编辑/删除**：点击卡片查看图片；hover 时图片卡片显示编辑按钮；右上角固定删除按钮
+5. **独立开关**：检查项按配置仅显示文本区或仅显示图片区（`show-textarea` / `show-images`）
+
+### 5.3 素材编辑 / 模板编辑页面（AttachmentInputArea，手动模式）
+
+1. **填写检查标准**：在"检查标准与标准图"一体化输入区（素材）或检查项输入区（模板）填写标准文本
+2. **添加标准图**：点击 "+"、拖拽、粘贴图片，或粘贴图片 URL 自动识别；文件先以卡片形式进入"待上传"状态
+3. **保存触发上传**：点击保存时统一 `flushPending()` 上传"待上传"文件后再提交
+4. **数量限制**：素材页最多 5 张（`max-count="5"`）、模板页按模板配置限制
+
+### 5.4 整改弹窗（AttachmentInputArea，手动模式）
+
+1. **填写整改说明**：在整改弹窗的"整改说明 + 整改图片"一体化输入区内填写（选填）
+2. **添加整改图片**：点击 "+"、拖拽、粘贴图片，或粘贴图片 URL 自动识别；文件先以卡片形式进入"待上传"状态
+3. **提交整改触发上传**：点击提交整改时先 `flushPending()` 上传"待上传"文件，再提交整改
+4. **必填校验**：根据问题项的整改要求，弹窗提交前校验整改说明/图片是否已提供
 
 ---
 
@@ -790,12 +1150,14 @@ Authorization: Bearer <token>
 
 - **上传前压缩**：宽或高超过 1600px 的图片自动压缩，质量 0.8
 - **编辑后压缩**：Fabric.js 编辑器导出时按 `quality`（0.3 ~ 1）滑块控制压缩质量
-- **大小限制**：图片 10MB，视频 50MB
-- **数量限制**：最多 10 个文件
+- **大小限制**（按 `fileTypes` 类型分别限制）：图片 10MB，视频 50MB，其它文件 20MB
+- **数量限制**：由 `max-count` 控制（创作内容 10、素材 5、模板按配置、巡店 10、整改 9）
 - **格式支持**：
   - 图片：png, jpg, jpeg, gif, webp, avif, svg, bmp, ico
   - 视频：mp4, mov, m4v, webm, avi, mkv
+  - 其它文件：pdf, doc, docx, xls, xlsx, ppt, pptx, zip, rar, 7z, txt, md, csv, json 等
 - **编辑输出**：裁剪/旋转/压缩统一导出为 JPEG 格式（`image/jpeg`），文件名追加 `_edited` 后缀
+- **多文件类型**：`fileTypes` 数组驱动 accept 生成与工具栏图标（单图片 IconImage / 单视频 IconVideoCamera / 多类型与其它文件 IconPlus）
 
 ### 6.2 URL 提取
 
@@ -821,11 +1183,11 @@ Authorization: Bearer <token>
 
 ### 7.1 可复用组件
 
-建议将以下逻辑抽取为公共组件/工具函数：
+已抽取的公共能力：
 
-- `useFileUpload`：文件上传逻辑（校验、压缩、base64 编码）
-- `useUrlExtractor`：URL 自动提取逻辑
-- `FileAttachmentArea`：一体化输入区组件（textarea + 工具栏 + 预览）
+- `useFileUpload`：文件上传逻辑（校验、压缩、上传函数、base64 编码）
+- `useUrlExtractor`：URL 自动提取逻辑（图片/视频/文件类型推断、文本清理）
+- `AttachmentInputArea`：**一体化输入区公共组件**（textarea + 工具栏 + 类型化预览 + 查看/编辑/删除），支持 `uploadMode`（auto/manual）、`fileTypes` 多文件类型、`theme`（light/dark）、`enterBehavior`（newline/send）；上传函数由业务页面注入，已应用于创作内容、素材编辑、模板编辑、巡店编辑、整改弹窗五个场景
 - `useImageEditor`：Fabric.js 编辑器逻辑（画布初始化、裁剪、旋转、压缩导出），供 `ImageEditorModal` 复用
 
 ### 7.2 功能增强
@@ -841,14 +1203,18 @@ Authorization: Bearer <token>
 
 ## 8. 相关文件
 
-| 文件                                            | 说明                                   |
-| ----------------------------------------------- | -------------------------------------- |
-| `frontend/src/pages/ContentCreate.vue`          | 创作内容页（最完整实现）               |
-| `frontend/src/pages/InspectionEdit.vue`         | 巡店编辑页（检查项级输入）             |
-| `frontend/src/pages/InspectionMaterialEdit.vue` | 素材标准图编辑                         |
-| `frontend/src/pages/InspectionTemplateEdit.vue` | 模板编辑                               |
-| `frontend/src/components/ImageViewerModal.vue`  | 图片查看器（缩放/拖拽/翻页）           |
-| `frontend/src/components/ImageEditorModal.vue`  | 图片编辑器（Fabric.js 裁剪/旋转/压缩） |
-| `backend/app/schemas/content.py`                | 后端类型定义                           |
-| `backend/app/services/ai_service.py`            | AI 服务处理                            |
-| `frontend/vite.config.ts`                       | Vite 代理配置                          |
+| 文件                                              | 说明                                                                                        |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| `frontend/src/components/AttachmentInputArea.vue` | **公共一体化输入区组件**（textarea + 类型化预览 + 工具栏 + 查看/编辑/删除 + 手动/自动上传） |
+| `frontend/src/composables/useFileUpload.ts`       | 文件上传工具（校验/压缩/uploadImageFile/base64）                                            |
+| `frontend/src/composables/useUrlExtractor.ts`     | URL 提取与文本清理工具（图片/视频/文件）                                                    |
+| `frontend/src/pages/ContentCreate.vue`            | 创作内容页（使用组件，dark 主题 + 回车发送 + base64 直发）                                  |
+| `frontend/src/pages/InspectionEdit.vue`           | 巡店编辑页（检查项级输入，保存前 flushPending）                                             |
+| `frontend/src/pages/InspectionMaterialEdit.vue`   | 素材标准图编辑（保存前 flushPending）                                                       |
+| `frontend/src/pages/InspectionTemplateEdit.vue`   | 模板编辑（v-for 内 Map refs，保存前 flushPending）                                          |
+| `frontend/src/pages/InspectionTaskDetail.vue`     | 整改弹窗（提交前 flushPending）                                                             |
+| `frontend/src/components/ImageViewerModal.vue`    | 图片查看器（缩放/拖拽/翻页）                                                                |
+| `frontend/src/components/ImageEditorModal.vue`    | 图片编辑器（Fabric.js 裁剪/旋转/压缩）                                                      |
+| `backend/app/schemas/content.py`                  | 后端类型定义                                                                                |
+| `backend/app/services/ai_service.py`              | AI 服务处理                                                                                 |
+| `frontend/vite.config.ts`                         | Vite 代理配置                                                                               |

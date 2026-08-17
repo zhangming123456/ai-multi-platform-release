@@ -19,6 +19,7 @@ type inspectionTemplateItemRequest struct {
 	Title                       string               `json:"title"`
 	Standard                    string               `json:"standard"`
 	StandardImage               string               `json:"standard_image"`
+	StandardImages              []string             `json:"standard_images"`
 	ScoreType                   string               `json:"score_type"`
 	MaxScore                    int                  `json:"max_score"`
 	ScoreOptions                []models.ScoreOption `json:"score_options"`
@@ -225,11 +226,15 @@ func normalizeTemplateItems(requests []inspectionTemplateItemRequest) ([]*models
 				maxScore = 5
 			}
 		}
-		entries = append(entries, &models.InspectionTemplateItem{
+		images := r.StandardImages
+		if len(images) == 0 && strings.TrimSpace(r.StandardImage) != "" {
+			images = []string{r.StandardImage}
+		}
+		item := &models.InspectionTemplateItem{
 			Category:                    r.Category,
 			Title:                       r.Title,
 			Standard:                    r.Standard,
-			StandardImage:               r.StandardImage,
+			StandardImages:              models.MarshalStringSlice(images),
 			ScoreType:                   scoreType,
 			MaxScore:                    maxScore,
 			ScoreOptions:                models.MarshalScoreOptions(options),
@@ -239,7 +244,9 @@ func normalizeTemplateItems(requests []inspectionTemplateItemRequest) ([]*models
 			ShowPhoto:                   r.ShowPhoto,
 			CategoryPreconditionEnabled: r.CategoryPreconditionEnabled,
 			CategoryPrecondition:        r.CategoryPrecondition,
-		})
+		}
+		item.StandardImage = firstImage(images)
+		entries = append(entries, item)
 	}
 	return entries, nil
 }
@@ -293,6 +300,7 @@ type inspectionTemplateItemView struct {
 	Title                       string               `json:"title"`
 	Standard                    string               `json:"standard"`
 	StandardImage               string               `json:"standard_image"`
+	StandardImages              []string             `json:"standard_images"`
 	ScoreType                   string               `json:"score_type"`
 	MaxScore                    int                  `json:"max_score"`
 	ScoreOptions                []models.ScoreOption `json:"score_options"`
@@ -331,12 +339,14 @@ func templateWithItems(t *models.InspectionTemplate) map[string]interface{} {
 	items, _ := services.GetInspectionTemplateItems(t.ID)
 	itemViews := make([]inspectionTemplateItemView, 0, len(items))
 	for _, it := range items {
+		images := effectiveStandardImages(it.StandardImages, it.StandardImage)
 		itemViews = append(itemViews, inspectionTemplateItemView{
 			ID:                          it.ID,
 			Category:                    it.Category,
 			Title:                       it.Title,
 			Standard:                    it.Standard,
-			StandardImage:               it.StandardImage,
+			StandardImage:               firstImage(images),
+			StandardImages:              images,
 			ScoreType:                   it.ScoreType,
 			MaxScore:                    it.MaxScore,
 			ScoreOptions:                services.EffectiveScoreOptions(&it),

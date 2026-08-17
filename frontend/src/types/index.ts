@@ -147,6 +147,7 @@ export interface InspectionTemplateItem {
   title: string
   standard: string | null
   standard_image: string | null
+  standard_images: string[]
   score_type: 'score' | 'pass_fail'
   max_score: number
   score_options: ScoreOption[] | null
@@ -164,6 +165,7 @@ export interface InspectionMaterial {
   title: string
   standard: string | null
   standard_image: string | null
+  standard_images: string[]
   score_type: 'score' | 'pass_fail'
   max_score: number
   score_options: ScoreOption[] | null
