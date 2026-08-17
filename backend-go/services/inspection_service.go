@@ -469,11 +469,11 @@ func AnalyzeInspection(storeName string, items []InspectionAIItem, photos []Uplo
 %s
 %s
 
-请调用 submit_inspection_result 工具提交结果。scores 仅包含与巡店关键词/图片有关联的检查项，每项的 item_id 与上面给出的 item_id 一致，score 必须落在该检查项允许的分值范围内；无关的检查项不要返回评分；issues 与 suggestion 必须详尽充实；summary 为 30-60 字整体概括；high_risk_problems 提取所有高危风险问题（消防、食安等需立即处理）；main_problems 汇总主要问题；priority_suggest 给出 3 条优先整改建议；business_suggest 给出门店运营优化建议。high_risk_problems 与 main_problems 中每项的 item_id 必须与对应检查项的 item_id 一致（优先填写 item_id），无法关联到具体检查项时 item_id 留空。`, storeDesc, skillsPrompt, keywordsHint, photoHint, imageHint)
+请直接调用 submit_inspection_result 工具提交结果，不要输出任何解释性文字、markdown 代码块或其他文本。scores 仅包含与巡店关键词/图片有关联的检查项，每项的 item_id 与上面给出的 item_id 一致，score 必须落在该检查项允许的分值范围内；无关的检查项不要返回评分；issues 与 suggestion 必须详尽充实；summary 为 30-60 字整体概括；high_risk_problems 提取所有高危风险问题（消防、食安等需立即处理）；main_problems 汇总主要问题；priority_suggest 给出 3 条优先整改建议；business_suggest 给出门店运营优化建议。high_risk_problems 与 main_problems 中每项的 item_id 必须与对应检查项的 item_id 一致（优先填写 item_id），无法关联到具体检查项时 item_id 留空。`, storeDesc, skillsPrompt, keywordsHint, photoHint, imageHint)
 
 		messages := []chatMessage{{
 			Role:    "system",
-			Content: "你是专业的连锁门店巡店督导专家，擅长门店标准化检查，输出问题与整改建议。使用中文回复。必须生成一份完整的巡店分析报告，包含每个检查项的评估结果（含标准图与现场图对比分析）。必须通过调用 submit_inspection_result 工具返回结构化结果。",
+			Content: "你是专业的连锁门店巡店督导专家，擅长门店标准化检查，输出问题与整改建议。使用中文回复。必须且只能调用 submit_inspection_result 工具返回结构化结果，禁止输出工具调用以外的任何解释性文字、markdown 代码块或普通文本。",
 		}}
 		if supportsVision && (hasStandardImages || hasPhotos) {
 			messages = append(messages, chatMessage{Role: "user", Content: buildInspectionVisionContent(prompt, standardImages, photos)})
@@ -493,9 +493,16 @@ func AnalyzeInspection(storeName string, items []InspectionAIItem, photos []Uplo
 				Parameters:  schema,
 			},
 		}}
-		toolChoice := "auto"
+		// 强制调用 submit_inspection_result，避免模型输出普通文本或被截断。
+		toolChoice := map[string]interface{}{
+			"type": "function",
+			"function": map[string]interface{}{
+				"name": "submit_inspection_result",
+			},
+		}
+		const inspectionMaxTokens = 12000
 
-		resp, err := callChatCompletionsWithTools(apiKey, baseURL, model, messages, tools, toolChoice)
+		resp, err := callChatCompletionsWithTools(apiKey, baseURL, model, messages, tools, toolChoice, inspectionMaxTokens)
 		if err != nil {
 			return nil, aiCallError(planName, err)
 		}
@@ -864,10 +871,10 @@ func AnalyzeInspectionStream(storeName string, items []InspectionAIItem, photos 
 %s
 %s
 
-请调用 submit_inspection_result 工具提交结果。scores 仅包含与巡店关键词/图片有关联的检查项，每项的 item_id 与上面给出的 item_id 一致，score 必须落在该检查项允许的分值范围内；无关的检查项不要返回评分；issues 与 suggestion 必须详尽充实；summary 为 30-60 字整体概括；high_risk_problems 提取所有高危风险问题（消防、食安等需立即处理）；main_problems 汇总主要问题；priority_suggest 给出 3 条优先整改建议；business_suggest 给出门店运营优化建议。high_risk_problems 与 main_problems 中每项的 item_id 必须与对应检查项的 item_id 一致（优先填写 item_id），无法关联到具体检查项时 item_id 留空。`, storeDesc, skillsPrompt, keywordsHint, photoHint, imageHint)
+请直接调用 submit_inspection_result 工具提交结果，不要输出任何解释性文字、markdown 代码块或其他文本。scores 仅包含与巡店关键词/图片有关联的检查项，每项的 item_id 与上面给出的 item_id 一致，score 必须落在该检查项允许的分值范围内；无关的检查项不要返回评分；issues 与 suggestion 必须详尽充实；summary 为 30-60 字整体概括；high_risk_problems 提取所有高危风险问题（消防、食安等需立即处理）；main_problems 汇总主要问题；priority_suggest 给出 3 条优先整改建议；business_suggest 给出门店运营优化建议。high_risk_problems 与 main_problems 中每项的 item_id 必须与对应检查项的 item_id 一致（优先填写 item_id），无法关联到具体检查项时 item_id 留空。`, storeDesc, skillsPrompt, keywordsHint, photoHint, imageHint)
 			messages = []chatMessage{{
 				Role:    "system",
-				Content: "你是专业的连锁门店巡店督导专家，擅长门店标准化检查，输出问题与整改建议。使用中文回复。必须通过调用 submit_inspection_result 工具返回结构化结果。",
+				Content: "你是专业的连锁门店巡店督导专家，擅长门店标准化检查，输出问题与整改建议。使用中文回复。必须且只能调用 submit_inspection_result 工具返回结构化结果，禁止输出工具调用以外的任何解释性文字、markdown 代码块或普通文本。",
 			}}
 			if supportsVision && (hasStandardImages || hasPhotos) {
 				messages = append(messages, chatMessage{Role: "user", Content: buildInspectionVisionContent(prompt, standardImages, photos)})
@@ -1000,7 +1007,14 @@ func AnalyzeInspectionStream(storeName string, items []InspectionAIItem, photos 
 
 		var resp *http.Response
 		if len(tools) > 0 {
-			resp, err = callChatCompletionsStreamWithTools(apiKey, baseURL, model, messages, tools, "auto")
+			// 强制调用 submit_inspection_result，避免模型输出普通文本或被截断。
+			toolChoice := map[string]interface{}{
+				"type": "function",
+				"function": map[string]interface{}{
+					"name": "submit_inspection_result",
+				},
+			}
+			resp, err = callChatCompletionsStreamWithTools(apiKey, baseURL, model, messages, tools, toolChoice, 12000)
 		} else {
 			resp, err = callChatCompletions(apiKey, baseURL, model, messages, true)
 		}
