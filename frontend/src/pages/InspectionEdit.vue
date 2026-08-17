@@ -5,6 +5,14 @@
       subtitle="选择检查表模板并评分，支持上传照片并使用 AI 生成检查报告"
     />
 
+    <div
+      v-if="isEdit && !isEditable"
+      class="mx-4 md:mx-6 lg:mx-8 mt-4 px-4 py-3 rounded-lg bg-[#FFF3E0] text-[#F57C00] text-[13px] flex items-center gap-2"
+    >
+      <IconExclamationCircle :size="16" />
+      当前巡店已进入整改流程，不可编辑。
+    </div>
+
     <DefineAIInspectForm v-slot="{ selectSize, fromDrawer, hintClass, showHeader, wrapperClass }">
       <div :class="[wrapperClass]">
         <div v-if="showHeader" class="flex items-center gap-2 mb-1">
@@ -833,6 +841,7 @@
         v-perm="isEdit ? 'inspection:update:write' : 'inspection:create:write'"
         type="primary"
         :loading="saving"
+        :disabled="!isEditable || saving"
         @click="handleSave"
       >
         保存
@@ -857,6 +866,7 @@ import {
   IconCode,
   IconCopy,
   IconDelete,
+  IconExclamationCircle,
 } from '@arco-design/web-vue/es/icon'
 import PageHeader from '@/components/layout/PageHeader.vue'
 import { useTokenPlanStore, parseModelField } from '@/stores/tokenPlan'
@@ -956,6 +966,9 @@ const userStore = useUserStore()
 const loading = ref(false)
 const saving = ref(false)
 const isEdit = computed(() => !!route.params.id)
+const isEditable = computed(
+  () => !isEdit.value || form.value.status === 'draft' || !form.value.status,
+)
 // 屏幕尺寸判断：Tailwind xl = 1280px 及以上视为大屏
 const isLargeScreen = ref(typeof window !== 'undefined' ? window.innerWidth >= 1280 : true)
 
@@ -972,7 +985,7 @@ const form = ref({
   issues: '',
   suggestion: '',
   ai_generated: false,
-  status: 'completed' as 'draft' | 'completed',
+  status: 'completed' as 'draft' | 'pending' | 'rectifying' | 'closed',
 })
 
 const storeOptions = ref<{ label: string; value: string }[]>([])
@@ -2673,6 +2686,10 @@ async function doSave() {
 }
 
 async function handleSave() {
+  if (isEdit.value && !isEditable.value) {
+    Message.warning('当前巡店已进入整改流程，不可编辑')
+    return
+  }
   if (!form.value.store_id) {
     Message.warning('请选择巡店门店')
     return

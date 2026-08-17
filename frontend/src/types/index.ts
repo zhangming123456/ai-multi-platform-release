@@ -102,7 +102,7 @@ export interface InspectionScore {
 export interface Inspection {
   id: string
   title: string
-  status: 'draft' | 'completed'
+  status: 'draft' | 'pending' | 'rectifying' | 'closed'
   store_id: string
   store_name: string
   store_code: string

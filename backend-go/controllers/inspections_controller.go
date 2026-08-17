@@ -129,10 +129,7 @@ func (c *InspectionsController) Create() {
 		c.WriteError(http.StatusBadRequest, "检查时间格式错误")
 		return
 	}
-	status := req.Status
-	if status == "" {
-		status = "draft"
-	}
+	status := normalizeInspectionStatus(req.Status)
 	aiSummaryJSON := ""
 	if raw, err := json.Marshal(req.AISummary); err == nil {
 		aiSummaryJSON = string(raw)
@@ -169,7 +166,9 @@ func (c *InspectionsController) Create() {
 		c.WriteError(http.StatusInternalServerError, "保存巡店记录失败")
 		return
 	}
-	autoCreateInspectionTask(inspection)
+	if status != models.InspectionStatusDraft {
+		autoCreateInspectionTask(inspection)
+	}
 	c.Created(inspectionWithScores(inspection))
 }
 
@@ -194,6 +193,10 @@ func (c *InspectionsController) Update() {
 	inspection, err := findInspection(c.GetPathParam("inspection_id"))
 	if err != nil {
 		c.WriteError(http.StatusNotFound, "巡店记录不存在")
+		return
+	}
+	if !models.InspectionStatusEditable(inspection.Status) {
+		c.WriteError(http.StatusBadRequest, "当前巡店已进入整改流程，不可编辑")
 		return
 	}
 	var req inspectionUpdateRequest
@@ -224,7 +227,7 @@ func (c *InspectionsController) Update() {
 		inspection.Title = *req.Title
 	}
 	if req.Status != nil {
-		inspection.Status = *req.Status
+		inspection.Status = normalizeInspectionStatus(*req.Status)
 	}
 	if req.CheckedAt != nil {
 		checkedAt, err := parseCheckedAt(*req.CheckedAt)
@@ -1119,4 +1122,17 @@ func loadUserByID(userID string) string {
 		return user.Nickname
 	}
 	return user.Username
+}
+
+// normalizeInspectionStatus 统一前端传入的状态值：completed（旧值）兼容映射为 pending。
+func normalizeInspectionStatus(status string) string {
+	switch status {
+	case models.InspectionStatusDraft, models.InspectionStatusPending,
+		models.InspectionStatusRectifying, models.InspectionStatusClosed:
+		return status
+	case "completed":
+		return models.InspectionStatusPending
+	default:
+		return models.InspectionStatusDraft
+	}
 }

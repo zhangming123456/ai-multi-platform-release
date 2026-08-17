@@ -9,7 +9,7 @@
       <template #actions>
         <a-button class="!mr-2" @click="goBack">返回</a-button>
         <a-button
-          v-if="inspection"
+          v-if="inspection && inspection.status === 'draft'"
           v-perm="'inspection:update:write'"
           type="primary"
           @click="goEdit"
@@ -28,14 +28,11 @@
                 <div class="flex items-center justify-between mb-4">
                   <div class="text-[15px] font-semibold text-[#1D1D1F]">基本信息</div>
                   <div class="flex items-center gap-2">
-                    <a-tag
-                      :color="inspection.status === 'completed' ? 'blue' : 'gray'"
-                      size="small"
-                    >
-                      {{ inspection.status === 'completed' ? '已完成' : '草稿' }}
+                    <a-tag :color="inspectionStatusColor(inspection.status)" size="small">
+                      {{ inspectionStatusText(inspection.status) }}
                     </a-tag>
                     <a-tag
-                      v-if="inspection.status === 'completed'"
+                      v-if="inspection.status !== 'draft'"
                       :color="inspection.passed ? 'green' : 'red'"
                       size="small"
                     >
@@ -362,24 +359,37 @@ function scoreOptionLabel(record: any): string {
   return String(record.score)
 }
 
-async function fetchDetail() {
-  loading.value = true
-  try {
-    const res = await api.get<Inspection>(`/inspections/${route.params.id}`)
-    inspection.value = res.data
-  } catch (e: any) {
-    Message.error(e?.response?.data?.detail || '加载巡店详情失败')
-  } finally {
-    loading.value = false
-  }
-}
-
 function goBack() {
   router.push({ name: 'InspectionList' })
 }
 
 function goEdit() {
   router.push({ name: 'InspectionEdit', params: { id: inspection.value?.id } })
+}
+
+function inspectionStatusColor(status: string): string {
+  switch (status) {
+    case 'draft':
+      return 'gray'
+    case 'pending':
+      return 'orange'
+    case 'rectifying':
+      return 'arcoblue'
+    case 'closed':
+      return 'green'
+    default:
+      return 'gray'
+  }
+}
+
+function inspectionStatusText(status: string): string {
+  const map: Record<string, string> = {
+    draft: '草稿',
+    pending: '待整改',
+    rectifying: '整改中',
+    closed: '已闭环',
+  }
+  return map[status] || status
 }
 
 function taskStatusColor(status: string): string {

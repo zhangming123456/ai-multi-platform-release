@@ -221,6 +221,27 @@
                     <div class="file-name">{{ itemName(item) }}</div>
                     <div class="file-meta">{{ itemMeta(item) }}</div>
                   </div>
+                  <div v-if="item.isImage" class="file-actions">
+                    <button
+                      type="button"
+                      class="file-action-btn"
+                      title="查看"
+                      @click="openViewer(idx)"
+                    >
+                      <IconEye :size="13" />
+                      <span>查看</span>
+                    </button>
+                    <button
+                      v-if="item.kind === 'file'"
+                      type="button"
+                      class="file-action-btn"
+                      title="编辑"
+                      @click="openEditor(idx)"
+                    >
+                      <IconEdit :size="13" />
+                      <span>编辑</span>
+                    </button>
+                  </div>
                   <button type="button" class="file-remove" @click="removeFile(idx)">
                     <IconClose :size="14" />
                   </button>
@@ -313,11 +334,28 @@
         </div>
       </div>
     </div>
+
+    <ImageViewerModal
+      :visible="viewerVisible"
+      :items="viewerItems"
+      :index="viewerIndex"
+      @close="viewerVisible = false"
+      @prev="viewerPrev"
+      @next="viewerNext"
+    />
+
+    <ImageEditorModal
+      :visible="editorVisible"
+      :url="editorTarget?.url || ''"
+      :name="editorTarget?.name || ''"
+      @close="closeEditor"
+      @confirm="onEditorConfirm"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick, watch, defineAsyncComponent } from 'vue'
 import { useRouter } from 'vue-router'
 import { Message } from '@arco-design/web-vue'
 import {
@@ -335,11 +373,16 @@ import {
   IconFolderAdd,
   IconStar,
   IconRobot,
+  IconEye,
+  IconEdit,
 } from '@arco-design/web-vue/es/icon'
 import PageHeader from '@/components/layout/PageHeader.vue'
 import PlatformIcon from '@/components/shared/PlatformIcon.vue'
+import ImageViewerModal from '@/components/ImageViewerModal.vue'
 import { useTokenPlanStore, parseModelField } from '@/stores/tokenPlan'
 import api from '@/utils/api'
+
+const ImageEditorModal = defineAsyncComponent(() => import('@/components/ImageEditorModal.vue'))
 
 const router = useRouter()
 const store = useTokenPlanStore()
@@ -587,6 +630,61 @@ function addFiles(files: File[]) {
 
 function removeFile(idx: number) {
   uploadedFiles.value.splice(idx, 1)
+}
+
+const viewerVisible = ref(false)
+const viewerIndex = ref(0)
+const viewerItems = ref<{ url: string; name: string }[]>([])
+
+function openViewer(idx: number) {
+  const target = uploadedFiles.value[idx]
+  if (!target || !target.isImage) return
+  const imageList = uploadedFiles.value.filter((i) => i.isImage)
+  viewerItems.value = imageList.map((i) => ({
+    url: i.kind === 'file' ? filePreview(i.file) : i.url,
+    name: i.name,
+  }))
+  viewerIndex.value = imageList.indexOf(target)
+  viewerVisible.value = true
+}
+
+function viewerPrev() {
+  if (viewerIndex.value > 0) viewerIndex.value--
+}
+
+function viewerNext() {
+  if (viewerIndex.value < viewerItems.value.length - 1) viewerIndex.value++
+}
+
+const editorVisible = ref(false)
+const editorTarget = ref<{ index: number; url: string; name: string } | null>(null)
+
+function openEditor(idx: number) {
+  const item = uploadedFiles.value[idx]
+  if (!item || item.kind !== 'file' || !item.isImage) return
+  editorTarget.value = {
+    index: idx,
+    url: filePreview(item.file),
+    name: item.name,
+  }
+  editorVisible.value = true
+}
+
+function closeEditor() {
+  editorVisible.value = false
+  editorTarget.value = null
+}
+
+function onEditorConfirm(result: { blob: Blob; name: string }) {
+  const t = editorTarget.value
+  if (t) {
+    const item = uploadedFiles.value[t.index]
+    if (item && item.kind === 'file') {
+      item.file = new File([result.blob], result.name, { type: 'image/jpeg' })
+      item.name = result.name
+    }
+  }
+  closeEditor()
 }
 
 const FILE_URL_PATTERN = /https?:\/\/[^\s<>"'（）()，。；！？、]+/gi
@@ -1680,6 +1778,7 @@ async function copyContent() {
 }
 
 .file-chip {
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 10px;
@@ -1747,6 +1846,43 @@ async function copyContent() {
 .file-remove:hover {
   background: rgba(255, 255, 255, 0.18);
   color: #ffffff;
+}
+
+.file-actions {
+  position: absolute;
+  left: 4px;
+  right: 30px;
+  bottom: 4px;
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.file-chip:hover .file-actions {
+  opacity: 1;
+}
+
+.file-action-btn {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 3px 6px;
+  border: none;
+  border-radius: 5px;
+  background: rgba(0, 0, 0, 0.62);
+  color: #ffffff;
+  font-size: 11px;
+  line-height: 1.4;
+  cursor: pointer;
+  backdrop-filter: blur(4px);
+  transition: background 0.15s;
+}
+
+.file-action-btn:hover {
+  background: rgba(0, 122, 255, 0.85);
 }
 
 .chat-toolbar {

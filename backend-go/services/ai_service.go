@@ -241,7 +241,7 @@ func writeAILog(timestamp, suffix, callType, baseURL, model string, stream bool,
 		"model":     model,
 		"stream":    stream,
 		"body_size": len(body),
-		"body":      string(body),
+		"body":      string(abbreviateBase64InJSON(body)),
 	}
 	if suffix == "response" {
 		entry["status_code"] = statusCode
@@ -251,6 +251,51 @@ func writeAILog(timestamp, suffix, callType, baseURL, model string, stream bool,
 		return
 	}
 	_ = os.WriteFile(path, append(data, '\n'), 0644)
+}
+
+// abbreviateBase64InJSON 将 JSON body 中的长 base64 字符串（含 data URI）替换为 [base64:<长度>] 占位符，便于日志阅读。
+func abbreviateBase64InJSON(body []byte) []byte {
+	var v interface{}
+	if err := json.Unmarshal(body, &v); err != nil {
+		return body
+	}
+	v = abbreviateBase64Value(v)
+	out, err := json.Marshal(v)
+	if err != nil {
+		return body
+	}
+	return out
+}
+
+func abbreviateBase64Value(v interface{}) interface{} {
+	switch x := v.(type) {
+	case string:
+		if isBase64Like(x) {
+			return fmt.Sprintf("[base64:%d]", len(x))
+		}
+		return x
+	case map[string]interface{}:
+		for k, val := range x {
+			x[k] = abbreviateBase64Value(val)
+		}
+		return x
+	case []interface{}:
+		for i, val := range x {
+			x[i] = abbreviateBase64Value(val)
+		}
+		return x
+	default:
+		return v
+	}
+}
+
+var base64LikeRegex = regexp.MustCompile(`^[A-Za-z0-9+/=]{200,}$`)
+
+func isBase64Like(s string) bool {
+	if strings.HasPrefix(s, "data:") && strings.Contains(s, ";base64,") {
+		return true
+	}
+	return base64LikeRegex.MatchString(s)
 }
 
 // loggingBody 包装 http.Response.Body，在读取结束时把响应内容写入 AI 调用日志。

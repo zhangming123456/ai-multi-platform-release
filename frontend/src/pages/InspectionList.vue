@@ -32,8 +32,10 @@
           class="!w-full sm:!w-40"
           @change="onSearch"
         >
-          <a-option value="completed">已完成</a-option>
           <a-option value="draft">草稿</a-option>
+          <a-option value="pending">待整改</a-option>
+          <a-option value="rectifying">整改中</a-option>
+          <a-option value="closed">已闭环</a-option>
         </a-select>
       </div>
 
@@ -56,12 +58,12 @@
             </div>
           </template>
           <template #status="{ record }">
-            <a-tag :color="record.status === 'completed' ? 'blue' : 'gray'" size="small">
-              {{ record.status === 'completed' ? '已完成' : '草稿' }}
+            <a-tag :color="statusColor(record.status)" size="small">
+              {{ statusText(record.status) }}
             </a-tag>
           </template>
           <template #result="{ record }">
-            <template v-if="record.status === 'completed'">
+            <template v-if="record.status !== 'draft'">
               <span
                 class="font-semibold text-[14px] tabular"
                 :class="record.passed ? 'text-[#34C759]' : 'text-[#FF3B30]'"
@@ -98,7 +100,7 @@
                   <template #icon><IconEye /></template>
                 </a-button>
               </a-tooltip>
-              <a-tooltip content="编辑">
+              <a-tooltip v-if="record.status === 'draft'" content="编辑">
                 <a-button
                   v-perm="'inspection:update:write'"
                   type="text"
@@ -157,7 +159,7 @@ import api from '@/utils/api'
 interface InspectionListItem {
   id: string
   title: string
-  status: 'draft' | 'completed'
+  status: 'draft' | 'pending' | 'rectifying' | 'closed'
   store_id: string
   store_name: string
   store_code: string
@@ -235,6 +237,36 @@ function onPageSizeChange(size: number) {
   pageSize.value = size
   page.value = 1
   fetchInspections()
+}
+
+function statusText(status: string) {
+  switch (status) {
+    case 'draft':
+      return '草稿'
+    case 'pending':
+      return '待整改'
+    case 'rectifying':
+      return '整改中'
+    case 'closed':
+      return '已闭环'
+    default:
+      return status
+  }
+}
+
+function statusColor(status: string) {
+  switch (status) {
+    case 'draft':
+      return 'gray'
+    case 'pending':
+      return 'orange'
+    case 'rectifying':
+      return 'arcoblue'
+    case 'closed':
+      return 'green'
+    default:
+      return 'gray'
+  }
 }
 
 function goCreate() {

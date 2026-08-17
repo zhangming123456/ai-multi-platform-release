@@ -4,6 +4,19 @@ import (
 	"time"
 )
 
+// 巡店记录状态
+const (
+	InspectionStatusDraft      = "draft"      // 草稿，可编辑
+	InspectionStatusPending    = "pending"    // 待整改
+	InspectionStatusRectifying = "rectifying" // 整改中
+	InspectionStatusClosed     = "closed"     // 已闭环
+)
+
+// InspectionStatusEditable 返回巡店记录是否仍可编辑。
+func InspectionStatusEditable(status string) bool {
+	return status == InspectionStatusDraft || status == ""
+}
+
 type Inspection struct {
 	ID           string    `orm:"column(id);pk;size(36)" json:"id"`
 	StoreID      string    `orm:"column(store_id);size(36)" json:"store_id"`

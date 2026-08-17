@@ -190,6 +190,7 @@ func (c *InspectionTasksController) SubmitRectify() {
 		c.WriteError(http.StatusInternalServerError, "更新任务状态失败")
 		return
 	}
+	syncInspectionStatusByTask(task)
 	addTaskLog(task.ID, "", models.TaskLogActionSubmitted,
 		fmt.Sprintf("%s 提交了 %d 个问题项的整改照片，等待 AI 复核", user.Nickname, len(req.Items)),
 		user.ID, user.Nickname)
@@ -325,6 +326,7 @@ func (c *InspectionTasksController) Recheck() {
 		c.WriteError(http.StatusInternalServerError, "更新任务状态失败")
 		return
 	}
+	syncInspectionStatusByTask(task)
 	notifyTaskRecheckResult(task, results, checkedNames)
 	c.OK(map[string]interface{}{
 		"status": task.Status,
@@ -412,6 +414,7 @@ func (c *InspectionTasksController) ManualConfirm() {
 		c.WriteError(http.StatusInternalServerError, "更新任务状态失败")
 		return
 	}
+	syncInspectionStatusByTask(task)
 	if task.ResponsibleID != "" {
 		if newStatus == models.TaskStatusConfirmed {
 			_ = createNotification(task.ResponsibleID, models.NotificationTypeTaskConfirmed,
@@ -433,6 +436,34 @@ func commentSuffix(comment string) string {
 		return ""
 	}
 	return "，备注：" + comment
+}
+
+// syncInspectionStatusByTask 根据整改任务状态同步更新关联巡店记录状态。
+func syncInspectionStatusByTask(task *models.InspectionTask) {
+	if task == nil || task.InspectionID == "" {
+		return
+	}
+	var inspection models.Inspection
+	o := services.GetOrm()
+	if err := o.QueryTable(new(models.Inspection)).Filter("id", task.InspectionID).One(&inspection); err != nil {
+		return
+	}
+	var newStatus string
+	switch task.Status {
+	case models.TaskStatusPending:
+		newStatus = models.InspectionStatusPending
+	case models.TaskStatusRechecking, models.TaskStatusRectifying, models.TaskStatusManualReview:
+		newStatus = models.InspectionStatusRectifying
+	case models.TaskStatusRectified, models.TaskStatusConfirmed, models.TaskStatusRejected:
+		newStatus = models.InspectionStatusClosed
+	default:
+		return
+	}
+	if inspection.Status != newStatus {
+		inspection.Status = newStatus
+		inspection.UpdatedAt = time.Now()
+		_, _ = o.Update(&inspection, "status", "updated_at")
+	}
 }
 
 // summarizeTaskStatus 根据任务内所有问题项状态汇总任务状态。
