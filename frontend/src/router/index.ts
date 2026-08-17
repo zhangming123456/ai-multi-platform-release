@@ -231,6 +231,24 @@ const router = createRouter({
           meta: { title: '编辑素材', permKey: 'inspection:material:update:write' },
         },
         {
+          path: 'inspection-tasks',
+          name: 'InspectionTaskList',
+          component: () => import('@/pages/InspectionTaskList.vue'),
+          meta: {
+            title: '整改任务',
+            permKey: 'inspection:task:read',
+            sidebarType: 'inspection',
+            sidebarOrder: 4,
+            icon: 'check',
+          },
+        },
+        {
+          path: 'inspection-tasks/:id',
+          name: 'InspectionTaskDetail',
+          component: () => import('@/pages/InspectionTaskDetail.vue'),
+          meta: { title: '整改任务详情', permKey: 'inspection:task:read' },
+        },
+        {
           path: 'inspection/create',
           name: 'InspectionCreate',
           component: () => import('@/pages/InspectionEdit.vue'),

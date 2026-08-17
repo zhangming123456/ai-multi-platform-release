@@ -10,6 +10,18 @@ const (
 	NotificationTypeReviewRejected         = "review_rejected"
 	NotificationTypeRoleUpdated            = "role_updated"
 	NotificationTypeRolePermissionsUpdated = "role_permissions_updated"
+
+	NotificationTypeTaskCreated         = "inspection_task_created"
+	NotificationTypeTaskSubmitted       = "inspection_task_submitted"
+	NotificationTypeTaskRecheckPassed   = "inspection_task_recheck_passed"
+	NotificationTypeTaskRecheckFailed   = "inspection_task_recheck_failed"
+	NotificationTypeTaskManualReview    = "inspection_task_manual_review"
+	NotificationTypeTaskConfirmed       = "inspection_task_confirmed"
+	NotificationTypeTaskRejected        = "inspection_task_rejected"
+)
+
+const (
+	NotificationChannelInternal = "internal"
 )
 
 type Notification struct {
@@ -19,6 +31,7 @@ type Notification struct {
 	Title     string    `orm:"column(title);size(200)" json:"title"`
 	Content   string    `orm:"column(content);type(text);null" json:"content"`
 	RelatedID string    `orm:"column(related_id);size(36);null" json:"related_id"`
+	Channel   string    `orm:"column(channel);size(20);default(internal)" json:"channel"`
 	IsRead    bool      `orm:"column(is_read);default(false)" json:"is_read"`
 	CreatedAt time.Time `orm:"column(created_at);auto_now_add;type(datetime)" json:"created_at"`
 }

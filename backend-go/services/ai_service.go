@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
@@ -223,6 +225,65 @@ type chatRequest struct {
 	Stream      bool          `json:"stream"`
 }
 
+// writeAILogEntry 将每次模型调用的请求与响应记录到 backend-go/logs/ai/ 目录，按天分片，文件名包含时间戳与调用类型。
+func writeAILogEntry(callType, baseURL, model string, stream bool, statusCode int, reqBody, respBody []byte) {
+	logDir := filepath.Join("logs", "ai")
+	if err := os.MkdirAll(logDir, 0755); err != nil {
+		return
+	}
+	now := time.Now()
+	dateStr := now.Format("2006-01-02")
+	ts := now.Format("20060102_150405.000")
+	filename := fmt.Sprintf("%s_%s_%s.log", dateStr, ts, callType)
+	path := filepath.Join(logDir, filename)
+	entry := map[string]interface{}{
+		"timestamp":   now.Format("2006-01-02T15:04:05.000Z07:00"),
+		"type":        callType,
+		"base_url":    baseURL,
+		"model":       model,
+		"stream":      stream,
+		"status_code": statusCode,
+		"request": map[string]interface{}{
+			"body_size": len(reqBody),
+			"body":      string(reqBody),
+		},
+		"response": map[string]interface{}{
+			"body_size": len(respBody),
+			"body":      string(respBody),
+		},
+	}
+	data, err := json.Marshal(entry)
+	if err != nil {
+		return
+	}
+	_ = os.WriteFile(path, append(data, '\n'), 0644)
+}
+
+// loggingBody 包装 http.Response.Body，在读取结束时把响应内容写入 AI 调用日志。
+type loggingBody struct {
+	rc      io.ReadCloser
+	buf     *bytes.Buffer
+	closed  bool
+	logCall func([]byte)
+}
+
+func (b *loggingBody) Read(p []byte) (int, error) {
+	n, err := b.rc.Read(p)
+	if n > 0 {
+		b.buf.Write(p[:n])
+	}
+	return n, err
+}
+
+func (b *loggingBody) Close() error {
+	if b.closed {
+		return nil
+	}
+	b.closed = true
+	b.logCall(b.buf.Bytes())
+	return b.rc.Close()
+}
+
 func callChatCompletions(apiKey, baseURL, model string, messages []chatMessage, stream bool) (*http.Response, error) {
 	payload := chatRequest{
 		Model:       model,
@@ -231,19 +292,28 @@ func callChatCompletions(apiKey, baseURL, model string, messages []chatMessage, 
 		MaxTokens:   4000,
 		Stream:      stream,
 	}
-	body, err := json.Marshal(payload)
+	reqBody, err := json.Marshal(payload)
 	if err != nil {
 		return nil, err
 	}
 	url := strings.TrimRight(baseURL, "/") + "/chat/completions"
-	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(body))
+	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(reqBody))
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+apiKey)
 	client := &http.Client{Timeout: 120 * time.Second}
-	return client.Do(req)
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	const maxRespSize = 10 * 1024 * 1024
+	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, maxRespSize))
+	_ = resp.Body.Close()
+	resp.Body = io.NopCloser(bytes.NewReader(respBody))
+	writeAILogEntry("chat.completions", baseURL, model, stream, resp.StatusCode, reqBody, respBody)
+	return resp, nil
 }
 
 // toolDefinition 描述一个 function calling 工具（OpenAI 兼容格式）。
@@ -287,19 +357,28 @@ func callChatCompletionsWithTools(apiKey, baseURL, model string, messages []chat
 			payload["tool_choice"] = "auto"
 		}
 	}
-	body, err := json.Marshal(payload)
+	reqBody, err := json.Marshal(payload)
 	if err != nil {
 		return nil, err
 	}
 	url := strings.TrimRight(baseURL, "/") + "/chat/completions"
-	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(body))
+	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(reqBody))
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+apiKey)
 	client := &http.Client{Timeout: 120 * time.Second}
-	return client.Do(req)
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	const maxRespSize = 10 * 1024 * 1024
+	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, maxRespSize))
+	_ = resp.Body.Close()
+	resp.Body = io.NopCloser(bytes.NewReader(respBody))
+	writeAILogEntry("chat.completions.tools", baseURL, model, false, resp.StatusCode, reqBody, respBody)
+	return resp, nil
 }
 
 // callChatCompletionsStreamWithTools 流式调用 chat completions，支持 tools/function calling。
@@ -320,12 +399,12 @@ func callChatCompletionsStreamWithTools(apiKey, baseURL, model string, messages 
 			payload["tool_choice"] = "auto"
 		}
 	}
-	body, err := json.Marshal(payload)
+	reqBody, err := json.Marshal(payload)
 	if err != nil {
 		return nil, err
 	}
 	url := strings.TrimRight(baseURL, "/") + "/chat/completions"
-	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(body))
+	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(reqBody))
 	if err != nil {
 		return nil, err
 	}
@@ -333,7 +412,19 @@ func callChatCompletionsStreamWithTools(apiKey, baseURL, model string, messages 
 	req.Header.Set("Authorization", "Bearer "+apiKey)
 	req.Header.Set("Accept", "text/event-stream")
 	client := &http.Client{Timeout: 120 * time.Second}
-	return client.Do(req)
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	var buf bytes.Buffer
+	resp.Body = &loggingBody{
+		rc:  resp.Body,
+		buf: &buf,
+		logCall: func(respBody []byte) {
+			writeAILogEntry("chat.completions.stream.tools", baseURL, model, true, resp.StatusCode, reqBody, respBody)
+		},
+	}
+	return resp, nil
 }
 
 // GenerateContentVariants 生成多个内容变体。

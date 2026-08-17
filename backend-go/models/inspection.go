@@ -15,6 +15,7 @@ type Inspection struct {
 	Passed       bool      `orm:"column(passed);default(false)" json:"passed"`
 	Issues       string    `orm:"column(issues);type(text);null" json:"issues"`
 	Suggestion   string    `orm:"column(suggestion);type(text);null" json:"suggestion"`
+	AISummary    string    `orm:"column(ai_summary);type(text);null" json:"-"`
 	AIGenerated  bool      `orm:"column(ai_generated);default(false)" json:"ai_generated"`
 	Photos       string    `orm:"column(photos);type(text);null" json:"photos"`
 	InspectorID  string    `orm:"column(inspector_id);size(36)" json:"inspector_id"`

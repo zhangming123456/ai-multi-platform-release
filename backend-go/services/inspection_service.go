@@ -71,11 +71,56 @@ func GetActiveInspectionItems() ([]models.InspectionItem, error) {
 }
 
 type InspectionAIResult struct {
-	Scores     map[string]float64 `json:"scores"`
-	Comments   map[string]string  `json:"comments"`
-	Issues     string             `json:"issues"`
-	Suggestion string             `json:"suggestion"`
-	Report     string             `json:"report"`
+	Scores           map[string]float64         `json:"scores"`
+	Comments         map[string]string          `json:"comments"`
+	Issues           string                     `json:"issues"`
+	Suggestion       string                     `json:"suggestion"`
+	Summary          string                     `json:"summary"`
+	HighRiskProblems []InspectionProblem        `json:"high_risk_problems"`
+	MainProblems     []InspectionProblem        `json:"main_problems"`
+	PrioritySuggest  []InspectionSuggestionItem `json:"priority_suggest"`
+	BusinessSuggest  []InspectionSuggestionItem `json:"business_suggest"`
+}
+
+// InspectionProblem 结构化总结中的问题项（高危问题/主要问题）。
+type InspectionProblem struct {
+	ItemID   string `json:"item_id"`
+	ItemName string `json:"item_name"`
+	Level    string `json:"level"`
+	Desc     string `json:"desc"`
+}
+
+// InspectionSuggestionItem 结构化总结中的建议项（优先整改建议/运营优化建议）。
+type InspectionSuggestionItem struct {
+	Title string `json:"title"`
+	Desc  string `json:"desc"`
+}
+
+// InspectionAISummary 巡店 AI 结构化总结，持久化到巡店记录的 ai_summary 字段。
+type InspectionAISummary struct {
+	Summary          string                     `json:"summary"`
+	HighRiskProblems []InspectionProblem        `json:"high_risk_problems"`
+	MainProblems     []InspectionProblem        `json:"main_problems"`
+	PrioritySuggest  []InspectionSuggestionItem `json:"priority_suggest"`
+	BusinessSuggest  []InspectionSuggestionItem `json:"business_suggest"`
+}
+
+// ParseInspectionAISummary 解析巡店记录中保存的 AI 结构化总结 JSON。
+func ParseInspectionAISummary(raw string) InspectionAISummary {
+	var s InspectionAISummary
+	if raw != "" {
+		_ = json.Unmarshal([]byte(raw), &s)
+	}
+	return s
+}
+
+// MarshalInspectionAISummary 序列化 AI 结构化总结为 JSON 字符串。
+func MarshalInspectionAISummary(s InspectionAISummary) (string, error) {
+	b, err := json.Marshal(s)
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
 }
 
 type InspectionAIItem struct {
@@ -128,9 +173,53 @@ func defaultInspectionResponseSchema() map[string]interface{} {
 			},
 			"issues":     map[string]interface{}{"type": "string", "description": "问题与备注：按检查项分条列出发现的问题与现场备注，覆盖所有不达标项"},
 			"suggestion": map[string]interface{}{"type": "string", "description": "AI 整改建议：针对每个问题给出具体、可执行的整改措施与提升建议"},
-			"report":     map[string]interface{}{"type": "string", "description": "完整的巡店分析报告，包含每个检查项的评估详情、标准图与现场图对比分析、评分理由、改进建议"},
+			"summary":    map[string]interface{}{"type": "string", "description": "整体一句话概括本次巡店情况，30-60字"},
+			"high_risk_problems": map[string]interface{}{
+				"type":        "array",
+				"description": "高危风险问题列表（如消防、食安等需立即处理的问题）",
+				"items":       problemItemSchema(),
+			},
+			"main_problems": map[string]interface{}{
+				"type":        "array",
+				"description": "主要问题汇总列表（除高危外需要整改的问题）",
+				"items":       problemItemSchema(),
+			},
+			"priority_suggest": map[string]interface{}{
+				"type":        "array",
+				"description": "优先整改建议列表（3条，针对最严重问题）",
+				"items":       suggestionItemSchema(),
+			},
+			"business_suggest": map[string]interface{}{
+				"type":        "array",
+				"description": "门店运营优化建议列表",
+				"items":       suggestionItemSchema(),
+			},
 		},
-		"required": []string{"scores", "issues", "suggestion", "report"},
+		"required": []string{"scores", "issues", "suggestion", "summary", "high_risk_problems", "main_problems", "priority_suggest", "business_suggest"},
+	}
+}
+
+func problemItemSchema() map[string]interface{} {
+	return map[string]interface{}{
+		"type": "object",
+		"properties": map[string]interface{}{
+			"item_id":   map[string]interface{}{"type": "string", "description": "关联的检查项 ID，无法关联时可为空字符串"},
+			"item_name": map[string]interface{}{"type": "string", "description": "关联的检查项名称，无法关联时可为空字符串"},
+			"level":     map[string]interface{}{"type": "string", "description": "严重程度：高/中/低"},
+			"desc":      map[string]interface{}{"type": "string", "description": "问题描述，说明具体现象与位置"},
+		},
+		"required": []string{"item_id", "item_name", "level", "desc"},
+	}
+}
+
+func suggestionItemSchema() map[string]interface{} {
+	return map[string]interface{}{
+		"type": "object",
+		"properties": map[string]interface{}{
+			"title": map[string]interface{}{"type": "string", "description": "建议标题，简短明确"},
+			"desc":  map[string]interface{}{"type": "string", "description": "建议说明，具体可执行"},
+		},
+		"required": []string{"title", "desc"},
 	}
 }
 
@@ -371,14 +460,16 @@ func AnalyzeInspection(storeName string, items []InspectionAIItem, photos []Uplo
 		}
 		prompt := fmt.Sprintf(`你是一名专业的连锁门店巡店督导。请对「%s」进行巡店检查。
 %s
-请基于以上检查项标准与巡店信息，客观评估每个检查项的达标情况，重点输出两大部分：
-1. issues（问题与备注）：按检查项分条列出发现的问题与现场备注，覆盖所有不达标项；
-2. suggestion（AI 整改建议）：针对每个问题给出具体、可执行的整改措施与提升建议。
+请基于以上检查项标准与巡店信息，客观评估每个检查项的达标情况，重点输出：
+1. scores：每个检查项的得分（无关项不返回）；
+2. issues（问题与备注）：按检查项分条列出发现的问题与现场备注，覆盖所有不达标项；
+3. suggestion（AI 整改建议）：针对每个问题给出具体、可执行的整改措施与提升建议；
+4. 巡店总结（summary / high_risk_problems / main_problems / priority_suggest / business_suggest）。
 %s
 %s
 %s
 
-请调用 submit_inspection_result 工具提交结果。scores 仅包含与巡店关键词/图片有关联的检查项，每项的 item_id 与上面给出的 item_id 一致，score 必须落在该检查项允许的分值范围内；无关的检查项不要返回评分；issues 与 suggestion 必须详尽充实。`, storeDesc, skillsPrompt, keywordsHint, photoHint, imageHint)
+请调用 submit_inspection_result 工具提交结果。scores 仅包含与巡店关键词/图片有关联的检查项，每项的 item_id 与上面给出的 item_id 一致，score 必须落在该检查项允许的分值范围内；无关的检查项不要返回评分；issues 与 suggestion 必须详尽充实；summary 为 30-60 字整体概括；high_risk_problems 提取所有高危风险问题（消防、食安等需立即处理）；main_problems 汇总主要问题；priority_suggest 给出 3 条优先整改建议；business_suggest 给出门店运营优化建议。high_risk_problems 与 main_problems 中每项的 item_id 必须与对应检查项的 item_id 一致（优先填写 item_id），无法关联到具体检查项时 item_id 留空。`, storeDesc, skillsPrompt, keywordsHint, photoHint, imageHint)
 
 		messages := []chatMessage{{
 			Role:    "system",
@@ -514,7 +605,7 @@ func AnalyzeInspection(storeName string, items []InspectionAIItem, photos []Uplo
 1. scores：每个检查项的得分；
 2. issues（问题与备注）：按检查项分条列出发现的问题与现场备注，覆盖所有不达标项；
 3. suggestion（AI 整改建议）：针对每个问题给出具体、可执行的整改措施与提升建议；
-4. report（巡店分析报告）：完整的巡店分析报告，包含每个检查项的评估详情、标准图与现场图对比分析（如有）、评分理由、改进建议。
+4. 巡店总结（summary / high_risk_problems / main_problems / priority_suggest / business_suggest）。
 %s
 %s
 %s
@@ -524,7 +615,11 @@ func AnalyzeInspection(storeName string, items []InspectionAIItem, photos []Uplo
   "scores": {"检查项名称": 得分（仅包含有针对性分析的项）, ...},
   "issues": "问题与备注，按检查项分条列出",
   "suggestion": "AI 整改建议，具体可执行",
-  "report": "完整的巡店分析报告文本，按检查项分章节"
+  "summary": "整体一句话概括本次巡店情况（30-60字）",
+  "high_risk_problems": [{"item_id":"关联检查项ID（无法关联留空）","item_name":"关联检查项名称","level":"高/中/低","desc":"问题描述"}],
+  "main_problems": [{"item_id":"关联检查项ID（无法关联留空）","item_name":"关联检查项名称","level":"高/中/低","desc":"问题描述"}],
+  "priority_suggest": [{"title":"建议标题","desc":"建议说明"}],
+  "business_suggest": [{"title":"建议标题","desc":"建议说明"}]
 }`, storeDesc, strings.Join(itemLines, "\n"), keywordsHint, photoHint, imageHint)
 
 	messages := []chatMessage{{
@@ -571,10 +666,14 @@ func AnalyzeInspection(storeName string, items []InspectionAIItem, photos []Uplo
 	}
 
 	var parsed struct {
-		Scores     map[string]float64 `json:"scores"`
-		Issues     string             `json:"issues"`
-		Suggestion string             `json:"suggestion"`
-		Report     string             `json:"report"`
+		Scores           map[string]float64         `json:"scores"`
+		Issues           string                     `json:"issues"`
+		Suggestion       string                     `json:"suggestion"`
+		Summary          string                     `json:"summary"`
+		HighRiskProblems []InspectionProblem        `json:"high_risk_problems"`
+		MainProblems     []InspectionProblem        `json:"main_problems"`
+		PrioritySuggest  []InspectionSuggestionItem `json:"priority_suggest"`
+		BusinessSuggest  []InspectionSuggestionItem `json:"business_suggest"`
 	}
 	if err := json.Unmarshal([]byte(content), &parsed); err != nil {
 		available, aerr := getAvailablePlans()
@@ -590,10 +689,14 @@ func AnalyzeInspection(storeName string, items []InspectionAIItem, photos []Uplo
 		parsed.Scores = map[string]float64{}
 	}
 	return &InspectionAIResult{
-		Scores:     parsed.Scores,
-		Issues:     parsed.Issues,
-		Suggestion: parsed.Suggestion,
-		Report:     parsed.Report,
+		Scores:           parsed.Scores,
+		Issues:           parsed.Issues,
+		Suggestion:       parsed.Suggestion,
+		Summary:          parsed.Summary,
+		HighRiskProblems: parsed.HighRiskProblems,
+		MainProblems:     parsed.MainProblems,
+		PrioritySuggest:  parsed.PrioritySuggest,
+		BusinessSuggest:  parsed.BusinessSuggest,
 	}, nil
 }
 
@@ -609,9 +712,13 @@ func parseInspectionToolArgs(args string) (*InspectionAIResult, error) {
 			Score   float64 `json:"score"`
 			Comment string  `json:"comment"`
 		} `json:"scores"`
-		Issues     string `json:"issues"`
-		Suggestion string `json:"suggestion"`
-		Report     string `json:"report"`
+		Issues           string                     `json:"issues"`
+		Suggestion       string                     `json:"suggestion"`
+		Summary          string                     `json:"summary"`
+		HighRiskProblems []InspectionProblem        `json:"high_risk_problems"`
+		MainProblems     []InspectionProblem        `json:"main_problems"`
+		PrioritySuggest  []InspectionSuggestionItem `json:"priority_suggest"`
+		BusinessSuggest  []InspectionSuggestionItem `json:"business_suggest"`
 	}
 	if err := json.Unmarshal([]byte(args), &obj); err != nil {
 		return nil, err
@@ -626,11 +733,15 @@ func parseInspectionToolArgs(args string) (*InspectionAIResult, error) {
 		comments[s.ItemID] = s.Comment
 	}
 	return &InspectionAIResult{
-		Scores:     scores,
-		Comments:   comments,
-		Issues:     obj.Issues,
-		Suggestion: obj.Suggestion,
-		Report:     obj.Report,
+		Scores:           scores,
+		Comments:         comments,
+		Issues:           obj.Issues,
+		Suggestion:       obj.Suggestion,
+		Summary:          obj.Summary,
+		HighRiskProblems: obj.HighRiskProblems,
+		MainProblems:     obj.MainProblems,
+		PrioritySuggest:  obj.PrioritySuggest,
+		BusinessSuggest:  obj.BusinessSuggest,
 	}, nil
 }
 
@@ -647,9 +758,13 @@ func parseInspectionContentJSON(content string) (*InspectionAIResult, error) {
 			Score   float64 `json:"score"`
 			Comment string  `json:"comment"`
 		} `json:"scores"`
-		Issues     string `json:"issues"`
-		Suggestion string `json:"suggestion"`
-		Report     string `json:"report"`
+		Issues           string                     `json:"issues"`
+		Suggestion       string                     `json:"suggestion"`
+		Summary          string                     `json:"summary"`
+		HighRiskProblems []InspectionProblem        `json:"high_risk_problems"`
+		MainProblems     []InspectionProblem        `json:"main_problems"`
+		PrioritySuggest  []InspectionSuggestionItem `json:"priority_suggest"`
+		BusinessSuggest  []InspectionSuggestionItem `json:"business_suggest"`
 	}
 	if err := json.Unmarshal([]byte(content), &arr); err == nil && len(arr.Scores) > 0 {
 		scores := make(map[string]float64, len(arr.Scores))
@@ -662,19 +777,27 @@ func parseInspectionContentJSON(content string) (*InspectionAIResult, error) {
 			comments[s.ItemID] = s.Comment
 		}
 		return &InspectionAIResult{
-			Scores:     scores,
-			Comments:   comments,
-			Issues:     arr.Issues,
-			Suggestion: arr.Suggestion,
-			Report:     arr.Report,
+			Scores:           scores,
+			Comments:         comments,
+			Issues:           arr.Issues,
+			Suggestion:       arr.Suggestion,
+			Summary:          arr.Summary,
+			HighRiskProblems: arr.HighRiskProblems,
+			MainProblems:     arr.MainProblems,
+			PrioritySuggest:  arr.PrioritySuggest,
+			BusinessSuggest:  arr.BusinessSuggest,
 		}, nil
 	}
 	// 回退到对象型 scores
 	var obj struct {
-		Scores     map[string]float64 `json:"scores"`
-		Issues     string             `json:"issues"`
-		Suggestion string             `json:"suggestion"`
-		Report     string             `json:"report"`
+		Scores           map[string]float64         `json:"scores"`
+		Issues           string                     `json:"issues"`
+		Suggestion       string                     `json:"suggestion"`
+		Summary          string                     `json:"summary"`
+		HighRiskProblems []InspectionProblem        `json:"high_risk_problems"`
+		MainProblems     []InspectionProblem        `json:"main_problems"`
+		PrioritySuggest  []InspectionSuggestionItem `json:"priority_suggest"`
+		BusinessSuggest  []InspectionSuggestionItem `json:"business_suggest"`
 	}
 	if err := json.Unmarshal([]byte(content), &obj); err != nil {
 		return nil, err
@@ -683,10 +806,14 @@ func parseInspectionContentJSON(content string) (*InspectionAIResult, error) {
 		obj.Scores = map[string]float64{}
 	}
 	return &InspectionAIResult{
-		Scores:     obj.Scores,
-		Issues:     obj.Issues,
-		Suggestion: obj.Suggestion,
-		Report:     obj.Report,
+		Scores:           obj.Scores,
+		Issues:           obj.Issues,
+		Suggestion:       obj.Suggestion,
+		Summary:          obj.Summary,
+		HighRiskProblems: obj.HighRiskProblems,
+		MainProblems:     obj.MainProblems,
+		PrioritySuggest:  obj.PrioritySuggest,
+		BusinessSuggest:  obj.BusinessSuggest,
 	}, nil
 }
 
@@ -728,14 +855,16 @@ func AnalyzeInspectionStream(storeName string, items []InspectionAIItem, photos 
 			}
 			prompt := fmt.Sprintf(`你是一名专业的连锁门店巡店督导。请对「%s」进行巡店检查。
 %s
-请基于以上检查项标准与巡店信息，客观评估每个检查项的达标情况，重点输出两大部分：
-1. issues（问题与备注）：按检查项分条列出发现的问题与现场备注，覆盖所有不达标项；
-2. suggestion（AI 整改建议）：针对每个问题给出具体、可执行的整改措施与提升建议。
+请基于以上检查项标准与巡店信息，客观评估每个检查项的达标情况，重点输出：
+1. scores：每个检查项的得分（无关项不返回）；
+2. issues（问题与备注）：按检查项分条列出发现的问题与现场备注，覆盖所有不达标项；
+3. suggestion（AI 整改建议）：针对每个问题给出具体、可执行的整改措施与提升建议；
+4. 巡店总结（summary / high_risk_problems / main_problems / priority_suggest / business_suggest）。
 %s
 %s
 %s
 
-请调用 submit_inspection_result 工具提交结果。scores 仅包含与巡店关键词/图片有关联的检查项，每项的 item_id 与上面给出的 item_id 一致，score 必须落在该检查项允许的分值范围内；无关的检查项不要返回评分；issues 与 suggestion 必须详尽充实。`, storeDesc, skillsPrompt, keywordsHint, photoHint, imageHint)
+请调用 submit_inspection_result 工具提交结果。scores 仅包含与巡店关键词/图片有关联的检查项，每项的 item_id 与上面给出的 item_id 一致，score 必须落在该检查项允许的分值范围内；无关的检查项不要返回评分；issues 与 suggestion 必须详尽充实；summary 为 30-60 字整体概括；high_risk_problems 提取所有高危风险问题（消防、食安等需立即处理）；main_problems 汇总主要问题；priority_suggest 给出 3 条优先整改建议；business_suggest 给出门店运营优化建议。high_risk_problems 与 main_problems 中每项的 item_id 必须与对应检查项的 item_id 一致（优先填写 item_id），无法关联到具体检查项时 item_id 留空。`, storeDesc, skillsPrompt, keywordsHint, photoHint, imageHint)
 			messages = []chatMessage{{
 				Role:    "system",
 				Content: "你是专业的连锁门店巡店督导专家，擅长门店标准化检查，输出问题与整改建议。使用中文回复。必须通过调用 submit_inspection_result 工具返回结构化结果。",
@@ -809,7 +938,7 @@ func AnalyzeInspectionStream(storeName string, items []InspectionAIItem, photos 
 1. scores：每个检查项的得分；
 2. issues（问题与备注）：按检查项分条列出发现的问题与现场备注，覆盖所有不达标项；
 3. suggestion（AI 整改建议）：针对每个问题给出具体、可执行的整改措施与提升建议；
-4. report（巡店分析报告）：完整的巡店分析报告，包含每个检查项的评估详情、标准图与现场图对比分析（如有）、评分理由、改进建议。
+4. 巡店总结（summary / high_risk_problems / main_problems / priority_suggest / business_suggest）。
 %s
 %s
 %s
@@ -819,7 +948,11 @@ func AnalyzeInspectionStream(storeName string, items []InspectionAIItem, photos 
   "scores": {"检查项名称": 得分（仅包含有针对性分析的项）, ...},
   "issues": "问题与备注，按检查项分条列出",
   "suggestion": "AI 整改建议，具体可执行",
-  "report": "完整的巡店分析报告文本，按检查项分章节"
+  "summary": "整体一句话概括本次巡店情况（30-60字）",
+  "high_risk_problems": [{"item_id":"关联检查项ID（无法关联留空）","item_name":"关联检查项名称","level":"高/中/低","desc":"问题描述"}],
+  "main_problems": [{"item_id":"关联检查项ID（无法关联留空）","item_name":"关联检查项名称","level":"高/中/低","desc":"问题描述"}],
+  "priority_suggest": [{"title":"建议标题","desc":"建议说明"}],
+  "business_suggest": [{"title":"建议标题","desc":"建议说明"}]
 }`, storeDesc, strings.Join(itemLines, "\n"), keywordsHint, photoHint, imageHint)
 			messages = []chatMessage{{
 				Role:    "system",
@@ -992,10 +1125,14 @@ func AnalyzeInspectionStream(storeName string, items []InspectionAIItem, photos 
 			Event:   "result",
 			Message: "AI 巡店分析完成",
 			Data: map[string]interface{}{
-				"scores":     resultScores,
-				"issues":     result.Issues,
-				"suggestion": result.Suggestion,
-				"report":     result.Report,
+				"scores":             resultScores,
+				"issues":             result.Issues,
+				"suggestion":         result.Suggestion,
+				"summary":            result.Summary,
+				"high_risk_problems": result.HighRiskProblems,
+				"main_problems":      result.MainProblems,
+				"priority_suggest":   result.PrioritySuggest,
+				"business_suggest":   result.BusinessSuggest,
 			},
 		}
 	}()

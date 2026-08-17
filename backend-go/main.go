@@ -99,6 +99,13 @@ func registerRoutes() {
 	web.Router("/api/inspections/ai-analyze-item-stream", inspections, "post:AIAnalyzeItemStream")
 	web.Router("/api/inspections/:inspection_id", inspections, "get:Get;put:Update;delete:Delete")
 
+	inspectionTasks := &controllers.InspectionTasksController{}
+	web.Router("/api/inspection-tasks/", inspectionTasks, "get:List")
+	web.Router("/api/inspection-tasks/:task_id", inspectionTasks, "get:Get")
+	web.Router("/api/inspection-tasks/:task_id/submit-rectify", inspectionTasks, "post:SubmitRectify")
+	web.Router("/api/inspection-tasks/:task_id/recheck", inspectionTasks, "post:Recheck")
+	web.Router("/api/inspection-tasks/:task_id/manual-confirm", inspectionTasks, "post:ManualConfirm")
+
 	inspectionTemplates := &controllers.InspectionTemplatesController{}
 	web.Router("/api/inspection-templates/", inspectionTemplates, "get:List;post:Create")
 	web.Router("/api/inspection-templates/all", inspectionTemplates, "get:ListAll")

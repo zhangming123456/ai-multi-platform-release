@@ -64,6 +64,11 @@
               <div class="text-[#86868b] text-[12px]">{{ record.phone || '--' }}</div>
             </div>
           </template>
+          <template #manager="{ record }">
+            <span class="text-[13px] text-[#1D1D1F]">{{
+              managerName(record.manager_id) || '--'
+            }}</span>
+          </template>
           <template #address="{ record }">
             <span class="text-[13px] text-[#86868b]">{{ record.address || '--' }}</span>
           </template>
@@ -140,6 +145,19 @@
             </a-form-item>
           </a-col>
         </a-row>
+        <a-form-item label="负责人">
+          <a-select
+            v-model="form.manager_id"
+            placeholder="选择门店负责人（整改任务将推送给该用户）"
+            allow-clear
+            :filter-option="true"
+          >
+            <a-option v-for="u in userOptions" :key="u.id" :value="u.id">
+              {{ u.nickname || u.username
+              }}<span v-if="u.username" class="text-[#86868b]">（{{ u.username }}）</span>
+            </a-option>
+          </a-select>
+        </a-form-item>
         <a-form-item label="状态">
           <a-radio-group v-model="form.status" type="button">
             <a-radio value="active">营业中</a-radio>
@@ -177,17 +195,42 @@ const form = ref({
   address: '',
   contact: '',
   phone: '',
+  manager_id: undefined as string | undefined,
   status: 'active' as 'active' | 'inactive',
 })
+
+const userOptions = ref<{ id: string; username: string; nickname: string }[]>([])
 
 const columns = [
   { title: '门店', dataIndex: 'name', slotName: 'name', width: 220 },
   { title: '状态', dataIndex: 'status', slotName: 'status', width: 90 },
   { title: '联系人', dataIndex: 'contact', slotName: 'contact', width: 160 },
+  { title: '负责人', dataIndex: 'manager_id', slotName: 'manager', width: 120 },
   { title: '地址', dataIndex: 'address', slotName: 'address' },
   { title: '创建时间', dataIndex: 'created_at', slotName: 'createdAt', width: 150 },
   { title: '操作', slotName: 'actions', align: 'right' as const, width: 110 },
 ]
+
+function managerName(managerId: string | null | undefined): string {
+  if (!managerId) return ''
+  const found = userOptions.value.find((u) => u.id === managerId)
+  return found ? found.nickname || found.username : ''
+}
+
+async function fetchUsers() {
+  try {
+    const res = await api.get<any[]>('/v2/users')
+    if (Array.isArray(res.data)) {
+      userOptions.value = res.data.map((u) => ({
+        id: u.id,
+        username: u.username || '',
+        nickname: u.nickname || '',
+      }))
+    }
+  } catch (e) {
+    userOptions.value = []
+  }
+}
 
 async function fetchStores() {
   loading.value = true
@@ -274,5 +317,8 @@ async function handleDelete(store: Store) {
   }
 }
 
-onMounted(fetchStores)
+onMounted(() => {
+  fetchStores()
+  fetchUsers()
+})
 </script>

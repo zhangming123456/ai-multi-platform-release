@@ -180,6 +180,10 @@ func userIDsWithPermission(permKey string) []string {
 
 // createNotification 写入通知并推送实时事件。
 func createNotification(userID, ntype, title, content, relatedID string) error {
+	return createNotificationWithChannel(userID, ntype, title, content, relatedID, models.NotificationChannelInternal)
+}
+
+func createNotificationWithChannel(userID, ntype, title, content, relatedID, channel string) error {
 	o := services.GetOrm()
 	n := &models.Notification{
 		ID:        newID(),
@@ -188,6 +192,7 @@ func createNotification(userID, ntype, title, content, relatedID string) error {
 		Title:     title,
 		Content:   content,
 		RelatedID: relatedID,
+		Channel:   channel,
 		IsRead:    false,
 		CreatedAt: time.Now(),
 	}
@@ -214,6 +219,7 @@ func notificationMap(n *models.Notification) map[string]interface{} {
 		"title":      n.Title,
 		"content":    n.Content,
 		"related_id": n.RelatedID,
+		"channel":    n.Channel,
 		"is_read":    n.IsRead,
 		"created_at": n.CreatedAt.Format("2006-01-02T15:04:05"),
 	}

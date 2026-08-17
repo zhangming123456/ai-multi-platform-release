@@ -26,29 +26,31 @@ type inspectionScoreRequest struct {
 }
 
 type inspectionCreateRequest struct {
-	StoreID     string                   `json:"store_id"`
-	TemplateID  string                   `json:"template_id"`
-	Title       string                   `json:"title"`
-	Status      string                   `json:"status"`
-	CheckedAt   string                   `json:"checked_at"`
-	Issues      string                   `json:"issues"`
-	Suggestion  string                   `json:"suggestion"`
-	AIGenerated bool                     `json:"ai_generated"`
-	Photos      []string                 `json:"photos"`
-	Scores      []inspectionScoreRequest `json:"scores"`
+	StoreID     string                      `json:"store_id"`
+	TemplateID  string                      `json:"template_id"`
+	Title       string                      `json:"title"`
+	Status      string                      `json:"status"`
+	CheckedAt   string                      `json:"checked_at"`
+	Issues      string                      `json:"issues"`
+	Suggestion  string                      `json:"suggestion"`
+	AISummary   services.InspectionAISummary `json:"ai_summary"`
+	AIGenerated bool                        `json:"ai_generated"`
+	Photos      []string                    `json:"photos"`
+	Scores      []inspectionScoreRequest    `json:"scores"`
 }
 
 type inspectionUpdateRequest struct {
-	StoreID     *string                   `json:"store_id"`
-	TemplateID  *string                   `json:"template_id"`
-	Title       *string                   `json:"title"`
-	Status      *string                   `json:"status"`
-	CheckedAt   *string                   `json:"checked_at"`
-	Issues      *string                   `json:"issues"`
-	Suggestion  *string                   `json:"suggestion"`
-	AIGenerated *bool                     `json:"ai_generated"`
-	Photos      *[]string                 `json:"photos"`
-	Scores      *[]inspectionScoreRequest `json:"scores"`
+	StoreID     *string                      `json:"store_id"`
+	TemplateID  *string                      `json:"template_id"`
+	Title       *string                      `json:"title"`
+	Status      *string                      `json:"status"`
+	CheckedAt   *string                      `json:"checked_at"`
+	Issues      *string                      `json:"issues"`
+	Suggestion  *string                      `json:"suggestion"`
+	AISummary   *services.InspectionAISummary `json:"ai_summary"`
+	AIGenerated *bool                        `json:"ai_generated"`
+	Photos      *[]string                    `json:"photos"`
+	Scores      *[]inspectionScoreRequest    `json:"scores"`
 }
 
 const inspectionPassRatio = 0.8
@@ -131,6 +133,10 @@ func (c *InspectionsController) Create() {
 	if status == "" {
 		status = "draft"
 	}
+	aiSummaryJSON := ""
+	if raw, err := json.Marshal(req.AISummary); err == nil {
+		aiSummaryJSON = string(raw)
+	}
 	inspection := &models.Inspection{
 		ID:           newID(),
 		StoreID:      req.StoreID,
@@ -140,6 +146,7 @@ func (c *InspectionsController) Create() {
 		Status:       status,
 		Issues:       req.Issues,
 		Suggestion:   req.Suggestion,
+		AISummary:    aiSummaryJSON,
 		AIGenerated:  req.AIGenerated,
 		Photos:       marshalPhotos(req.Photos),
 		InspectorID:  user.ID,
@@ -162,6 +169,7 @@ func (c *InspectionsController) Create() {
 		c.WriteError(http.StatusInternalServerError, "保存巡店记录失败")
 		return
 	}
+	autoCreateInspectionTask(inspection)
 	c.Created(inspectionWithScores(inspection))
 }
 
@@ -232,6 +240,11 @@ func (c *InspectionsController) Update() {
 	if req.Suggestion != nil {
 		inspection.Suggestion = *req.Suggestion
 	}
+	if req.AISummary != nil {
+		if raw, err := json.Marshal(*req.AISummary); err == nil {
+			inspection.AISummary = string(raw)
+		}
+	}
 	if req.AIGenerated != nil {
 		inspection.AIGenerated = *req.AIGenerated
 	}
@@ -259,6 +272,7 @@ func (c *InspectionsController) Update() {
 		c.WriteError(http.StatusInternalServerError, "保存巡店记录失败")
 		return
 	}
+	autoCreateInspectionTask(inspection)
 	c.OK(inspectionWithScores(inspection))
 }
 
@@ -1060,24 +1074,26 @@ func inspectionWithScores(inspection *models.Inspection) map[string]interface{} 
 			"photos":         unmarshalPhotos(s.Photos),
 		})
 	}
+	aiSummary := services.ParseInspectionAISummary(inspection.AISummary)
 	view := map[string]interface{}{
-		"id":            inspection.ID,
-		"title":         inspection.Title,
-		"status":        inspection.Status,
-		"store_id":      inspection.StoreID,
-		"template_id":   inspection.TemplateID,
-		"template_name": inspection.TemplateName,
-		"inspector_id":  inspection.InspectorID,
-		"total_score":   inspection.TotalScore,
-		"passed":        inspection.Passed,
-		"issues":        inspection.Issues,
-		"suggestion":    inspection.Suggestion,
-		"ai_generated":  inspection.AIGenerated,
-		"photos":        unmarshalPhotos(inspection.Photos),
-		"scores":        scoreList,
-		"checked_at":    inspection.CheckedAt.Format("2006-01-02T15:04:05"),
-		"created_at":    inspection.CreatedAt.Format("2006-01-02 15:04:05"),
-		"updated_at":    inspection.UpdatedAt.Format("2006-01-02 15:04:05"),
+		"id":                 inspection.ID,
+		"title":              inspection.Title,
+		"status":             inspection.Status,
+		"store_id":           inspection.StoreID,
+		"template_id":        inspection.TemplateID,
+		"template_name":      inspection.TemplateName,
+		"inspector_id":       inspection.InspectorID,
+		"total_score":        inspection.TotalScore,
+		"passed":             inspection.Passed,
+		"issues":             inspection.Issues,
+		"suggestion":         inspection.Suggestion,
+		"ai_summary":         aiSummary,
+		"ai_generated":       inspection.AIGenerated,
+		"photos":             unmarshalPhotos(inspection.Photos),
+		"scores":             scoreList,
+		"checked_at":         inspection.CheckedAt.Format("2006-01-02T15:04:05"),
+		"created_at":         inspection.CreatedAt.Format("2006-01-02 15:04:05"),
+		"updated_at":         inspection.UpdatedAt.Format("2006-01-02 15:04:05"),
 	}
 	store, err := findStore(inspection.StoreID)
 	if err == nil {

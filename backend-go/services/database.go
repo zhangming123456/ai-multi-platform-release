@@ -103,6 +103,10 @@ func migrateSchema() error {
 		{"materials", "is_active", "ALTER TABLE materials ADD COLUMN is_active bool DEFAULT true"},
 		{"materials", "created_at", "ALTER TABLE materials ADD COLUMN created_at datetime"},
 		{"materials", "updated_at", "ALTER TABLE materials ADD COLUMN updated_at datetime"},
+		{"stores", "manager_id", "ALTER TABLE stores ADD COLUMN manager_id varchar(36) DEFAULT ''"},
+		{"notifications", "channel", "ALTER TABLE notifications ADD COLUMN channel varchar(20) DEFAULT 'internal'"},
+		{"inspections", "ai_summary", "ALTER TABLE inspections ADD COLUMN ai_summary text"},
+		{"inspection_task_items", "ai_problem_desc", "ALTER TABLE inspection_task_items ADD COLUMN ai_problem_desc text"},
 	}
 	for _, m := range migrations {
 		exists, err := columnExists(db, m.table, m.column)

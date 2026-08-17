@@ -15,21 +15,23 @@ type StoresController struct {
 }
 
 type storeCreateRequest struct {
-	Name    string `json:"name"`
-	Code    string `json:"code"`
-	Address string `json:"address"`
-	Contact string `json:"contact"`
-	Phone   string `json:"phone"`
-	Status  string `json:"status"`
+	Name      string `json:"name"`
+	Code      string `json:"code"`
+	Address   string `json:"address"`
+	Contact   string `json:"contact"`
+	Phone     string `json:"phone"`
+	ManagerID string `json:"manager_id"`
+	Status    string `json:"status"`
 }
 
 type storeUpdateRequest struct {
-	Name    *string `json:"name"`
-	Code    *string `json:"code"`
-	Address *string `json:"address"`
-	Contact *string `json:"contact"`
-	Phone   *string `json:"phone"`
-	Status  *string `json:"status"`
+	Name      *string `json:"name"`
+	Code      *string `json:"code"`
+	Address   *string `json:"address"`
+	Contact   *string `json:"contact"`
+	Phone     *string `json:"phone"`
+	ManagerID *string `json:"manager_id"`
+	Status    *string `json:"status"`
 }
 
 // List GET /api/stores/
@@ -98,13 +100,14 @@ func (c *StoresController) Create() {
 		status = "active"
 	}
 	store := &models.Store{
-		ID:      newID(),
-		Name:    req.Name,
-		Code:    req.Code,
-		Address: req.Address,
-		Contact: req.Contact,
-		Phone:   req.Phone,
-		Status:  status,
+		ID:        newID(),
+		Name:      req.Name,
+		Code:      req.Code,
+		Address:   req.Address,
+		Contact:   req.Contact,
+		Phone:     req.Phone,
+		ManagerID: req.ManagerID,
+		Status:    status,
 	}
 	if _, err := services.GetOrm().Insert(store); err != nil {
 		c.WriteError(http.StatusInternalServerError, "创建门店失败")
@@ -166,6 +169,9 @@ func (c *StoresController) Update() {
 	}
 	if req.Phone != nil {
 		store.Phone = *req.Phone
+	}
+	if req.ManagerID != nil {
+		store.ManagerID = *req.ManagerID
 	}
 	if req.Status != nil {
 		store.Status = *req.Status

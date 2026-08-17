@@ -18,9 +18,14 @@ frontend/node_modules/
 # Database
 *.db
 *.sqlite
+
+# backend-go
 data/
+backend/data/
 uploads/
 backend-go/uploads/
+logs/
+backend-go/logs/
 
 # IDE
 .idea/

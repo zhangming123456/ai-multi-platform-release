@@ -219,6 +219,46 @@
             </div>
 
             <div class="space-y-4">
+              <div
+                v-if="relatedTask"
+                class="rounded-2xl border border-[#E5E5EA] bg-white/70 backdrop-blur-xl p-5 cursor-pointer hover:shadow-sm transition-shadow"
+                @click="goTaskDetail"
+              >
+                <div class="flex items-center justify-between mb-3">
+                  <div class="text-[15px] font-semibold text-[#1D1D1F]">整改任务</div>
+                  <a-tag :color="taskStatusColor(relatedTask.status)" size="small">{{
+                    taskStatusText(relatedTask.status)
+                  }}</a-tag>
+                </div>
+                <div class="flex items-end gap-2 mb-3">
+                  <span
+                    class="text-[32px] font-bold leading-none tabular"
+                    :class="
+                      relatedTask.fixed_count >= relatedTask.item_count
+                        ? 'text-[#34C759]'
+                        : 'text-[#FF9500]'
+                    "
+                  >
+                    {{ relatedTask.fixed_count }}
+                  </span>
+                  <span class="text-[#86868b] text-[13px] mb-1"
+                    >/ {{ relatedTask.item_count }} 项已修复</span
+                  >
+                </div>
+                <a-progress
+                  :percent="taskProgressPercent"
+                  :color="relatedTask.fixed_count >= relatedTask.item_count ? '#34C759' : '#FF9500'"
+                  :stroke-width="8"
+                  size="small"
+                />
+                <div class="mt-3 flex items-center justify-between text-[13px]">
+                  <span class="text-[#86868b]"
+                    >负责人：{{ relatedTask.responsible_name || '--' }}</span
+                  >
+                  <span class="text-[#007AFF]">查看详情 →</span>
+                </div>
+              </div>
+
               <div class="rounded-2xl border border-[#E5E5EA] bg-white/70 backdrop-blur-xl p-5">
                 <div class="text-[15px] font-semibold text-[#1D1D1F] mb-3">检查结果</div>
                 <div class="flex items-end gap-2 mb-4">
@@ -273,7 +313,7 @@ import { Message } from '@arco-design/web-vue'
 import { IconRobot } from '@arco-design/web-vue/es/icon'
 import PageHeader from '@/components/layout/PageHeader.vue'
 import { formatDateTime } from '@/utils/time'
-import type { Inspection } from '@/types'
+import type { Inspection, InspectionTask } from '@/types'
 import api from '@/utils/api'
 
 const route = useRoute()
@@ -281,6 +321,7 @@ const router = useRouter()
 
 const loading = ref(false)
 const inspection = ref<Inspection | null>(null)
+const relatedTask = ref<InspectionTask | null>(null)
 const previewVisible = ref<string | null>(null)
 
 const scoringScores = computed(() =>
@@ -339,6 +380,75 @@ function goBack() {
 
 function goEdit() {
   router.push({ name: 'InspectionEdit', params: { id: inspection.value?.id } })
+}
+
+function taskStatusColor(status: string): string {
+  switch (status) {
+    case 'pending':
+      return 'orange'
+    case 'rechecking':
+      return 'arcoblue'
+    case 'rectifying':
+      return 'magenta'
+    case 'manual_review':
+      return 'purple'
+    case 'rectified':
+    case 'confirmed':
+      return 'green'
+    case 'rejected':
+      return 'red'
+    default:
+      return 'gray'
+  }
+}
+
+function taskStatusText(status: string): string {
+  const map: Record<string, string> = {
+    pending: '待整改',
+    rechecking: '复核中',
+    rectifying: '打回整改',
+    manual_review: '转人工',
+    rectified: '已闭环',
+    confirmed: '人工闭环',
+    rejected: '未通过',
+  }
+  return map[status] || status
+}
+
+const taskProgressPercent = computed(() => {
+  if (!relatedTask.value || relatedTask.value.item_count === 0) return 0
+  return relatedTask.value.fixed_count / relatedTask.value.item_count
+})
+
+function goTaskDetail() {
+  if (!relatedTask.value) return
+  router.push({ name: 'InspectionTaskDetail', params: { id: relatedTask.value.id } })
+}
+
+async function fetchRelatedTask() {
+  if (!inspection.value?.id) return
+  try {
+    const res = await api.get<{ items: InspectionTask[] }>('/inspection-tasks/', {
+      params: { inspection_id: inspection.value.id },
+    })
+    const list = res.data.items || []
+    if (list.length > 0) relatedTask.value = list[0]
+  } catch {
+    relatedTask.value = null
+  }
+}
+
+async function fetchDetail() {
+  loading.value = true
+  try {
+    const res = await api.get<Inspection>(`/inspections/${route.params.id}`)
+    inspection.value = res.data
+    await fetchRelatedTask()
+  } catch (e: any) {
+    Message.error(e?.response?.data?.detail || '加载巡店详情失败')
+  } finally {
+    loading.value = false
+  }
 }
 
 onMounted(fetchDetail)

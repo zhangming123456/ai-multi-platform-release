@@ -155,10 +155,80 @@
             <IconCopy :size="14" class="inline-block mr-1" />复制报告
           </button>
         </div>
+
         <div
-          class="ai-report-body prose prose-sm max-w-none text-[13px] leading-relaxed text-[#3C3C43]"
-          v-html="renderedAIReport"
-        />
+          v-if="aiReport.summary"
+          class="mb-4 rounded-xl bg-[#007AFF]/5 px-4 py-3 text-[13px] leading-relaxed text-[#1D1D1F]"
+        >
+          <span class="font-semibold text-[#007AFF]">总结：</span>{{ aiReport.summary }}
+        </div>
+
+        <div v-if="aiReport.high_risk_problems?.length" class="mb-4">
+          <div class="flex items-center gap-2 mb-2">
+            <span class="inline-block w-2 h-2 rounded-full bg-[#FF3B30]"></span>
+            <span class="text-[13px] font-semibold text-[#FF3B30]">高危风险问题</span>
+          </div>
+          <div
+            v-for="(p, i) in aiReport.high_risk_problems"
+            :key="'hr' + i"
+            class="mb-2 last:mb-0 rounded-lg border border-[#FF3B30]/20 bg-[#FF3B30]/5 px-3 py-2"
+          >
+            <div class="text-[13px] font-medium text-[#1D1D1F]">
+              {{ p.item_name || '高危问题' }}
+            </div>
+            <div class="text-[12px] text-[#3C3C43] mt-0.5">{{ p.desc }}</div>
+          </div>
+        </div>
+
+        <div v-if="aiReport.main_problems?.length" class="mb-4">
+          <div class="flex items-center gap-2 mb-2">
+            <span class="inline-block w-2 h-2 rounded-full bg-[#FF9500]"></span>
+            <span class="text-[13px] font-semibold text-[#FF9500]">主要问题</span>
+          </div>
+          <div
+            v-for="(p, i) in aiReport.main_problems"
+            :key="'mp' + i"
+            class="mb-2 last:mb-0 rounded-lg border border-[#E5E5EA] bg-white/60 px-3 py-2"
+          >
+            <div class="flex items-center gap-2">
+              <span class="text-[13px] font-medium text-[#1D1D1F]">{{
+                p.item_name || '问题'
+              }}</span>
+              <a-tag v-if="p.level" size="small" :color="levelColor(p.level)">{{ p.level }}</a-tag>
+            </div>
+            <div class="text-[12px] text-[#3C3C43] mt-0.5">{{ p.desc }}</div>
+          </div>
+        </div>
+
+        <div v-if="aiReport.priority_suggest?.length" class="mb-4">
+          <div class="flex items-center gap-2 mb-2">
+            <span class="inline-block w-2 h-2 rounded-full bg-[#007AFF]"></span>
+            <span class="text-[13px] font-semibold text-[#007AFF]">优先整改建议</span>
+          </div>
+          <div
+            v-for="(s, i) in aiReport.priority_suggest"
+            :key="'ps' + i"
+            class="mb-2 last:mb-0 rounded-lg bg-[#007AFF]/5 px-3 py-2"
+          >
+            <div class="text-[13px] font-medium text-[#1D1D1F]">{{ i + 1 }}. {{ s.title }}</div>
+            <div class="text-[12px] text-[#3C3C43] mt-0.5">{{ s.desc }}</div>
+          </div>
+        </div>
+
+        <div v-if="aiReport.business_suggest?.length">
+          <div class="flex items-center gap-2 mb-2">
+            <span class="inline-block w-2 h-2 rounded-full bg-[#34C759]"></span>
+            <span class="text-[13px] font-semibold text-[#34C759]">运营优化建议</span>
+          </div>
+          <div
+            v-for="(s, i) in aiReport.business_suggest"
+            :key="'bs' + i"
+            class="mb-2 last:mb-0 rounded-lg bg-[#34C759]/5 px-3 py-2"
+          >
+            <div class="text-[13px] font-medium text-[#1D1D1F]">{{ s.title }}</div>
+            <div class="text-[12px] text-[#3C3C43] mt-0.5">{{ s.desc }}</div>
+          </div>
+        </div>
       </div>
     </DefineAIReportBlock>
 
@@ -297,7 +367,10 @@
               </a-form>
             </div>
 
-            <div class="rounded-2xl border border-[#E5E5EA] bg-white/70 backdrop-blur-xl p-5">
+            <div
+              ref="checkItemsRef"
+              class="rounded-2xl border border-[#E5E5EA] bg-white/70 backdrop-blur-xl p-5"
+            >
               <div class="flex items-center justify-between mb-4">
                 <div class="text-[15px] font-semibold text-[#1D1D1F]">检查项评分</div>
                 <a-tag :color="totalPassed ? 'green' : 'red'" size="small" v-if="maxTotal > 0">
@@ -641,7 +714,7 @@
           </div>
 
           <!-- 大屏：右侧 AI 巡店实时对话面板 -->
-          <div class="hidden xl:block" style="padding-left: 45px">
+          <div class="hidden xl:block" style="padding-left: 15px">
             <div class="sticky top-4 space-y-4">
               <!-- 实时对话 / 日志终端 -->
               <ReuseAiInspectPanel ref="aiInspectPanelRef" />
@@ -712,10 +785,14 @@
             </a-tooltip>
             <a-tooltip :content="`第 ${activeRowIndex + 1}/${scoreRows.length} 项`" position="left">
               <div
-                class="flex flex-col items-center justify-center rounded-xl bg-white border border-[#E5E5EA] shadow-md px-2.5 py-1.5 select-none"
+                class="flex flex-col gap-1 items-center justify-center rounded-xl bg-white border border-[#E5E5EA] shadow-md px-1 py-1.5 select-none"
               >
-                <span class="text-[14px] font-bold text-[#165DFF] leading-none tabular-nums">
-                  {{ activeRowIndex + 1 }}/{{ scoreRows.length }}
+                <span class="text-[13px] font-bold text-[#165DFF] leading-none tabular-nums">
+                  {{ activeRowIndex + 1 }}
+                </span>
+                <div class="border border-[#E5E5EA] w-full" />
+                <span class="text-[13px] font-bold text-[#165DFF] leading-none tabular-nums">
+                  {{ scoreRows.length }}
                 </span>
               </div>
             </a-tooltip>
@@ -794,7 +871,6 @@ import type {
   Store,
 } from '@/types'
 import api from '@/utils/api'
-import { marked } from 'marked'
 
 const [DefineAIInspectForm, ReuseAIInspectForm] = createReusableTemplate<{
   selectSize?: string
@@ -1011,12 +1087,24 @@ const aiDrawerVisible = ref(false)
 const isAnalyzing = ref(false)
 const aiStreaming = ref(false)
 const aiStreamingText = ref('')
-const aiReport = ref('')
-const renderedAIReport = computed(() => {
-  if (!aiReport.value) return ''
-  marked.setOptions({ gfm: true, breaks: true })
-  return marked.parse(aiReport.value) as string
-})
+interface AIProblemItem {
+  item_id: string
+  item_name: string
+  level: string
+  desc: string
+}
+interface AISuggestionItem {
+  title: string
+  desc: string
+}
+interface AIReportSummary {
+  summary: string
+  high_risk_problems: AIProblemItem[]
+  main_problems: AIProblemItem[]
+  priority_suggest: AISuggestionItem[]
+  business_suggest: AISuggestionItem[]
+}
+const aiReport = ref<AIReportSummary | null>(null)
 const aiKeywords = ref('')
 const aiPhotos = ref<PhotoItem[]>([])
 
@@ -1067,9 +1155,48 @@ function triggerAIUpload(drawer = false) {
   }
 }
 
+function levelColor(level: string): string {
+  switch (level) {
+    case '高':
+      return 'red'
+    case '中':
+      return 'orange'
+    default:
+      return 'gray'
+  }
+}
+
+function formatAIReportText(report: AIReportSummary): string {
+  const lines: string[] = []
+  if (report.summary) lines.push(`【总结】${report.summary}`)
+  if (report.high_risk_problems?.length) {
+    lines.push('\n【高危风险问题】')
+    report.high_risk_problems.forEach((p) =>
+      lines.push(`- ${p.item_name ? `[${p.item_name}] ` : ''}${p.desc}`),
+    )
+  }
+  if (report.main_problems?.length) {
+    lines.push('\n【主要问题】')
+    report.main_problems.forEach((p) =>
+      lines.push(
+        `- ${p.item_name ? `[${p.item_name}] ` : ''}${p.level ? `(${p.level}) ` : ''}${p.desc}`,
+      ),
+    )
+  }
+  if (report.priority_suggest?.length) {
+    lines.push('\n【优先整改建议】')
+    report.priority_suggest.forEach((s, i) => lines.push(`${i + 1}. ${s.title}：${s.desc}`))
+  }
+  if (report.business_suggest?.length) {
+    lines.push('\n【运营优化建议】')
+    report.business_suggest.forEach((s) => lines.push(`- ${s.title}：${s.desc}`))
+  }
+  return lines.join('\n')
+}
+
 function copyAIReport() {
   if (!aiReport.value) return
-  navigator.clipboard.writeText(aiReport.value).then(
+  navigator.clipboard.writeText(formatAIReportText(aiReport.value)).then(
     () => Message.success('报告已复制到剪贴板'),
     () => Message.error('复制失败，请手动复制'),
   )
@@ -1516,6 +1643,15 @@ async function fetchDetail() {
     }
     aiOriginalIssues.value = data.issues || ''
     aiOriginalSuggestion.value = data.suggestion || ''
+    if (data.ai_summary) {
+      aiReport.value = {
+        summary: data.ai_summary.summary || '',
+        high_risk_problems: data.ai_summary.high_risk_problems || [],
+        main_problems: data.ai_summary.main_problems || [],
+        priority_suggest: data.ai_summary.priority_suggest || [],
+        business_suggest: data.ai_summary.business_suggest || [],
+      }
+    }
     if (data.template_id && !templateOptions.value.some((o) => o.value === data.template_id)) {
       templateOptions.value.push({
         label: data.template_name || '当前模板',
@@ -1837,7 +1973,11 @@ function applyAIResult(data: {
   scores?: InspectionScore[]
   issues?: string
   suggestion?: string
-  report?: string
+  summary?: string
+  high_risk_problems?: AIProblemItem[]
+  main_problems?: AIProblemItem[]
+  priority_suggest?: AISuggestionItem[]
+  business_suggest?: AISuggestionItem[]
 }) {
   if (data.scores && data.scores.length > 0) {
     const aiMap = new Map(data.scores.map((s: InspectionScore) => [s.item_id, s]))
@@ -1854,7 +1994,21 @@ function applyAIResult(data: {
   }
   if (data.issues) form.value.issues = data.issues
   if (data.suggestion) form.value.suggestion = data.suggestion
-  if (data.report) aiReport.value = data.report
+  const hasSummary =
+    !!data.summary?.trim() ||
+    (data.high_risk_problems?.length ?? 0) > 0 ||
+    (data.main_problems?.length ?? 0) > 0 ||
+    (data.priority_suggest?.length ?? 0) > 0 ||
+    (data.business_suggest?.length ?? 0) > 0
+  if (hasSummary) {
+    aiReport.value = {
+      summary: data.summary || '',
+      high_risk_problems: data.high_risk_problems || [],
+      main_problems: data.main_problems || [],
+      priority_suggest: data.priority_suggest || [],
+      business_suggest: data.business_suggest || [],
+    }
+  }
   aiOriginalIssues.value = form.value.issues
   aiOriginalSuggestion.value = form.value.suggestion
   form.value.ai_generated = true
@@ -1943,13 +2097,79 @@ async function handleAnalyze() {
         type: 'string',
         description: 'AI 整改建议：针对每个问题给出具体、可执行的整改措施与提升建议',
       },
-      report: {
+      summary: {
         type: 'string',
-        description:
-          '巡店分析报告：基于检查项（含标准图与巡店图对比）、关键词和巡店图，生成一份完整、结构化的分析结果报告，供复制展示',
+        description: '整体一句话概括本次巡店情况，30-60字',
+      },
+      high_risk_problems: {
+        type: 'array',
+        description: '高危风险问题列表（如消防、食安等需立即处理的问题）',
+        items: {
+          type: 'object',
+          properties: {
+            item_id: {
+              type: 'string',
+              description: '关联的检查项 ID，优先填写；无法关联时可为空字符串',
+            },
+            item_name: { type: 'string', description: '关联的检查项名称，无法关联时可为空字符串' },
+            level: { type: 'string', description: '严重程度：高/中/低' },
+            desc: { type: 'string', description: '问题描述，说明具体现象与位置' },
+          },
+          required: ['item_id', 'item_name', 'level', 'desc'],
+        },
+      },
+      main_problems: {
+        type: 'array',
+        description: '主要问题汇总列表（除高危外需要整改的问题）',
+        items: {
+          type: 'object',
+          properties: {
+            item_id: {
+              type: 'string',
+              description: '关联的检查项 ID，优先填写；无法关联时可为空字符串',
+            },
+            item_name: { type: 'string', description: '关联的检查项名称，无法关联时可为空字符串' },
+            level: { type: 'string', description: '严重程度：高/中/低' },
+            desc: { type: 'string', description: '问题描述，说明具体现象与位置' },
+          },
+          required: ['item_id', 'item_name', 'level', 'desc'],
+        },
+      },
+      priority_suggest: {
+        type: 'array',
+        description: '优先整改建议列表（3条，针对最严重问题）',
+        items: {
+          type: 'object',
+          properties: {
+            title: { type: 'string', description: '建议标题，简短明确' },
+            desc: { type: 'string', description: '建议说明，具体可执行' },
+          },
+          required: ['title', 'desc'],
+        },
+      },
+      business_suggest: {
+        type: 'array',
+        description: '门店运营优化建议列表',
+        items: {
+          type: 'object',
+          properties: {
+            title: { type: 'string', description: '建议标题，简短明确' },
+            desc: { type: 'string', description: '建议说明，具体可执行' },
+          },
+          required: ['title', 'desc'],
+        },
       },
     },
-    required: ['scores', 'issues', 'suggestion', 'report'],
+    required: [
+      'scores',
+      'issues',
+      'suggestion',
+      'summary',
+      'high_risk_problems',
+      'main_problems',
+      'priority_suggest',
+      'business_suggest',
+    ],
   }
 
   const startedAt = performance.now()
@@ -2013,7 +2233,11 @@ async function handleAnalyze() {
       scores: InspectionScore[]
       issues?: string
       suggestion?: string
-      report?: string
+      summary?: string
+      high_risk_problems?: AIProblemItem[]
+      main_problems?: AIProblemItem[]
+      priority_suggest?: AISuggestionItem[]
+      business_suggest?: AISuggestionItem[]
     } | null = null
 
     while (true) {
@@ -2055,7 +2279,17 @@ async function handleAnalyze() {
               scores: Array.isArray(payload.scores) ? payload.scores : [],
               issues: payload.issues || '',
               suggestion: payload.suggestion || '',
-              report: payload.report || '',
+              summary: payload.summary || '',
+              high_risk_problems: Array.isArray(payload.high_risk_problems)
+                ? payload.high_risk_problems
+                : [],
+              main_problems: Array.isArray(payload.main_problems) ? payload.main_problems : [],
+              priority_suggest: Array.isArray(payload.priority_suggest)
+                ? payload.priority_suggest
+                : [],
+              business_suggest: Array.isArray(payload.business_suggest)
+                ? payload.business_suggest
+                : [],
             }
             pushAILog('ok', '已获取 AI 巡店分析结果')
             break
@@ -2412,6 +2646,13 @@ async function doSave() {
       checked_at: form.value.checked_at,
       issues: form.value.issues,
       suggestion: form.value.suggestion,
+      ai_summary: aiReport.value || {
+        summary: '',
+        high_risk_problems: [],
+        main_problems: [],
+        priority_suggest: [],
+        business_suggest: [],
+      },
       ai_generated: computeRecordAIGenerated(),
       photos: allPhotoUrls,
       scores,
@@ -2491,7 +2732,7 @@ function goBack() {
 
 // ===== 浮动快捷操作栏 =====
 const showFloatingBar = ref(false)
-const barRight = ref(20)
+const barRight = ref(0)
 const activeRowIndex = ref(0)
 const rowEls: Record<number, HTMLElement | null> = {}
 
@@ -2511,6 +2752,18 @@ function setRowRef(index: number, el: any) {
   rowEls[index] = el as HTMLElement | null
 }
 
+const checkItemsRef = ref<HTMLElement | undefined>()
+
+useResizeObserver(checkItemsRef, handleBarRight)
+
+function handleBarRight() {
+  // 计算浮动栏 right 位置，使其贴近检查项区域右侧
+  const container = document.querySelector('.xl\\:col-span-2') as HTMLElement | null
+  if (container) {
+    const rect = container.getBoundingClientRect()
+    barRight.value = Math.max(0, window.innerWidth - rect.right - 30)
+  }
+}
 function onScroll() {
   const mainEl = document.querySelector('main')
   if (!mainEl) return
@@ -2518,12 +2771,7 @@ function onScroll() {
   const scrollThreshold = 50
   scrolledToBottom.value =
     mainEl.scrollTop + mainEl.clientHeight >= mainEl.scrollHeight - scrollThreshold
-  // 计算浮动栏 right 位置，使其贴近检查项区域右侧
-  const container = document.querySelector('.xl\\:col-span-2') as HTMLElement | null
-  if (container) {
-    const rect = container.getBoundingClientRect()
-    barRight.value = Math.max(20, window.innerWidth - rect.right - 56)
-  }
+  handleBarRight()
   if (Date.now() < programmaticScrollUntil) return
   if (scrollRafId !== null) return
   scrollRafId = requestAnimationFrame(() => {

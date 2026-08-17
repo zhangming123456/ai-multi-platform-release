@@ -127,6 +127,13 @@ const TYPE_LABELS: Record<string, string> = {
   review_rejected: '审核驳回',
   role_updated: '角色更新',
   role_permissions_updated: '权限变更',
+  inspection_task_created: '整改任务',
+  inspection_task_submitted: '整改已提交',
+  inspection_task_recheck_passed: '复核通过',
+  inspection_task_recheck_failed: '复核未通过',
+  inspection_task_manual_review: '转人工审核',
+  inspection_task_confirmed: '整改闭环',
+  inspection_task_rejected: '整改未通过',
 }
 
 const TYPE_ORDER = [
@@ -135,6 +142,13 @@ const TYPE_ORDER = [
   'review_rejected',
   'role_updated',
   'role_permissions_updated',
+  'inspection_task_created',
+  'inspection_task_submitted',
+  'inspection_task_recheck_passed',
+  'inspection_task_recheck_failed',
+  'inspection_task_manual_review',
+  'inspection_task_confirmed',
+  'inspection_task_rejected',
 ]
 
 const typeTabs = computed(() => {
@@ -166,6 +180,20 @@ const getNotificationIcon = (type: string) => {
       return '👤'
     case 'role_permissions_updated':
       return '🔐'
+    case 'inspection_task_created':
+      return '📋'
+    case 'inspection_task_submitted':
+      return '📤'
+    case 'inspection_task_recheck_passed':
+      return '✅'
+    case 'inspection_task_recheck_failed':
+      return '🔄'
+    case 'inspection_task_manual_review':
+      return '👁️'
+    case 'inspection_task_confirmed':
+      return '🏁'
+    case 'inspection_task_rejected':
+      return '❌'
     default:
       return '🔔'
   }
@@ -187,6 +215,19 @@ const getTypeColor = (type: string) => {
       return 'blue'
     case 'role_permissions_updated':
       return 'orangered'
+    case 'inspection_task_created':
+      return 'orange'
+    case 'inspection_task_submitted':
+      return 'arcoblue'
+    case 'inspection_task_recheck_passed':
+    case 'inspection_task_confirmed':
+      return 'green'
+    case 'inspection_task_recheck_failed':
+      return 'magenta'
+    case 'inspection_task_manual_review':
+      return 'purple'
+    case 'inspection_task_rejected':
+      return 'red'
     default:
       return 'gray'
   }
@@ -205,12 +246,13 @@ async function switchType(type: string) {
 async function handleNotificationClick(id: string, relatedId: string | null, type: string) {
   try {
     await notificationStore.markAsRead(id)
-    if (relatedId) {
-      if (type === 'role_updated' || type === 'role_permissions_updated') {
-        router.push('/profile')
-      } else {
-        router.push(`/review/${relatedId}`)
-      }
+    if (!relatedId) return
+    if (type === 'role_updated' || type === 'role_permissions_updated') {
+      router.push('/profile')
+    } else if (type.startsWith('inspection_task')) {
+      router.push(`/inspection-tasks/${relatedId}`)
+    } else {
+      router.push(`/review/${relatedId}`)
     }
   } catch {
     Message.error('操作失败')

@@ -59,6 +59,7 @@ export interface Store {
   address: string | null
   contact: string | null
   phone: string | null
+  manager_id: string | null
   status: 'active' | 'inactive'
   created_at: string
   updated_at: string
@@ -114,6 +115,13 @@ export interface Inspection {
   passed: boolean
   issues: string
   suggestion: string
+  ai_summary?: {
+    summary: string
+    high_risk_problems: { item_id: string; item_name: string; level: string; desc: string }[]
+    main_problems: { item_id: string; item_name: string; level: string; desc: string }[]
+    priority_suggest: { title: string; desc: string }[]
+    business_suggest: { title: string; desc: string }[]
+  }
   ai_generated: boolean
   photos: string[]
   scores: InspectionScore[]
@@ -181,4 +189,68 @@ export interface Paginated<T> {
   total: number
   page: number
   page_size: number
+}
+
+export type InspectionTaskStatus =
+  'pending' | 'rechecking' | 'rectified' | 'rectifying' | 'manual_review' | 'confirmed' | 'rejected'
+
+export type InspectionTaskItemStatus =
+  'pending' | 'submitted' | 'fixed' | 'not_fixed' | 'manual' | 'confirmed' | 'rejected'
+
+export interface InspectionTask {
+  id: string
+  inspection_id: string
+  store_id: string
+  store_name: string
+  title: string
+  status: InspectionTaskStatus
+  inspector_id: string
+  inspector_name: string
+  responsible_id: string | null
+  responsible_name: string | null
+  contact: string | null
+  phone: string | null
+  channel: string
+  deadline: string
+  closed_at: string
+  item_count: number
+  fixed_count: number
+  overdue: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface InspectionTaskItem {
+  id: string
+  task_id: string
+  inspection_id: string | null
+  score_id: string | null
+  item_id: string
+  item_name: string
+  category: string | null
+  standard: string | null
+  standard_image: string | null
+  score_type: 'score' | 'pass_fail'
+  max_score: number
+  score: number
+  comment: string | null
+  ai_suggestion: string | null
+  original_photos: string[]
+  status: InspectionTaskItemStatus
+  rectify_photos: string[]
+  rectify_comment: string | null
+  recheck_count: number
+  ai_result: { fixed: boolean; score: number; reason: string } | null
+  submitted_at: string
+  rechecked_at: string
+}
+
+export interface InspectionTaskLog {
+  id: string
+  item_id: string | null
+  action: string
+  content: string
+  operator_id: string | null
+  operator_name: string | null
+  created_at: string
 }
