@@ -9,6 +9,7 @@
 ### 1.1 当前阶段状态
 
 项目处于 **MVP 迭代阶段**，核心框架与权限中台已完成，已具备以下能力：
+
 - 多角色 JWT 认证与基于权限表达式的路由鉴权守卫
 - RBAC3 权限中台（角色继承、职责分离约束、权限表达式、用户自定义权限覆盖）
 - 仪表盘实时数据统计（总账号数、今日发布、待处理任务、AI 生成次数）
@@ -27,12 +28,12 @@
 
 ### 2.1 用户角色
 
-| 角色 | 注册方式 | 核心权限 |
-|------|----------|----------|
-| 超级管理员 (admin) | 系统内置 | 全部权限，ID 固定为 "1" |
-| 管理员 (manager) | 系统内置 | 系统管理、用户管理、权限配置（不含数据库权限） |
-| 运营者 (operator) | 管理员创建 / 注册审核 | 内容创建、发布管理、平台账号使用 |
-| 审核员 (reviewer) | 管理员创建 / 注册审核 | 内容审核、SQL 变更审核、模板管理 |
+| 角色               | 注册方式              | 核心权限                                       |
+| ------------------ | --------------------- | ---------------------------------------------- |
+| 超级管理员 (admin) | 系统内置              | 全部权限，ID 固定为 "1"                        |
+| 管理员 (manager)   | 系统内置              | 系统管理、用户管理、权限配置（不含数据库权限） |
+| 运营者 (operator)  | 管理员创建 / 注册审核 | 内容创建、发布管理、平台账号使用               |
+| 审核员 (reviewer)  | 管理员创建 / 注册审核 | 内容审核、SQL 变更审核、模板管理               |
 
 ### 2.2 功能模块
 
@@ -57,36 +58,37 @@
 
 ### 2.3 页面路由
 
-| 路由 | 页面名称 | 功能描述 | 权限 Key |
-|------|----------|----------|----------|
-| /login | 登录页 | 邮箱登录，Apple 风格毛玻璃卡片 | 公开 |
-| / | 仪表盘 | 数据统计、账号健康度、最近发布 | dashboard:read |
-| /platforms | 平台管理 | 多平台账号 CRUD、状态检测 | platforms:read |
-| /content | 内容列表 | 内容列表查看、筛选、删除 | content:read |
-| /content/create | 创作内容 | AI 生成多平台文案变体 | content:read |
-| /publish | 发布管理 | 发布任务队列、创建、重试 | publish:read |
-| /review | 内容审核 | 待审核内容、通过/驳回 | review:read |
-| /sql-review | SQL 审核 | SQL 变更申请列表、审批 | sql_review:read |
-| /templates | 模板管理 | 按平台分类的模板列表 | templates:read |
-| /settings/token-plan | Token 方案 | AI 模型配置管理 | token_plan:read |
-| /settings/user-creation-review | 用户注册审核 | 用户创建申请的审批 | review:read |
-| /developer/docs | API 文档 | 内嵌 Swagger UI | api_docs:read |
-| /developer/database | 数据库控制台 | SQL 执行与历史记录 | db:read |
-| /rbac/users | 用户管理 | 用户列表、角色分配入口 | users:read |
-| /rbac/users/create | 创建用户 | 创建新用户（管理员直接创建/非管理员走审核） | users:create:write |
-| /rbac/users/:id/edit | 编辑用户 | 编辑用户基本信息和角色 | users:update:read \|\| isSelf(id) |
-| /rbac/users/:id/password | 修改密码 | 修改用户密码 | users:change_password:write \|\| isSelf(id) |
-| /rbac/users/:id/permissions | 自定义权限 | 用户级权限覆盖配置 | users:custom_permissions:read \|\| isSelf(id) |
-| /rbac/roles | 角色管理 | 角色 CRUD、父子关系配置 | roles:read |
-| /rbac/permissions | 权限管理 | 按资源树配置角色权限 | permissions:read |
-| /rbac/permissions/enum | 权限字典管理 | 超级管理员专用：权限枚举编辑 | permissions:manage:read |
-| /rbac/permissions/enum/create | 新增权限字典 | 创建新的资源与权限枚举 | permissions:manage:write |
-| /rbac/permissions/enum/edit/:resourceId | 编辑权限字典 | 编辑指定资源的权限枚举 | permissions:manage:write |
-| /rbac/constraints | 约束管理 | 互斥/先决/基数约束 | constraints:read |
-| /profile | 个人中心 | 当前用户信息查看与编辑 | 登录即可 |
-| /403 | 无权限页 | 权限不足提示页 | 无条件放行 |
+| 路由                                    | 页面名称     | 功能描述                                    | 权限 Key                                      |
+| --------------------------------------- | ------------ | ------------------------------------------- | --------------------------------------------- |
+| /login                                  | 登录页       | 邮箱登录，Apple 风格毛玻璃卡片              | 公开                                          |
+| /                                       | 仪表盘       | 数据统计、账号健康度、最近发布              | dashboard:read                                |
+| /platforms                              | 平台管理     | 多平台账号 CRUD、状态检测                   | platforms:read                                |
+| /content                                | 内容列表     | 内容列表查看、筛选、删除                    | content:read                                  |
+| /content/create                         | 创作内容     | AI 生成多平台文案变体                       | content:read                                  |
+| /publish                                | 发布管理     | 发布任务队列、创建、重试                    | publish:read                                  |
+| /review                                 | 内容审核     | 待审核内容、通过/驳回                       | review:read                                   |
+| /sql-review                             | SQL 审核     | SQL 变更申请列表、审批                      | sql_review:read                               |
+| /templates                              | 模板管理     | 按平台分类的模板列表                        | templates:read                                |
+| /settings/token-plan                    | Token 方案   | AI 模型配置管理                             | token_plan:read                               |
+| /settings/user-creation-review          | 用户注册审核 | 用户创建申请的审批                          | review:read                                   |
+| /developer/docs                         | API 文档     | 内嵌 Swagger UI                             | api_docs:read                                 |
+| /developer/database                     | 数据库控制台 | SQL 执行与历史记录                          | db:read                                       |
+| /rbac/users                             | 用户管理     | 用户列表、角色分配入口                      | users:read                                    |
+| /rbac/users/create                      | 创建用户     | 创建新用户（管理员直接创建/非管理员走审核） | users:create:write                            |
+| /rbac/users/:id/edit                    | 编辑用户     | 编辑用户基本信息和角色                      | users:update:read \|\| isSelf(id)             |
+| /rbac/users/:id/password                | 修改密码     | 修改用户密码                                | users:change_password:write \|\| isSelf(id)   |
+| /rbac/users/:id/permissions             | 自定义权限   | 用户级权限覆盖配置                          | users:custom_permissions:read \|\| isSelf(id) |
+| /rbac/roles                             | 角色管理     | 角色 CRUD、父子关系配置                     | roles:read                                    |
+| /rbac/permissions                       | 权限管理     | 按资源树配置角色权限                        | permissions:read                              |
+| /rbac/permissions/enum                  | 权限字典管理 | 超级管理员专用：权限枚举编辑                | permissions:manage:read                       |
+| /rbac/permissions/enum/create           | 新增权限字典 | 创建新的资源与权限枚举                      | permissions:manage:write                      |
+| /rbac/permissions/enum/edit/:resourceId | 编辑权限字典 | 编辑指定资源的权限枚举                      | permissions:manage:write                      |
+| /rbac/constraints                       | 约束管理     | 互斥/先决/基数约束                          | constraints:read                              |
+| /profile                                | 个人中心     | 当前用户信息查看与编辑                      | 登录即可                                      |
+| /403                                    | 无权限页     | 权限不足提示页                              | 无条件放行                                    |
 
 > **权限表达式说明**：部分路由的 `permKey` 使用权限表达式而非单一权限 key（如 `users:update:read || isSelf(id)`）。表达式支持以下运算符与内置函数：
+>
 > - 运算符：`||`（或）、`&`（与）、`!`（非）、`()`（分组）
 > - 内置函数：`isSelf(id)`（是否本人）、`isAdmin()`（是否管理员）、`isSuperAdmin()`、`isBuiltInAdmin(id)`、`isOwnAccount(account)`、`isOwnContent(content)`、`hasSameRole(target_user)` 等
 > - 路由守卫在 `hasPerm` 中将 `to.query` 与 `to.params` 合并为上下文传入 `permStore.hasPermission(keyOrExpr, ctx)`，由前端表达式解析器求值；后端 `require_permission` 通过 `is_expression()` 判断后调用 `evaluate_permission` 求值。
@@ -151,20 +153,20 @@ flowchart TD
 
 ### 4.2 页面设计概览
 
-| 页面名称     | 模块名称     | UI 元素                                                       |
-| ------------ | ------------ | ------------------------------------------------------------- |
-| 登录页       | 登录卡片     | 居中毛玻璃卡片，渐变光斑背景，Logo、邮箱/密码输入框、登录按钮 |
-| 仪表盘       | 数据概览     | 4 个统计卡片（带图标和趋势百分比），渐入动画                   |
-| 仪表盘       | 账号健康度   | 各平台在线比例进度条 + 平台图标                                |
-| 仪表盘       | 最近发布     | 列表项 + 平台图标 + 状态标签 + 发布时间                        |
-| 账号管理     | 账号卡片     | 卡片网格，平台图标 + 昵称 + 状态标签 + 操作按钮（刷新/删除）  |
-| 账号管理     | 添加账号弹窗 | 电台选择 + 昵称输入 + Cookie 粘贴（带安全提示）               |
-| 内容工坊     | AI 生成      | 左侧主题/关键词输入面板 + 平台多选 + 右侧多 Tab 预览面板       |
-| 内容管理     | 内容列表     | 数据表格，平台筛选 + 删除操作                                  |
-| 发布管理     | 任务列表     | Tab 维度（全部/待发布/已发布/失败）+ 创建弹窗 + 重试按钮       |
-| 模板中心     | 模板列表     | 卡片网格，按平台分类，平台标签                                  |
-| 模型配置     | 配置管理     | 提供方 Radio 选择 + API 配置表单 + 用量统计 + 启用/禁用开关    |
-| API 文档     | Swagger UI   | iframe 内嵌后端 Swagger 文档页面                               |
+| 页面名称 | 模块名称     | UI 元素                                                       |
+| -------- | ------------ | ------------------------------------------------------------- |
+| 登录页   | 登录卡片     | 居中毛玻璃卡片，渐变光斑背景，Logo、邮箱/密码输入框、登录按钮 |
+| 仪表盘   | 数据概览     | 4 个统计卡片（带图标和趋势百分比），渐入动画                  |
+| 仪表盘   | 账号健康度   | 各平台在线比例进度条 + 平台图标                               |
+| 仪表盘   | 最近发布     | 列表项 + 平台图标 + 状态标签 + 发布时间                       |
+| 账号管理 | 账号卡片     | 卡片网格，平台图标 + 昵称 + 状态标签 + 操作按钮（刷新/删除）  |
+| 账号管理 | 添加账号弹窗 | 电台选择 + 昵称输入 + Cookie 粘贴（带安全提示）               |
+| 内容工坊 | AI 生成      | 左侧主题/关键词输入面板 + 平台多选 + 右侧多 Tab 预览面板      |
+| 内容管理 | 内容列表     | 数据表格，平台筛选 + 删除操作                                 |
+| 发布管理 | 任务列表     | Tab 维度（全部/待发布/已发布/失败）+ 创建弹窗 + 重试按钮      |
+| 模板中心 | 模板列表     | 卡片网格，按平台分类，平台标签                                |
+| 模型配置 | 配置管理     | 提供方 Radio 选择 + API 配置表单 + 用量统计 + 启用/禁用开关   |
+| API 文档 | Swagger UI   | iframe 内嵌后端 Swagger 文档页面                              |
 
 ### 4.3 响应式策略
 

@@ -56,11 +56,11 @@ func DeleteInspectionMaterial(id string) error {
 func SeedInspectionMaterialsBulk() error {
 	o := GetOrm()
 	specs := []struct {
-		category      string
-		title         string
-		standard      string
-		scoreType     string
-		maxScore      int
+		category  string
+		title     string
+		standard  string
+		scoreType string
+		maxScore  int
 	}{
 		// 形象类
 		{category: "形象", title: "门头招牌完整度", standard: "门店招牌无破损缺字、夜间亮灯正常、无明显污渍", scoreType: "score", maxScore: 5},

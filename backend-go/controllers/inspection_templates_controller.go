@@ -31,11 +31,11 @@ type inspectionTemplateItemRequest struct {
 }
 
 type inspectionTemplateCreateRequest struct {
-	Name        string                            `json:"name"`
-	Description string                            `json:"description"`
-	IsActive    bool                              `json:"is_active"`
-	ScoringMode string                            `json:"scoring_mode"`
-	Items       []inspectionTemplateItemRequest   `json:"items"`
+	Name        string                          `json:"name"`
+	Description string                          `json:"description"`
+	IsActive    bool                            `json:"is_active"`
+	ScoringMode string                          `json:"scoring_mode"`
+	Items       []inspectionTemplateItemRequest `json:"items"`
 }
 
 type inspectionTemplateUpdateRequest struct {
@@ -276,15 +276,15 @@ func normalizeScoringMode(mode string) string {
 }
 
 type inspectionTemplateView struct {
-	ID          string                         `json:"id"`
-	Name        string                         `json:"name"`
-	Description string                         `json:"description"`
-	IsActive    bool                           `json:"is_active"`
-	ScoringMode string                         `json:"scoring_mode"`
-	ItemCount   int                            `json:"item_count"`
-	Items       []inspectionTemplateItemView   `json:"items,omitempty"`
-	CreatedAt   string                         `json:"created_at"`
-	UpdatedAt   string                         `json:"updated_at"`
+	ID          string                       `json:"id"`
+	Name        string                       `json:"name"`
+	Description string                       `json:"description"`
+	IsActive    bool                         `json:"is_active"`
+	ScoringMode string                       `json:"scoring_mode"`
+	ItemCount   int                          `json:"item_count"`
+	Items       []inspectionTemplateItemView `json:"items,omitempty"`
+	CreatedAt   string                       `json:"created_at"`
+	UpdatedAt   string                       `json:"updated_at"`
 }
 
 type inspectionTemplateItemView struct {

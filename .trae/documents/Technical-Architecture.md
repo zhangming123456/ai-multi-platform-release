@@ -58,55 +58,55 @@ flowchart TB
 
 ## 2. 技术栈总览
 
-| 层级 | 技术选型 |
-|------|----------|
-| **前端框架** | Vue 3.5+ + TypeScript 6.0 + Vite 8.1.0 |
-| **UI 组件库** | Arco Design Vue 2.58 + Tailwind CSS v4（Vite 插件模式）+ Sass |
-| **状态管理** | Pinia 4.0 |
-| **HTTP 客户端** | Axios 1.18（JWT 拦截器 + 401 自动跳转） |
-| **前端工具库** | lodash-es、dayjs（时区插件）、lucide-vue-next（图标） |
-| **后端框架** | Python 3.11+ / FastAPI |
-| **ORM** | SQLAlchemy 2.0（异步模式）+ Alembic |
-| **数据库** | SQLite + aiosqlite（开发）→ PostgreSQL（生产） |
-| **数据库 ID 规范** | 所有表主键使用 UUID `VARCHAR(36)`，超级管理员用户 ID 固定为 `"1"` |
-| **任务队列** | Celery + Redis |
-| **缓存** | Redis |
-| **浏览器自动化** | Playwright |
-| **AI 接入** | OpenAI 兼容 API（DeepSeek / OpenAI / Moonshot / 智谱 AI / 自定义） |
-| **权限模型** | RBAC3（角色继承 + 约束 + 权限表达式 DSL + 用户级权限覆盖） |
-| **权限注解** | `PermAPIRoute` + `@RequiresPermissions()` 装饰器模式 |
-| **容器化** | Docker + Docker Compose |
+| 层级               | 技术选型                                                           |
+| ------------------ | ------------------------------------------------------------------ |
+| **前端框架**       | Vue 3.5+ + TypeScript 6.0 + Vite 8.1.0                             |
+| **UI 组件库**      | Arco Design Vue 2.58 + Tailwind CSS v4（Vite 插件模式）+ Sass      |
+| **状态管理**       | Pinia 4.0                                                          |
+| **HTTP 客户端**    | Axios 1.18（JWT 拦截器 + 401 自动跳转）                            |
+| **前端工具库**     | lodash-es、dayjs（时区插件）、lucide-vue-next（图标）              |
+| **后端框架**       | Python 3.11+ / FastAPI                                             |
+| **ORM**            | SQLAlchemy 2.0（异步模式）+ Alembic                                |
+| **数据库**         | SQLite + aiosqlite（开发）→ PostgreSQL（生产）                     |
+| **数据库 ID 规范** | 所有表主键使用 UUID `VARCHAR(36)`，超级管理员用户 ID 固定为 `"1"`  |
+| **任务队列**       | Celery + Redis                                                     |
+| **缓存**           | Redis                                                              |
+| **浏览器自动化**   | Playwright                                                         |
+| **AI 接入**        | OpenAI 兼容 API（DeepSeek / OpenAI / Moonshot / 智谱 AI / 自定义） |
+| **权限模型**       | RBAC3（角色继承 + 约束 + 权限表达式 DSL + 用户级权限覆盖）         |
+| **权限注解**       | `PermAPIRoute` + `@RequiresPermissions()` 装饰器模式               |
+| **容器化**         | Docker + Docker Compose                                            |
 
 ## 3. 前端路由定义
 
-| 路由 | 名称 | 组件 | 鉴权 | 说明 |
-|------|------|------|------|------|
-| /login | Login | Login.vue | 公开 | 管理员登录页 |
-| / | Dashboard | Dashboard.vue | dashboard:read | 仪表盘（数据概览） |
-| /403 | Forbidden | Forbidden.vue | 跳过检查 | 无权限提示页 |
-| /profile | Profile | Profile.vue | 跳过检查 | 个人中心 |
-| /platforms | Platforms | Platforms.vue | platforms:read | 平台管理 |
-| /content | ContentList | ContentList.vue | content:read | 内容列表 |
-| /content/create | ContentCreate | ContentCreate.vue | content:read | AI 内容生成 |
-| /publish | Publish | Publish.vue | publish:read | 发布管理中心 |
-| /review | Review | Review.vue | review:read | 内容审核 |
-| /sql-review | SqlReview | SqlReview.vue | sql_review:read | SQL 变更审核 |
-| /templates | Templates | Templates.vue | templates:read | 模板中心 |
-| /settings/token-plan | TokenPlan | TokenPlan.vue | token_plan:read | AI 模型配置 |
-| /developer/docs | ApiDocs | ApiDocs.vue | api_docs:read | Swagger API 文档 |
-| /developer/database | DatabaseConsole | DatabaseConsole.vue | db:read | 数据库控制台 |
-| /settings/user-creation-review | UserCreationReview | UserCreationReview.vue | review:read | 用户注册审核 |
-| /rbac/users | RBACUserManage | RBACUserManage.vue | users:read | RBAC3 用户管理 |
-| /rbac/users/create | RBACUserCreate | RBACUserCreate.vue | users:create:write | 创建用户 |
-| /rbac/users/:id/edit | RBACUserEdit | RBACUserEdit.vue | users:update:read \|\| isSelf(id) | 编辑用户 |
-| /rbac/users/:id/password | RBACUserPassword | RBACUserPassword.vue | users:change_password:write \|\| isSelf(id) | 修改密码 |
-| /rbac/users/:id/permissions | RBACUserPermissionCustomize | RBACUserPermissionCustomize.vue | users:custom_permissions:read \|\| isSelf(id) | 自定义权限 |
-| /rbac/roles | RBACRoleManage | RBACRoleManage.vue | roles:read | 角色管理 |
-| /rbac/permissions | RBACPermissionManage | RBACPermissionManage.vue | permissions:read | 权限管理 |
-| /rbac/permissions/enum | RBACPermissionEnumManage | RBACPermissionEnumManage.vue | permissions:manage:read | 权限字典管理 |
-| /rbac/permissions/enum/create | RBACPermissionEnumCreate | RBACPermissionEnumEdit.vue | permissions:manage:write | 新增权限字典 |
-| /rbac/permissions/enum/edit/:resourceId | RBACPermissionEnumEdit | RBACPermissionEnumEdit.vue | permissions:manage:write | 编辑权限字典 |
-| /rbac/constraints | RBACConstraintManage | RBACConstraintManage.vue | constraints:read | 约束管理 |
+| 路由                                    | 名称                        | 组件                            | 鉴权                                          | 说明               |
+| --------------------------------------- | --------------------------- | ------------------------------- | --------------------------------------------- | ------------------ |
+| /login                                  | Login                       | Login.vue                       | 公开                                          | 管理员登录页       |
+| /                                       | Dashboard                   | Dashboard.vue                   | dashboard:read                                | 仪表盘（数据概览） |
+| /403                                    | Forbidden                   | Forbidden.vue                   | 跳过检查                                      | 无权限提示页       |
+| /profile                                | Profile                     | Profile.vue                     | 跳过检查                                      | 个人中心           |
+| /platforms                              | Platforms                   | Platforms.vue                   | platforms:read                                | 平台管理           |
+| /content                                | ContentList                 | ContentList.vue                 | content:read                                  | 内容列表           |
+| /content/create                         | ContentCreate               | ContentCreate.vue               | content:read                                  | AI 内容生成        |
+| /publish                                | Publish                     | Publish.vue                     | publish:read                                  | 发布管理中心       |
+| /review                                 | Review                      | Review.vue                      | review:read                                   | 内容审核           |
+| /sql-review                             | SqlReview                   | SqlReview.vue                   | sql_review:read                               | SQL 变更审核       |
+| /templates                              | Templates                   | Templates.vue                   | templates:read                                | 模板中心           |
+| /settings/token-plan                    | TokenPlan                   | TokenPlan.vue                   | token_plan:read                               | AI 模型配置        |
+| /developer/docs                         | ApiDocs                     | ApiDocs.vue                     | api_docs:read                                 | Swagger API 文档   |
+| /developer/database                     | DatabaseConsole             | DatabaseConsole.vue             | db:read                                       | 数据库控制台       |
+| /settings/user-creation-review          | UserCreationReview          | UserCreationReview.vue          | review:read                                   | 用户注册审核       |
+| /rbac/users                             | RBACUserManage              | RBACUserManage.vue              | users:read                                    | RBAC3 用户管理     |
+| /rbac/users/create                      | RBACUserCreate              | RBACUserCreate.vue              | users:create:write                            | 创建用户           |
+| /rbac/users/:id/edit                    | RBACUserEdit                | RBACUserEdit.vue                | users:update:read \|\| isSelf(id)             | 编辑用户           |
+| /rbac/users/:id/password                | RBACUserPassword            | RBACUserPassword.vue            | users:change_password:write \|\| isSelf(id)   | 修改密码           |
+| /rbac/users/:id/permissions             | RBACUserPermissionCustomize | RBACUserPermissionCustomize.vue | users:custom_permissions:read \|\| isSelf(id) | 自定义权限         |
+| /rbac/roles                             | RBACRoleManage              | RBACRoleManage.vue              | roles:read                                    | 角色管理           |
+| /rbac/permissions                       | RBACPermissionManage        | RBACPermissionManage.vue        | permissions:read                              | 权限管理           |
+| /rbac/permissions/enum                  | RBACPermissionEnumManage    | RBACPermissionEnumManage.vue    | permissions:manage:read                       | 权限字典管理       |
+| /rbac/permissions/enum/create           | RBACPermissionEnumCreate    | RBACPermissionEnumEdit.vue      | permissions:manage:write                      | 新增权限字典       |
+| /rbac/permissions/enum/edit/:resourceId | RBACPermissionEnumEdit      | RBACPermissionEnumEdit.vue      | permissions:manage:write                      | 编辑权限字典       |
+| /rbac/constraints                       | RBACConstraintManage        | RBACConstraintManage.vue        | constraints:read                              | 约束管理           |
 
 ### 3.1 路由守卫
 
@@ -120,34 +120,34 @@ flowchart TB
 
 ### 4.1 路由模块总览
 
-| 路由前缀 | 模块文件 | 说明 |
-|----------|----------|------|
-| /api/auth | routers/auth.py | 认证（登录、注册、用户信息） |
-| /api/accounts | routers/accounts.py | 账号管理 CRUD + 状态检查 |
-| /api/contents | routers/contents.py | 内容管理 CRUD + AI 生成 |
-| /api/dashboard | routers/dashboard.py | 仪表盘聚合统计 |
-| /api/model-configs | routers/model_configs.py | AI 模型配置管理 |
-| /api/models | routers/models.py | 可用模型列表查询 |
-| /api/publish | routers/publish.py | 发布任务管理 |
-| /api/templates | routers/templates.py | 模板管理 |
-| /api/notifications | routers/notifications.py | 通知消息管理 |
-| /api/reviews | routers/reviews.py | 内容审核管理 |
-| /api/db-changes | routers/db_changes.py | 数据库变更请求管理 |
-| /api/user-creation-reviews | routers/user_creation_reviews.py | 用户创建审核 |
-| /api/db | routers/db.py | SQL 执行与历史 |
-| **/api/v2** | **RBAC3 中台** | **权限中台 v2 API** |
-| /api/v2 | routers/rbac_users.py | RBAC3 用户管理 |
-| /api/v2 | routers/rbac_roles.py | RBAC3 角色管理 |
-| /api/v2 | routers/rbac_permissions.py | RBAC3 资源与权限管理 |
-| /api/v2 | routers/rbac_constraints.py | RBAC3 约束管理 |
+| 路由前缀                   | 模块文件                         | 说明                         |
+| -------------------------- | -------------------------------- | ---------------------------- |
+| /api/auth                  | routers/auth.py                  | 认证（登录、注册、用户信息） |
+| /api/accounts              | routers/accounts.py              | 账号管理 CRUD + 状态检查     |
+| /api/contents              | routers/contents.py              | 内容管理 CRUD + AI 生成      |
+| /api/dashboard             | routers/dashboard.py             | 仪表盘聚合统计               |
+| /api/model-configs         | routers/model_configs.py         | AI 模型配置管理              |
+| /api/models                | routers/models.py                | 可用模型列表查询             |
+| /api/publish               | routers/publish.py               | 发布任务管理                 |
+| /api/templates             | routers/templates.py             | 模板管理                     |
+| /api/notifications         | routers/notifications.py         | 通知消息管理                 |
+| /api/reviews               | routers/reviews.py               | 内容审核管理                 |
+| /api/db-changes            | routers/db_changes.py            | 数据库变更请求管理           |
+| /api/user-creation-reviews | routers/user_creation_reviews.py | 用户创建审核                 |
+| /api/db                    | routers/db.py                    | SQL 执行与历史               |
+| **/api/v2**                | **RBAC3 中台**                   | **权限中台 v2 API**          |
+| /api/v2                    | routers/rbac_users.py            | RBAC3 用户管理               |
+| /api/v2                    | routers/rbac_roles.py            | RBAC3 角色管理               |
+| /api/v2                    | routers/rbac_permissions.py      | RBAC3 资源与权限管理         |
+| /api/v2                    | routers/rbac_constraints.py      | RBAC3 约束管理               |
 
 ### 4.2 认证相关
 
-| 方法 | 路径 | 说明 | 鉴权 |
-|------|------|------|------|
-| POST | /api/auth/login | 用户登录 | 否 |
-| POST | /api/auth/register | 用户注册 | 否 |
-| GET | /api/auth/me | 获取当前用户（含 roles、permissions 枚举） | 是 |
+| 方法 | 路径               | 说明                                       | 鉴权 |
+| ---- | ------------------ | ------------------------------------------ | ---- |
+| POST | /api/auth/login    | 用户登录                                   | 否   |
+| POST | /api/auth/register | 用户注册                                   | 否   |
+| GET  | /api/auth/me       | 获取当前用户（含 roles、permissions 枚举） | 是   |
 
 ```typescript
 interface LoginRequest {
@@ -174,78 +174,78 @@ interface UserInfo {
 
 ### 4.3 RBAC3 用户管理（/api/v2）
 
-| 方法 | 路径 | 说明 | 鉴权 |
-|------|------|------|------|
-| GET | /api/v2/users | 用户列表（含角色分配） | 是 |
-| POST | /api/v2/users | 创建用户（非管理员创建需审核） | 是 |
-| GET | /api/v2/users/{id} | 用户详情 | 是 |
-| PUT | /api/v2/users/{id} | 更新用户 | 是 |
-| PUT | /api/v2/users/{id}/password | 修改密码 | 是 |
-| PUT | /api/v2/users/{id}/roles | 分配/替换角色 | 是 |
-| GET | /api/v2/users/{id}/permissions | 用户有效权限 | 是 |
-| GET | /api/v2/users/{id}/permission-overrides | 用户权限覆盖列表 | 是 |
-| PUT | /api/v2/users/{id}/permission-overrides | 更新权限覆盖 | 是 |
-| DELETE | /api/v2/users/{id} | 删除用户 | 是 |
-| GET | /api/v2/users/{id}/password-status | 检测是否默认密码 | 是 |
-| GET | /api/v2/me/permissions | 当前用户有效权限（{key: name}） | 是 |
+| 方法   | 路径                                    | 说明                            | 鉴权 |
+| ------ | --------------------------------------- | ------------------------------- | ---- |
+| GET    | /api/v2/users                           | 用户列表（含角色分配）          | 是   |
+| POST   | /api/v2/users                           | 创建用户（非管理员创建需审核）  | 是   |
+| GET    | /api/v2/users/{id}                      | 用户详情                        | 是   |
+| PUT    | /api/v2/users/{id}                      | 更新用户                        | 是   |
+| PUT    | /api/v2/users/{id}/password             | 修改密码                        | 是   |
+| PUT    | /api/v2/users/{id}/roles                | 分配/替换角色                   | 是   |
+| GET    | /api/v2/users/{id}/permissions          | 用户有效权限                    | 是   |
+| GET    | /api/v2/users/{id}/permission-overrides | 用户权限覆盖列表                | 是   |
+| PUT    | /api/v2/users/{id}/permission-overrides | 更新权限覆盖                    | 是   |
+| DELETE | /api/v2/users/{id}                      | 删除用户                        | 是   |
+| GET    | /api/v2/users/{id}/password-status      | 检测是否默认密码                | 是   |
+| GET    | /api/v2/me/permissions                  | 当前用户有效权限（{key: name}） | 是   |
 
 ### 4.4 RBAC3 角色管理（/api/v2）
 
-| 方法 | 路径 | 说明 | 鉴权 |
-|------|------|------|------|
-| GET | /api/v2/roles | 角色列表 | 是 |
-| POST | /api/v2/roles | 创建角色 | 是 |
-| GET | /api/v2/roles/{id} | 角色详情 | 是 |
-| PUT | /api/v2/roles/{id} | 更新角色 | 是 |
-| DELETE | /api/v2/roles/{id} | 删除角色（内置不可删） | 是 |
-| POST | /api/v2/roles/{id}/parents | 添加父角色（含循环检测） | 是 |
-| DELETE | /api/v2/roles/{id}/parents/{parent_id} | 移除父角色 | 是 |
-| GET | /api/v2/roles/{id}/permissions | 角色有效权限（{key: name}） | 是 |
-| GET | /api/v2/roles/{id}/permissions/direct | 角色直接权限 | 是 |
-| GET | /api/v2/roles/{id}/permissions/detail | 继承 + 直接权限（含 grant_type） | 是 |
-| PUT | /api/v2/roles/{id}/permissions | 更新直接权限（超管不可改） | 是 |
-| GET | /api/v2/roles/{id}/permissions/preview/{parent_role_id} | 预览继承权限 | 是 |
-| GET | /api/v2/roles/{id}/inheritance | 角色继承关系图（祖先链 + 后代树） | 是 |
+| 方法   | 路径                                                    | 说明                              | 鉴权 |
+| ------ | ------------------------------------------------------- | --------------------------------- | ---- |
+| GET    | /api/v2/roles                                           | 角色列表                          | 是   |
+| POST   | /api/v2/roles                                           | 创建角色                          | 是   |
+| GET    | /api/v2/roles/{id}                                      | 角色详情                          | 是   |
+| PUT    | /api/v2/roles/{id}                                      | 更新角色                          | 是   |
+| DELETE | /api/v2/roles/{id}                                      | 删除角色（内置不可删）            | 是   |
+| POST   | /api/v2/roles/{id}/parents                              | 添加父角色（含循环检测）          | 是   |
+| DELETE | /api/v2/roles/{id}/parents/{parent_id}                  | 移除父角色                        | 是   |
+| GET    | /api/v2/roles/{id}/permissions                          | 角色有效权限（{key: name}）       | 是   |
+| GET    | /api/v2/roles/{id}/permissions/direct                   | 角色直接权限                      | 是   |
+| GET    | /api/v2/roles/{id}/permissions/detail                   | 继承 + 直接权限（含 grant_type）  | 是   |
+| PUT    | /api/v2/roles/{id}/permissions                          | 更新直接权限（超管不可改）        | 是   |
+| GET    | /api/v2/roles/{id}/permissions/preview/{parent_role_id} | 预览继承权限                      | 是   |
+| GET    | /api/v2/roles/{id}/inheritance                          | 角色继承关系图（祖先链 + 后代树） | 是   |
 
 ### 4.5 RBAC3 资源与权限管理（/api/v2）
 
-| 方法 | 路径 | 说明 | 鉴权 |
-|------|------|------|------|
-| GET | /api/v2/resources | 资源树 | 是 |
-| POST | /api/v2/resources | 新增资源 | 是 |
-| PUT | /api/v2/resources/{id} | 更新资源 | 是 |
-| DELETE | /api/v2/resources/{id} | 删除资源 | 是 |
-| GET | /api/v2/permissions | 权限列表 | 是 |
-| GET | /api/v2/permission-enums | 权限枚举（key + name + description） | 是 |
-| GET | /api/v2/permission-pages | 页面权限枚举 | 是 |
-| POST | /api/v2/permissions | 新增权限 | 是 |
-| PUT | /api/v2/permissions/{id} | 更新权限 | 是 |
-| DELETE | /api/v2/permissions/{id} | 删除权限 | 是 |
+| 方法   | 路径                     | 说明                                 | 鉴权 |
+| ------ | ------------------------ | ------------------------------------ | ---- |
+| GET    | /api/v2/resources        | 资源树                               | 是   |
+| POST   | /api/v2/resources        | 新增资源                             | 是   |
+| PUT    | /api/v2/resources/{id}   | 更新资源                             | 是   |
+| DELETE | /api/v2/resources/{id}   | 删除资源                             | 是   |
+| GET    | /api/v2/permissions      | 权限列表                             | 是   |
+| GET    | /api/v2/permission-enums | 权限枚举（key + name + description） | 是   |
+| GET    | /api/v2/permission-pages | 页面权限枚举                         | 是   |
+| POST   | /api/v2/permissions      | 新增权限                             | 是   |
+| PUT    | /api/v2/permissions/{id} | 更新权限                             | 是   |
+| DELETE | /api/v2/permissions/{id} | 删除权限                             | 是   |
 
 ### 4.6 RBAC3 约束管理（/api/v2）
 
-| 方法 | 路径 | 说明 | 鉴权 |
-|------|------|------|------|
-| GET | /api/v2/constraints | 约束列表 | 是 |
-| POST | /api/v2/constraints | 创建约束 | 是 |
-| PUT | /api/v2/constraints/{id} | 更新约束 | 是 |
-| DELETE | /api/v2/constraints/{id} | 删除约束 | 是 |
+| 方法   | 路径                     | 说明     | 鉴权 |
+| ------ | ------------------------ | -------- | ---- |
+| GET    | /api/v2/constraints      | 约束列表 | 是   |
+| POST   | /api/v2/constraints      | 创建约束 | 是   |
+| PUT    | /api/v2/constraints/{id} | 更新约束 | 是   |
+| DELETE | /api/v2/constraints/{id} | 删除约束 | 是   |
 
 ### 4.7 其他业务接口
 
-| 模块 | 方法 | 路径 | 说明 |
-|------|------|------|------|
-| 仪表盘 | GET | /api/dashboard/stats | 获取仪表盘聚合统计 |
-| 账号管理 | GET/POST | /api/accounts/ | 账号列表/创建 |
-| 账号管理 | DELETE | /api/accounts/{id} | 删除账号 |
-| 内容管理 | GET | /api/contents/ | 内容列表 |
-| 内容管理 | POST | /api/contents/ai-generate | AI 生成内容 |
-| 发布管理 | GET/POST | /api/publish/tasks | 发布任务列表/创建 |
-| 发布管理 | POST | /api/publish/tasks/{id}/retry | 重试失败任务 |
-| 模板管理 | GET | /api/templates/ | 模板列表 |
-| 模型配置 | GET/POST | /api/model-configs | 配置列表/创建 |
-| 模型配置 | PUT/DELETE | /api/model-configs/{id} | 更新/删除配置 |
-| 可用模型 | GET | /api/models | 可用模型列表 |
+| 模块     | 方法       | 路径                          | 说明               |
+| -------- | ---------- | ----------------------------- | ------------------ |
+| 仪表盘   | GET        | /api/dashboard/stats          | 获取仪表盘聚合统计 |
+| 账号管理 | GET/POST   | /api/accounts/                | 账号列表/创建      |
+| 账号管理 | DELETE     | /api/accounts/{id}            | 删除账号           |
+| 内容管理 | GET        | /api/contents/                | 内容列表           |
+| 内容管理 | POST       | /api/contents/ai-generate     | AI 生成内容        |
+| 发布管理 | GET/POST   | /api/publish/tasks            | 发布任务列表/创建  |
+| 发布管理 | POST       | /api/publish/tasks/{id}/retry | 重试失败任务       |
+| 模板管理 | GET        | /api/templates/               | 模板列表           |
+| 模型配置 | GET/POST   | /api/model-configs            | 配置列表/创建      |
+| 模型配置 | PUT/DELETE | /api/model-configs/{id}       | 更新/删除配置      |
+| 可用模型 | GET        | /api/models                   | 可用模型列表       |
 
 ## 5. 后端服务架构
 
@@ -818,7 +818,7 @@ frontend/src/
 
 ```typescript
 export const usePermissionStore = defineStore('permission', () => {
-  const permissions = ref<Record<string, string>>({})  // { key: name }
+  const permissions = ref<Record<string, string>>({}) // { key: name }
   const lastPermissionsUserId = ref<string | null>(null)
 
   function hasPermission(keyOrExpr: string, ctx?: PermContext): boolean {
@@ -844,6 +844,7 @@ export const usePermissionStore = defineStore('permission', () => {
 ```
 
 权限表达式引擎（`utils/permExpression.ts`）提供完整的词法分析 + 递归下降解析器，支持：
+
 - 运算符：`||`（或）、`&`（且）、`!`（非）、`()`（分组）
 - 内置函数：`isSelf`、`isAdmin`、`isSuperAdmin`、`isBuiltInAdmin`、`isOwnAccount`、`isOwnContent`、`hasSameRole`
 - `PermContext` 上下文：`currentUser`、`user_id`、`account`、`content`、`target_user` 等
@@ -862,20 +863,20 @@ export const usePermissionStore = defineStore('permission', () => {
 services:
   frontend:
     build: docker/frontend/Dockerfile
-    ports: ["5500:5500"]
-    volumes: ["./frontend:/app"]  # 热重载开发模式
+    ports: ['5500:5500']
+    volumes: ['./frontend:/app'] # 热重载开发模式
     depends_on: [backend]
 
   backend:
     build: docker/backend/Dockerfile
-    ports: ["8000:8000"]
-    volumes: ["./backend:/app"]   # 热重载开发模式
+    ports: ['8000:8000']
+    volumes: ['./backend:/app'] # 热重载开发模式
     environment: [DATABASE_URL, REDIS_URL, ...]
     depends_on: [redis]
 
   redis:
     image: redis:7-alpine
-    ports: ["6379:6379"]
+    ports: ['6379:6379']
 
   celery-worker:
     build: docker/backend/Dockerfile

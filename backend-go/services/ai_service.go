@@ -318,8 +318,8 @@ func callChatCompletions(apiKey, baseURL, model string, messages []chatMessage, 
 
 // toolDefinition 描述一个 function calling 工具（OpenAI 兼容格式）。
 type toolDefinition struct {
-	Type     string             `json:"type"` // 固定 "function"
-	Function toolFunctionSpec   `json:"function"`
+	Type     string           `json:"type"` // 固定 "function"
+	Function toolFunctionSpec `json:"function"`
 }
 
 // toolFunctionSpec 工具的函数签名。

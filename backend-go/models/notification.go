@@ -11,13 +11,13 @@ const (
 	NotificationTypeRoleUpdated            = "role_updated"
 	NotificationTypeRolePermissionsUpdated = "role_permissions_updated"
 
-	NotificationTypeTaskCreated         = "inspection_task_created"
-	NotificationTypeTaskSubmitted       = "inspection_task_submitted"
-	NotificationTypeTaskRecheckPassed   = "inspection_task_recheck_passed"
-	NotificationTypeTaskRecheckFailed   = "inspection_task_recheck_failed"
-	NotificationTypeTaskManualReview    = "inspection_task_manual_review"
-	NotificationTypeTaskConfirmed       = "inspection_task_confirmed"
-	NotificationTypeTaskRejected        = "inspection_task_rejected"
+	NotificationTypeTaskCreated       = "inspection_task_created"
+	NotificationTypeTaskSubmitted     = "inspection_task_submitted"
+	NotificationTypeTaskRecheckPassed = "inspection_task_recheck_passed"
+	NotificationTypeTaskRecheckFailed = "inspection_task_recheck_failed"
+	NotificationTypeTaskManualReview  = "inspection_task_manual_review"
+	NotificationTypeTaskConfirmed     = "inspection_task_confirmed"
+	NotificationTypeTaskRejected      = "inspection_task_rejected"
 )
 
 const (

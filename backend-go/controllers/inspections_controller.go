@@ -26,31 +26,31 @@ type inspectionScoreRequest struct {
 }
 
 type inspectionCreateRequest struct {
-	StoreID     string                      `json:"store_id"`
-	TemplateID  string                      `json:"template_id"`
-	Title       string                      `json:"title"`
-	Status      string                      `json:"status"`
-	CheckedAt   string                      `json:"checked_at"`
-	Issues      string                      `json:"issues"`
-	Suggestion  string                      `json:"suggestion"`
+	StoreID     string                       `json:"store_id"`
+	TemplateID  string                       `json:"template_id"`
+	Title       string                       `json:"title"`
+	Status      string                       `json:"status"`
+	CheckedAt   string                       `json:"checked_at"`
+	Issues      string                       `json:"issues"`
+	Suggestion  string                       `json:"suggestion"`
 	AISummary   services.InspectionAISummary `json:"ai_summary"`
-	AIGenerated bool                        `json:"ai_generated"`
-	Photos      []string                    `json:"photos"`
-	Scores      []inspectionScoreRequest    `json:"scores"`
+	AIGenerated bool                         `json:"ai_generated"`
+	Photos      []string                     `json:"photos"`
+	Scores      []inspectionScoreRequest     `json:"scores"`
 }
 
 type inspectionUpdateRequest struct {
-	StoreID     *string                      `json:"store_id"`
-	TemplateID  *string                      `json:"template_id"`
-	Title       *string                      `json:"title"`
-	Status      *string                      `json:"status"`
-	CheckedAt   *string                      `json:"checked_at"`
-	Issues      *string                      `json:"issues"`
-	Suggestion  *string                      `json:"suggestion"`
+	StoreID     *string                       `json:"store_id"`
+	TemplateID  *string                       `json:"template_id"`
+	Title       *string                       `json:"title"`
+	Status      *string                       `json:"status"`
+	CheckedAt   *string                       `json:"checked_at"`
+	Issues      *string                       `json:"issues"`
+	Suggestion  *string                       `json:"suggestion"`
 	AISummary   *services.InspectionAISummary `json:"ai_summary"`
-	AIGenerated *bool                        `json:"ai_generated"`
-	Photos      *[]string                    `json:"photos"`
-	Scores      *[]inspectionScoreRequest    `json:"scores"`
+	AIGenerated *bool                         `json:"ai_generated"`
+	Photos      *[]string                     `json:"photos"`
+	Scores      *[]inspectionScoreRequest     `json:"scores"`
 }
 
 const inspectionPassRatio = 0.8
@@ -306,14 +306,14 @@ func (c *InspectionsController) AIAnalyze() {
 		return
 	}
 	var req struct {
-		StoreID        string                  `json:"store_id"`
-		TemplateID     string                  `json:"template_id"`
-		PlanID         string                  `json:"plan_id"`
-		ModelID        string                  `json:"model_id"`
-		Photos         []services.UploadedFile `json:"photos"`
-		Keywords       string                  `json:"keywords"`
-		Skills         []services.InspectionSkill      `json:"skills"`
-		ResponseSchema map[string]interface{} `json:"response_schema"`
+		StoreID        string                     `json:"store_id"`
+		TemplateID     string                     `json:"template_id"`
+		PlanID         string                     `json:"plan_id"`
+		ModelID        string                     `json:"model_id"`
+		Photos         []services.UploadedFile    `json:"photos"`
+		Keywords       string                     `json:"keywords"`
+		Skills         []services.InspectionSkill `json:"skills"`
+		ResponseSchema map[string]interface{}     `json:"response_schema"`
 	}
 	if err := c.ParseBody(&req); err != nil {
 		c.WriteError(http.StatusBadRequest, "请求体格式错误")
@@ -368,15 +368,15 @@ func (c *InspectionsController) AIAnalyze() {
 			comment = result.Comments[it.ID]
 		}
 		scores = append(scores, map[string]interface{}{
-			"item_id":      it.ID,
-			"item_name":    it.Name,
-			"category":     "",
-			"standard":     it.Standard,
-			"score_type":   it.ScoreType,
-			"max_score":    it.MaxScore,
+			"item_id":       it.ID,
+			"item_name":     it.Name,
+			"category":      "",
+			"standard":      it.Standard,
+			"score_type":    it.ScoreType,
+			"max_score":     it.MaxScore,
 			"score_options": it.ScoreOptions,
-			"score":        score,
-			"comment":      comment,
+			"score":         score,
+			"comment":       comment,
 		})
 	}
 	totalScore := 0.0
@@ -403,14 +403,14 @@ func (c *InspectionsController) AIAnalyzeStream() {
 		return
 	}
 	var req struct {
-		StoreID        string                  `json:"store_id"`
-		TemplateID     string                  `json:"template_id"`
-		PlanID         string                  `json:"plan_id"`
-		ModelID        string                  `json:"model_id"`
-		Photos         []services.UploadedFile `json:"photos"`
-		Keywords       string                  `json:"keywords"`
-		Skills         []services.InspectionSkill      `json:"skills"`
-		ResponseSchema map[string]interface{} `json:"response_schema"`
+		StoreID        string                     `json:"store_id"`
+		TemplateID     string                     `json:"template_id"`
+		PlanID         string                     `json:"plan_id"`
+		ModelID        string                     `json:"model_id"`
+		Photos         []services.UploadedFile    `json:"photos"`
+		Keywords       string                     `json:"keywords"`
+		Skills         []services.InspectionSkill `json:"skills"`
+		ResponseSchema map[string]interface{}     `json:"response_schema"`
 	}
 	if err := c.ParseBody(&req); err != nil {
 		c.WriteError(http.StatusBadRequest, "请求体格式错误")
@@ -805,19 +805,19 @@ func loadScoreItemSources(templateID string) ([]scoreItemSource, error) {
 		sources := make([]scoreItemSource, 0, len(items))
 		for _, it := range items {
 			sources = append(sources, scoreItemSource{
-			ID:            it.ID,
-			Name:          it.Title,
-			Category:      it.Category,
-			Standard:      it.Standard,
-			StandardImage: it.StandardImage,
-			ScoreType:     it.ScoreType,
-			MaxScore:      it.MaxScore,
-			ScoreOptions:  services.EffectiveScoreOptions(&it),
-			RequireRemark: it.RequireRemark,
-			RequirePhoto:  it.RequirePhoto,
-			ShowRemark:    it.ShowRemark,
-			ShowPhoto:     it.ShowPhoto,
-		})
+				ID:            it.ID,
+				Name:          it.Title,
+				Category:      it.Category,
+				Standard:      it.Standard,
+				StandardImage: it.StandardImage,
+				ScoreType:     it.ScoreType,
+				MaxScore:      it.MaxScore,
+				ScoreOptions:  services.EffectiveScoreOptions(&it),
+				RequireRemark: it.RequireRemark,
+				RequirePhoto:  it.RequirePhoto,
+				ShowRemark:    it.ShowRemark,
+				ShowPhoto:     it.ShowPhoto,
+			})
 		}
 		return sources, nil
 	}
@@ -900,26 +900,26 @@ func buildScoreRows(inspection *models.Inspection, reqScores []inspectionScoreRe
 			}
 		}
 		rows = append(rows, &models.InspectionScore{
-			ID:             newID(),
-			InspectionID:   inspection.ID,
-			ItemID:         item.ID,
-			ItemName:       item.Name,
-			Category:       item.Category,
-			Standard:       item.Standard,
-			StandardImage:  item.StandardImage,
-			ScoreType:      item.ScoreType,
-			MaxScore:       item.MaxScore,
-			ScoreOptions:   models.MarshalScoreOptions(item.ScoreOptions),
-			Score:          score,
-			RequireRemark:  item.RequireRemark,
-			RequirePhoto:   item.RequirePhoto,
-			ShowRemark:     item.ShowRemark,
-			ShowPhoto:      item.ShowPhoto,
-			Comment:        rs.Comment,
-			AIGenerated:    rs.AIGenerated,
-			AISuggestion:   rs.AISuggestion,
-			Photos:         marshalPhotos(rs.Photos),
-			CreatedAt:      now,
+			ID:            newID(),
+			InspectionID:  inspection.ID,
+			ItemID:        item.ID,
+			ItemName:      item.Name,
+			Category:      item.Category,
+			Standard:      item.Standard,
+			StandardImage: item.StandardImage,
+			ScoreType:     item.ScoreType,
+			MaxScore:      item.MaxScore,
+			ScoreOptions:  models.MarshalScoreOptions(item.ScoreOptions),
+			Score:         score,
+			RequireRemark: item.RequireRemark,
+			RequirePhoto:  item.RequirePhoto,
+			ShowRemark:    item.ShowRemark,
+			ShowPhoto:     item.ShowPhoto,
+			Comment:       rs.Comment,
+			AIGenerated:   rs.AIGenerated,
+			AISuggestion:  rs.AISuggestion,
+			Photos:        marshalPhotos(rs.Photos),
+			CreatedAt:     now,
 		})
 	}
 	if inspection.TemplateID != "" && len(rows) == 0 {
@@ -1076,24 +1076,24 @@ func inspectionWithScores(inspection *models.Inspection) map[string]interface{} 
 	}
 	aiSummary := services.ParseInspectionAISummary(inspection.AISummary)
 	view := map[string]interface{}{
-		"id":                 inspection.ID,
-		"title":              inspection.Title,
-		"status":             inspection.Status,
-		"store_id":           inspection.StoreID,
-		"template_id":        inspection.TemplateID,
-		"template_name":      inspection.TemplateName,
-		"inspector_id":       inspection.InspectorID,
-		"total_score":        inspection.TotalScore,
-		"passed":             inspection.Passed,
-		"issues":             inspection.Issues,
-		"suggestion":         inspection.Suggestion,
-		"ai_summary":         aiSummary,
-		"ai_generated":       inspection.AIGenerated,
-		"photos":             unmarshalPhotos(inspection.Photos),
-		"scores":             scoreList,
-		"checked_at":         inspection.CheckedAt.Format("2006-01-02T15:04:05"),
-		"created_at":         inspection.CreatedAt.Format("2006-01-02 15:04:05"),
-		"updated_at":         inspection.UpdatedAt.Format("2006-01-02 15:04:05"),
+		"id":            inspection.ID,
+		"title":         inspection.Title,
+		"status":        inspection.Status,
+		"store_id":      inspection.StoreID,
+		"template_id":   inspection.TemplateID,
+		"template_name": inspection.TemplateName,
+		"inspector_id":  inspection.InspectorID,
+		"total_score":   inspection.TotalScore,
+		"passed":        inspection.Passed,
+		"issues":        inspection.Issues,
+		"suggestion":    inspection.Suggestion,
+		"ai_summary":    aiSummary,
+		"ai_generated":  inspection.AIGenerated,
+		"photos":        unmarshalPhotos(inspection.Photos),
+		"scores":        scoreList,
+		"checked_at":    inspection.CheckedAt.Format("2006-01-02T15:04:05"),
+		"created_at":    inspection.CreatedAt.Format("2006-01-02 15:04:05"),
+		"updated_at":    inspection.UpdatedAt.Format("2006-01-02 15:04:05"),
 	}
 	store, err := findStore(inspection.StoreID)
 	if err == nil {

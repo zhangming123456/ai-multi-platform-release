@@ -75,34 +75,34 @@ frontend/src/
 
 所有需鉴权子路由均挂载在 `AppLayout.vue` 下。路由 `meta` 扩展字段：`sidebarType`（top/content/review/platforms/rbac/system，用于侧边栏分组）、`sidebarOrder`（组内排序）、`icon`（图标 key，对应 AppSidebar 的 iconRegistry）、`permKey`（权限 key 或表达式）、`skipPermCheck`、`public`、`title`。
 
-| 路由 | 名称 | 组件 | 鉴权 | 权限 Key | 说明 |
-|------|------|------|------|----------|------|
-| /login | Login | Login.vue | 公开 | — | 登录页 |
-| / | Dashboard | Dashboard.vue | 需鉴权 | dashboard:read | 仪表盘 |
-| /403 | Forbidden | Forbidden.vue | 需鉴权 | skipPermCheck | 无权限提示 |
-| /profile | Profile | Profile.vue | 需鉴权 | skipPermCheck | 个人中心 |
-| /platforms | Platforms | Platforms.vue | 需鉴权 | platforms:read | 平台管理 |
-| /content | ContentList | ContentList.vue | 需鉴权 | content:read | 内容列表 |
-| /content/create | ContentCreate | ContentCreate.vue | 需鉴权 | content:read | 创作内容 |
-| /publish | Publish | Publish.vue | 需鉴权 | publish:read | 发布管理 |
-| /review | Review | Review.vue | 需鉴权 | review:read | 内容审核 |
-| /sql-review | SqlReview | SqlReview.vue | 需鉴权 | sql_review:read | SQL 审核 |
-| /templates | Templates | Templates.vue | 需鉴权 | templates:read | 模板管理 |
-| /settings/token-plan | TokenPlan | TokenPlan.vue | 需鉴权 | token_plan:read | Token 方案 |
-| /settings/user-creation-review | UserCreationReview | UserCreationReview.vue | 需鉴权 | review:read | 用户注册审核 |
-| /developer/docs | ApiDocs | ApiDocs.vue | 需鉴权 | api_docs:read | API 文档 |
-| /developer/database | DatabaseConsole | DatabaseConsole.vue | 需鉴权 | db:read | 数据库控制台 |
-| /rbac/users | RBACUserManage | RBACUserManage.vue | 需鉴权 | users:read | 用户管理 |
-| /rbac/users/create | RBACUserCreate | RBACUserCreate.vue | 需鉴权 | users:create:write | 创建用户 |
-| /rbac/users/:id/edit | RBACUserEdit | RBACUserEdit.vue | 需鉴权 | users:update:read \|\| isSelf(id) | 编辑用户 |
-| /rbac/users/:id/password | RBACUserPassword | RBACUserPassword.vue | 需鉴权 | users:change_password:write \|\| isSelf(id) | 修改密码 |
-| /rbac/users/:id/permissions | RBACUserPermissionCustomize | RBACUserPermissionCustomize.vue | 需鉴权 | users:custom_permissions:read \|\| isSelf(id) | 自定义权限 |
-| /rbac/roles | RBACRoleManage | RBACRoleManage.vue | 需鉴权 | roles:read | 角色管理 |
-| /rbac/permissions | RBACPermissionManage | RBACPermissionManage.vue | 需鉴权 | permissions:read | 权限管理 |
-| /rbac/permissions/enum | RBACPermissionEnumManage | RBACPermissionEnumManage.vue | 需鉴权 | permissions:manage:read | 权限字典管理 |
-| /rbac/permissions/enum/create | RBACPermissionEnumCreate | RBACPermissionEnumEdit.vue | 需鉴权 | permissions:manage:write | 新增权限字典 |
-| /rbac/permissions/enum/edit/:resourceId | RBACPermissionEnumEdit | RBACPermissionEnumEdit.vue | 需鉴权 | permissions:manage:write | 编辑权限字典 |
-| /rbac/constraints | RBACConstraintManage | RBACConstraintManage.vue | 需鉴权 | constraints:read | 约束管理 |
+| 路由                                    | 名称                        | 组件                            | 鉴权   | 权限 Key                                      | 说明         |
+| --------------------------------------- | --------------------------- | ------------------------------- | ------ | --------------------------------------------- | ------------ |
+| /login                                  | Login                       | Login.vue                       | 公开   | —                                             | 登录页       |
+| /                                       | Dashboard                   | Dashboard.vue                   | 需鉴权 | dashboard:read                                | 仪表盘       |
+| /403                                    | Forbidden                   | Forbidden.vue                   | 需鉴权 | skipPermCheck                                 | 无权限提示   |
+| /profile                                | Profile                     | Profile.vue                     | 需鉴权 | skipPermCheck                                 | 个人中心     |
+| /platforms                              | Platforms                   | Platforms.vue                   | 需鉴权 | platforms:read                                | 平台管理     |
+| /content                                | ContentList                 | ContentList.vue                 | 需鉴权 | content:read                                  | 内容列表     |
+| /content/create                         | ContentCreate               | ContentCreate.vue               | 需鉴权 | content:read                                  | 创作内容     |
+| /publish                                | Publish                     | Publish.vue                     | 需鉴权 | publish:read                                  | 发布管理     |
+| /review                                 | Review                      | Review.vue                      | 需鉴权 | review:read                                   | 内容审核     |
+| /sql-review                             | SqlReview                   | SqlReview.vue                   | 需鉴权 | sql_review:read                               | SQL 审核     |
+| /templates                              | Templates                   | Templates.vue                   | 需鉴权 | templates:read                                | 模板管理     |
+| /settings/token-plan                    | TokenPlan                   | TokenPlan.vue                   | 需鉴权 | token_plan:read                               | Token 方案   |
+| /settings/user-creation-review          | UserCreationReview          | UserCreationReview.vue          | 需鉴权 | review:read                                   | 用户注册审核 |
+| /developer/docs                         | ApiDocs                     | ApiDocs.vue                     | 需鉴权 | api_docs:read                                 | API 文档     |
+| /developer/database                     | DatabaseConsole             | DatabaseConsole.vue             | 需鉴权 | db:read                                       | 数据库控制台 |
+| /rbac/users                             | RBACUserManage              | RBACUserManage.vue              | 需鉴权 | users:read                                    | 用户管理     |
+| /rbac/users/create                      | RBACUserCreate              | RBACUserCreate.vue              | 需鉴权 | users:create:write                            | 创建用户     |
+| /rbac/users/:id/edit                    | RBACUserEdit                | RBACUserEdit.vue                | 需鉴权 | users:update:read \|\| isSelf(id)             | 编辑用户     |
+| /rbac/users/:id/password                | RBACUserPassword            | RBACUserPassword.vue            | 需鉴权 | users:change_password:write \|\| isSelf(id)   | 修改密码     |
+| /rbac/users/:id/permissions             | RBACUserPermissionCustomize | RBACUserPermissionCustomize.vue | 需鉴权 | users:custom_permissions:read \|\| isSelf(id) | 自定义权限   |
+| /rbac/roles                             | RBACRoleManage              | RBACRoleManage.vue              | 需鉴权 | roles:read                                    | 角色管理     |
+| /rbac/permissions                       | RBACPermissionManage        | RBACPermissionManage.vue        | 需鉴权 | permissions:read                              | 权限管理     |
+| /rbac/permissions/enum                  | RBACPermissionEnumManage    | RBACPermissionEnumManage.vue    | 需鉴权 | permissions:manage:read                       | 权限字典管理 |
+| /rbac/permissions/enum/create           | RBACPermissionEnumCreate    | RBACPermissionEnumEdit.vue      | 需鉴权 | permissions:manage:write                      | 新增权限字典 |
+| /rbac/permissions/enum/edit/:resourceId | RBACPermissionEnumEdit      | RBACPermissionEnumEdit.vue      | 需鉴权 | permissions:manage:write                      | 编辑权限字典 |
+| /rbac/constraints                       | RBACConstraintManage        | RBACConstraintManage.vue        | 需鉴权 | constraints:read                              | 约束管理     |
 
 ### 路由守卫
 
@@ -128,6 +128,7 @@ function hasPerm(to): boolean {
 ```
 
 权限守卫核心逻辑：
+
 - `to.meta.public` → 直接放行（如 /login）
 - `to.meta.skipPermCheck` → 仅校验登录，不校验权限（如 /403、/profile）
 - `to.meta.permKey` → 调用 `permStore.hasPermission(permKey, ctx)` 校验，`ctx` 由 `to.query` 与 `to.params` 合并而成，使表达式中的 `isSelf(id)` 等函数可读取路由参数
@@ -141,8 +142,8 @@ import { isExpression, evaluatePermission } from '@/utils/permExpression'
 import type { PermContext } from '@/utils/permExpression'
 
 export const usePermissionStore = defineStore('permission', () => {
-  const permissions = ref<Record<string, string>>({})  // { key: name }
-  const lastPermissionsUserId = ref<string | null>(null)  // 按 userId 缓存权限
+  const permissions = ref<Record<string, string>>({}) // { key: name }
+  const lastPermissionsUserId = ref<string | null>(null) // 按 userId 缓存权限
 
   // keyOrExpr 可以是简单权限 key，也可以是表达式字符串
   // ctx 可选，用于向表达式中的 isSelf(id) 等函数注入上下文
@@ -164,6 +165,7 @@ export const usePermissionStore = defineStore('permission', () => {
 ```
 
 上下文构建：
+
 - `_buildDefaultContext()`：从 `useUserStore()` 读取当前用户 `{ id, role }`，构建默认 `PermContext`
 - `_mergeContext(overrides?)`：将传入的 `overrides` 与默认上下文浅合并，未传则返回默认上下文
 - 导出类型 `PermContext`（再导出自 `utils/permExpression`）
@@ -171,6 +173,7 @@ export const usePermissionStore = defineStore('permission', () => {
 ### 权限指令（directives/permission.ts）
 
 支持两种绑定形式：
+
 - 字符串形式：`v-perm="'users:read'"`
 - 对象形式：`v-perm="{ key: 'users:read', ctx: { user_id: 'xxx' } }"`
 
@@ -181,25 +184,32 @@ interface PermBinding {
 }
 
 // 通过 WeakMap 缓存被移除元素的位置（Comment 占位符），支持响应式恢复
-const _permCache = new WeakMap<HTMLElement, {
-  placeholder: Comment
-  originalParent: Node
-  originalNext: Node | null
-}>()
+const _permCache = new WeakMap<
+  HTMLElement,
+  {
+    placeholder: Comment
+    originalParent: Node
+    originalNext: Node | null
+  }
+>()
 
 const vPerm: ObjectDirective<HTMLElement, string | PermBinding> = {
-  mounted: checkAndApply,   // 初次挂载时检查权限
-  updated: checkAndApply,   // 依赖更新时重新检查，支持权限变化后恢复
-  beforeUnmount(el) { _permCache.delete(el) },
+  mounted: checkAndApply, // 初次挂载时检查权限
+  updated: checkAndApply, // 依赖更新时重新检查，支持权限变化后恢复
+  beforeUnmount(el) {
+    _permCache.delete(el)
+  },
 }
 ```
 
 `checkAndApply` 逻辑：
+
 - 无权限且未缓存 → `removeEl`：在原位置插入 `Comment('v-perm')` 占位符并移除元素，缓存位置信息
 - 有权限且已缓存 → `restoreEl`：根据占位符将元素恢复到原位置并移除占位符
 - 通过 `mounted` + `updated` 双钩子实现权限变化时的响应式显隐
 
 使用方式：
+
 ```vue
 <button v-perm="'users:create:write'">创建用户</button>
 <button v-perm="{ key: 'users:delete:write', ctx: { user_id: id } }">删除</button>
@@ -214,6 +224,7 @@ const vPerm: ObjectDirective<HTMLElement, string | PermBinding> = {
 - `PermContext` 类型：`{ currentUser, user_id, account, content, target_user, current_role_ids, target_role_ids }`
 
 支持的语法：
+
 - 基础权限：`dashboard:read`
 - 与/或/非：`a:read & b:read`、`a:read || b:read`、`!isAdmin()`
 - 括号分组：`(a:read || b:read) & !isSelf(id)`
@@ -263,7 +274,7 @@ const vPerm: ObjectDirective<HTMLElement, string | PermBinding> = {
 
 ```typescript
 // 1. 读取所有带 sidebarType 的路由
-const sidebarRoutes = router.getRoutes().filter(r => r.meta.sidebarType && r.meta.title)
+const sidebarRoutes = router.getRoutes().filter((r) => r.meta.sidebarType && r.meta.title)
 
 // 2. 按 sidebarType 分组，组内按 sidebarOrder 排序
 // 3. 通过 SIDEBAR_GROUPS 配置决定是否包装为分组（wrapGroup）
@@ -272,14 +283,14 @@ const sidebarRoutes = router.getRoutes().filter(r => r.meta.sidebarType && r.met
 
 `SIDEBAR_GROUPS` 配置（按 order 排序）：
 
-| key | name | order | wrapGroup | icon |
-|-----|------|-------|-----------|------|
-| top | （无名称，平铺） | 0 | false | — |
-| content | 内容管理 | 1 | true | file |
-| review | 审核管理 | 2 | true | check |
-| platforms | 平台管理 | 3 | false | apps |
-| rbac | 权限管理 | 4 | true | safe |
-| system | 系统管理 | 5 | true | tool |
+| key       | name             | order | wrapGroup | icon  |
+| --------- | ---------------- | ----- | --------- | ----- |
+| top       | （无名称，平铺） | 0     | false     | —     |
+| content   | 内容管理         | 1     | true      | file  |
+| review    | 审核管理         | 2     | true      | check |
+| platforms | 平台管理         | 3     | false     | apps  |
+| rbac      | 权限管理         | 4     | true      | safe  |
+| system    | 系统管理         | 5     | true      | tool  |
 
 内置 `iconRegistry` 图标注册表，将路由 `meta.icon` 字符串（如 `home`/`file`/`send`/`apps`/`settings`/`code`/`safe`/`storage`/`tool`/`check`/`user`/`edit`）映射到 Arco Design 图标组件。
 
@@ -287,20 +298,20 @@ const sidebarRoutes = router.getRoutes().filter(r => r.meta.sidebarType && r.met
 
 ## 技术栈
 
-| 类别 | 技术 | 版本 | 说明 |
-|------|------|------|------|
-| 构建工具 | Vite | 8.1.0 | 开发服务器 + 构建 |
-| 框架 | Vue | ^3.5.39 | Composition API + `<script setup>` |
-| 语言 | TypeScript | ~6.0.2 | 类型检查（vue-tsc ^3.3.5） |
-| 路由 | Vue Router | ^4.6.4 | History 模式 |
-| 状态 | Pinia | ^4.0.2 | setup store 风格 |
-| UI 库 | Arco Design Vue | ^2.58.0 | 字节跳动组件库 |
-| CSS | Tailwind CSS | ^4.3.3 | v4 Vite 插件模式（`@tailwindcss/vite`），无 `tailwind.config.js` 配置文件，通过 `@import 'tailwindcss'` 引入 |
-| HTTP | axios | ^1.18.1 | 请求拦截 + 401 处理 |
-| 时间 | dayjs | ^1.11.21 | utc/timezone/relativeTime 插件 + zh-cn 本地化 |
-| 工具 | lodash-es | ^4.18.1 | 函数式工具库 |
-| 图标 | lucide-vue-next | ^1.0.0 | 图标组件库 |
-| API 文档 | swagger-ui-dist | ^5.32.11 | iframe 嵌入 Swagger UI |
+| 类别     | 技术            | 版本     | 说明                                                                                                         |
+| -------- | --------------- | -------- | ------------------------------------------------------------------------------------------------------------ |
+| 构建工具 | Vite            | 8.1.0    | 开发服务器 + 构建                                                                                            |
+| 框架     | Vue             | ^3.5.39  | Composition API + `<script setup>`                                                                           |
+| 语言     | TypeScript      | ~6.0.2   | 类型检查（vue-tsc ^3.3.5）                                                                                   |
+| 路由     | Vue Router      | ^4.6.4   | History 模式                                                                                                 |
+| 状态     | Pinia           | ^4.0.2   | setup store 风格                                                                                             |
+| UI 库    | Arco Design Vue | ^2.58.0  | 字节跳动组件库                                                                                               |
+| CSS      | Tailwind CSS    | ^4.3.3   | v4 Vite 插件模式（`@tailwindcss/vite`），无 `tailwind.config.js` 配置文件，通过 `@import 'tailwindcss'` 引入 |
+| HTTP     | axios           | ^1.18.1  | 请求拦截 + 401 处理                                                                                          |
+| 时间     | dayjs           | ^1.11.21 | utc/timezone/relativeTime 插件 + zh-cn 本地化                                                                |
+| 工具     | lodash-es       | ^4.18.1  | 函数式工具库                                                                                                 |
+| 图标     | lucide-vue-next | ^1.0.0   | 图标组件库                                                                                                   |
+| API 文档 | swagger-ui-dist | ^5.32.11 | iframe 嵌入 Swagger UI                                                                                       |
 
 ## 全局样式（src/style.css）
 

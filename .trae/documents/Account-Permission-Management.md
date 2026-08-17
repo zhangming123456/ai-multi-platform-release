@@ -82,109 +82,112 @@
 
 #### users（用户表）
 
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| id | String(36) | 主键，UUID。超级管理员固定为 `"1"` |
-| username | String(100) | 登录用户名，唯一索引 |
-| email | String(255) | 邮箱，唯一索引 |
-| hashed_password | String(255) | bcrypt 哈希后的密码 |
-| nickname | String(100) | 显示昵称 |
-| role | String(50) | 角色名称（保留作标签/迁移用） |
-| avatar_url | String(500) | 头像链接 |
+| 字段            | 类型        | 说明                               |
+| --------------- | ----------- | ---------------------------------- |
+| id              | String(36)  | 主键，UUID。超级管理员固定为 `"1"` |
+| username        | String(100) | 登录用户名，唯一索引               |
+| email           | String(255) | 邮箱，唯一索引                     |
+| hashed_password | String(255) | bcrypt 哈希后的密码                |
+| nickname        | String(100) | 显示昵称                           |
+| role            | String(50)  | 角色名称（保留作标签/迁移用）      |
+| avatar_url      | String(500) | 头像链接                           |
 
 #### rbac_roles（角色表）
 
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| id | String(36) | 主键，UUID |
-| name | String(50) | 角色标识名，唯一 |
-| display_name | String(100) | 显示名称 |
-| description | Text | 角色描述 |
-| role_type | String(20) | 角色类型：`admin` / `other` |
-| is_super_admin | Boolean | 是否为超级管理员 |
-| is_builtin | Boolean | 是否为内置角色（不可删除） |
+| 字段           | 类型        | 说明                        |
+| -------------- | ----------- | --------------------------- |
+| id             | String(36)  | 主键，UUID                  |
+| name           | String(50)  | 角色标识名，唯一            |
+| display_name   | String(100) | 显示名称                    |
+| description    | Text        | 角色描述                    |
+| role_type      | String(20)  | 角色类型：`admin` / `other` |
+| is_super_admin | Boolean     | 是否为超级管理员            |
+| is_builtin     | Boolean     | 是否为内置角色（不可删除）  |
 
 **role_type 的作用**：
+
 - `admin`：可配置所有权限，包括数据库相关权限
 - `other`：不可配置数据库相关权限和 admin-only 权限
 
 #### rbac_resources（资源表）
 
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| id | String(36) | 主键，UUID |
-| key | String(100) | 权限 key，唯一 |
-| name | String(100) | 中文显示名称 |
-| description | Text | 权限描述说明 |
-| parent_id | String(36) | 父资源 ID，支持资源树 |
-| is_active | Boolean | 是否启用 |
+| 字段        | 类型        | 说明                  |
+| ----------- | ----------- | --------------------- |
+| id          | String(36)  | 主键，UUID            |
+| key         | String(100) | 权限 key，唯一        |
+| name        | String(100) | 中文显示名称          |
+| description | Text        | 权限描述说明          |
+| parent_id   | String(36)  | 父资源 ID，支持资源树 |
+| is_active   | Boolean     | 是否启用              |
 
 **资源类型推断**（无需存储 type 字段）：
+
 - `{name}:read` / `{name}:write`（2 段式）→ `page`（页面权限）
 - `{name}:{operation}:{read|write}`（3 段式）→ `action`（操作权限）
 
 #### rbac_permissions（权限表）
 
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| id | String(36) | 主键，UUID |
-| resource_id | String(36) | 关联资源 ID |
-| operation | String(50) | 操作类型：read / write / create / update / delete / approve / reject / execute |
-| key | String(150) | 权限 key，唯一 |
-| is_active | Boolean | 是否启用 |
+| 字段        | 类型        | 说明                                                                           |
+| ----------- | ----------- | ------------------------------------------------------------------------------ |
+| id          | String(36)  | 主键，UUID                                                                     |
+| resource_id | String(36)  | 关联资源 ID                                                                    |
+| operation   | String(50)  | 操作类型：read / write / create / update / delete / approve / reject / execute |
+| key         | String(150) | 权限 key，唯一                                                                 |
+| is_active   | Boolean     | 是否启用                                                                       |
 
 #### rbac_role_hierarchy（角色继承表）
 
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| id | String(36) | 主键，UUID |
-| parent_role_id | String(36) | 父角色 ID |
-| child_role_id | String(36) | 子角色 ID |
+| 字段           | 类型       | 说明       |
+| -------------- | ---------- | ---------- |
+| id             | String(36) | 主键，UUID |
+| parent_role_id | String(36) | 父角色 ID  |
+| child_role_id  | String(36) | 子角色 ID  |
 
 **约束**：禁止成环（parent 不能是 child 的后代，也不能等于 child）。
 
 #### rbac_role_permissions（角色权限表）
 
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| id | String(36) | 主键，UUID |
-| role_id | String(36) | 角色 ID |
-| permission_id | String(36) | 权限 ID |
-| grant_type | String(20) | 授权来源：`direct` / `inherited` |
+| 字段          | 类型       | 说明                             |
+| ------------- | ---------- | -------------------------------- |
+| id            | String(36) | 主键，UUID                       |
+| role_id       | String(36) | 角色 ID                          |
+| permission_id | String(36) | 权限 ID                          |
+| grant_type    | String(20) | 授权来源：`direct` / `inherited` |
 
 #### rbac_user_role_assignments（用户角色分配表）
 
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| id | String(36) | 主键，UUID |
-| user_id | String(36) | 用户 ID |
-| role_id | String(36) | 角色 ID |
-| grant_type | String(20) | 分配类型：`direct` / `inherited` |
-| valid_from | DateTime | 生效时间 |
-| valid_until | DateTime | 失效时间 |
+| 字段        | 类型       | 说明                             |
+| ----------- | ---------- | -------------------------------- |
+| id          | String(36) | 主键，UUID                       |
+| user_id     | String(36) | 用户 ID                          |
+| role_id     | String(36) | 角色 ID                          |
+| grant_type  | String(20) | 分配类型：`direct` / `inherited` |
+| valid_from  | DateTime   | 生效时间                         |
+| valid_until | DateTime   | 失效时间                         |
 
 #### rbac_user_permission_overrides（用户权限覆盖表）
 
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| id | String(36) | 主键，UUID |
-| user_id | String(36) | 用户 ID |
-| permission_key | String(150) | 权限 key |
-| granted | Boolean | 是否授予（true=授予，false=拒绝） |
+| 字段           | 类型        | 说明                              |
+| -------------- | ----------- | --------------------------------- |
+| id             | String(36)  | 主键，UUID                        |
+| user_id        | String(36)  | 用户 ID                           |
+| permission_key | String(150) | 权限 key                          |
+| granted        | Boolean     | 是否授予（true=授予，false=拒绝） |
 
 **唯一约束**：`(user_id, permission_key)`
 
 #### rbac_constraints（约束表）
 
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| id | String(36) | 主键，UUID |
-| name | String(100) | 约束名称 |
-| constraint_type | String(50) | 类型：mutual_exclusive / prerequisite / cardinality |
-| config | JSON | 类型相关配置 |
-| is_active | Boolean | 是否启用 |
+| 字段            | 类型        | 说明                                                |
+| --------------- | ----------- | --------------------------------------------------- |
+| id              | String(36)  | 主键，UUID                                          |
+| name            | String(100) | 约束名称                                            |
+| constraint_type | String(50)  | 类型：mutual_exclusive / prerequisite / cardinality |
+| config          | JSON        | 类型相关配置                                        |
+| is_active       | Boolean     | 是否启用                                            |
 
 **config 示例**：
+
 - `mutual_exclusive`：`{"scope": "static"}`
 - `prerequisite`：`{"require_all": true}`
 - `cardinality`：`{"max_users": 3}`
@@ -197,69 +200,69 @@
 
 系统权限 key 采用标准化格式：
 
-| 类型 | 格式 | 示例 | 说明 |
-|------|------|------|------|
-| 页面权限 | `{name}:read` | `dashboard:read`、`content:read` | 2 段式，控制页面/菜单可见性 |
-| 操作权限 | `{name}:{operation}:{read\|write}` | `content:create:write`、`users:update:read` | 3 段式，控制具体操作 |
+| 类型     | 格式                               | 示例                                        | 说明                        |
+| -------- | ---------------------------------- | ------------------------------------------- | --------------------------- |
+| 页面权限 | `{name}:read`                      | `dashboard:read`、`content:read`            | 2 段式，控制页面/菜单可见性 |
+| 操作权限 | `{name}:{operation}:{read\|write}` | `content:create:write`、`users:update:read` | 3 段式，控制具体操作        |
 
 ### 3.2 核心页面权限
 
-| 权限 key | 名称 | 说明 |
-|----------|------|------|
-| `dashboard:read` | 仪表盘 | 系统首页仪表盘 |
-| `platforms:read` | 平台管理 | 第三方内容平台管理 |
-| `content:read` | 内容列表 | 内容管理页面 |
-| `publish:read` | 发布管理 | 发布任务管理 |
-| `templates:read` | 模板管理 | 内容模板管理 |
-| `review:read` | 内容审核 | 内容审核页面 |
-| `sql_review:read` | SQL审核 | SQL变更审核页面 |
-| `accounts:read` | 平台账号 | 各平台登录账号管理 |
-| `token_plan:read` | Token方案 | API Token用量方案 |
-| `api_docs:read` | API文档 | API接口文档 |
-| `db:read` | 数据库控制台 | 数据库控制台 |
-| `users:read` | 用户管理 | 系统用户列表管理 |
-| `permissions:read` | 权限管理 | 角色权限分配 |
-| `roles:read` | 角色管理 | 角色定义和继承关系 |
-| `constraints:read` | 约束管理 | 职责分离约束规则 |
+| 权限 key           | 名称         | 说明               |
+| ------------------ | ------------ | ------------------ |
+| `dashboard:read`   | 仪表盘       | 系统首页仪表盘     |
+| `platforms:read`   | 平台管理     | 第三方内容平台管理 |
+| `content:read`     | 内容列表     | 内容管理页面       |
+| `publish:read`     | 发布管理     | 发布任务管理       |
+| `templates:read`   | 模板管理     | 内容模板管理       |
+| `review:read`      | 内容审核     | 内容审核页面       |
+| `sql_review:read`  | SQL审核      | SQL变更审核页面    |
+| `accounts:read`    | 平台账号     | 各平台登录账号管理 |
+| `token_plan:read`  | Token方案    | API Token用量方案  |
+| `api_docs:read`    | API文档      | API接口文档        |
+| `db:read`          | 数据库控制台 | 数据库控制台       |
+| `users:read`       | 用户管理     | 系统用户列表管理   |
+| `permissions:read` | 权限管理     | 角色权限分配       |
+| `roles:read`       | 角色管理     | 角色定义和继承关系 |
+| `constraints:read` | 约束管理     | 职责分离约束规则   |
 
 ### 3.3 核心操作权限
 
-| 权限 key | 名称 | 所属分组 |
-|----------|------|----------|
-| `permissions:manage:write` | 维护权限字典 | 权限中台 |
-| `roles:manage:write` | 维护角色 | 权限中台 |
-| `constraints:manage:write` | 维护约束 | 权限中台 |
-| `content:create:write` | 创建内容 | 内容管理 |
-| `content:update:write` | 编辑内容 | 内容管理 |
-| `content:delete:write` | 删除内容 | 内容管理 |
-| `content:ai_generate:write` | AI生成内容 | 内容管理 |
-| `publish:create:write` | 创建发布 | 发布管理 |
-| `publish:retry:write` | 重试发布 | 发布管理 |
-| `templates:create:write` | 创建模板 | 模板管理 |
-| `templates:update:write` | 编辑模板 | 模板管理 |
-| `templates:delete:write` | 删除模板 | 模板管理 |
-| `review:submit:write` | 提交审核 | 审核管理 |
-| `review:approve:write` | 通过审核 | 审核管理 |
-| `review:reject:write` | 驳回审核 | 审核管理 |
-| `db:execute:write` | 执行SQL | 数据库管理 |
-| `users:create:write` | 创建用户 | 用户管理 |
-| `users:update:read` | 查看用户 | 用户管理 |
-| `users:update:write` | 编辑用户 | 用户管理 |
-| `users:delete:write` | 删除用户 | 用户管理 |
-| `users:change_password:write` | 修改用户密码 | 用户管理 |
-| `users:custom_permissions:write` | 自定义用户权限 | 用户管理 |
-| `account:view:read` | 查看平台账号 | 平台账号 |
-| `account:create:write` | 创建平台账号 | 平台账号 |
-| `account:update:write` | 编辑平台账号 | 平台账号 |
-| `account:delete:write` | 删除平台账号 | 平台账号 |
-| `account:check:write` | 校验平台账号 | 平台账号 |
-| `db_change:submit:write` | 提交SQL变更 | SQL审核 |
-| `db_change:approve:write` | 通过SQL变更 | SQL审核 |
-| `db_change:reject:write` | 驳回SQL变更 | SQL审核 |
-| `model_config:create:write` | 创建模型配置 | 模型配置 |
-| `model_config:update:write` | 编辑模型配置 | 模型配置 |
-| `model_config:delete:write` | 删除模型配置 | 模型配置 |
-| `db_history:view:read` | 查看SQL历史 | 数据库管理 |
+| 权限 key                         | 名称           | 所属分组   |
+| -------------------------------- | -------------- | ---------- |
+| `permissions:manage:write`       | 维护权限字典   | 权限中台   |
+| `roles:manage:write`             | 维护角色       | 权限中台   |
+| `constraints:manage:write`       | 维护约束       | 权限中台   |
+| `content:create:write`           | 创建内容       | 内容管理   |
+| `content:update:write`           | 编辑内容       | 内容管理   |
+| `content:delete:write`           | 删除内容       | 内容管理   |
+| `content:ai_generate:write`      | AI生成内容     | 内容管理   |
+| `publish:create:write`           | 创建发布       | 发布管理   |
+| `publish:retry:write`            | 重试发布       | 发布管理   |
+| `templates:create:write`         | 创建模板       | 模板管理   |
+| `templates:update:write`         | 编辑模板       | 模板管理   |
+| `templates:delete:write`         | 删除模板       | 模板管理   |
+| `review:submit:write`            | 提交审核       | 审核管理   |
+| `review:approve:write`           | 通过审核       | 审核管理   |
+| `review:reject:write`            | 驳回审核       | 审核管理   |
+| `db:execute:write`               | 执行SQL        | 数据库管理 |
+| `users:create:write`             | 创建用户       | 用户管理   |
+| `users:update:read`              | 查看用户       | 用户管理   |
+| `users:update:write`             | 编辑用户       | 用户管理   |
+| `users:delete:write`             | 删除用户       | 用户管理   |
+| `users:change_password:write`    | 修改用户密码   | 用户管理   |
+| `users:custom_permissions:write` | 自定义用户权限 | 用户管理   |
+| `account:view:read`              | 查看平台账号   | 平台账号   |
+| `account:create:write`           | 创建平台账号   | 平台账号   |
+| `account:update:write`           | 编辑平台账号   | 平台账号   |
+| `account:delete:write`           | 删除平台账号   | 平台账号   |
+| `account:check:write`            | 校验平台账号   | 平台账号   |
+| `db_change:submit:write`         | 提交SQL变更    | SQL审核    |
+| `db_change:approve:write`        | 通过SQL变更    | SQL审核    |
+| `db_change:reject:write`         | 驳回SQL变更    | SQL审核    |
+| `model_config:create:write`      | 创建模型配置   | 模型配置   |
+| `model_config:update:write`      | 编辑模型配置   | 模型配置   |
+| `model_config:delete:write`      | 删除模型配置   | 模型配置   |
+| `db_history:view:read`           | 查看SQL历史    | 数据库管理 |
 
 ### 3.4 权限计算机制
 
@@ -315,62 +318,64 @@ async def validate_role_hierarchy(
 
 ### 4.1 RBAC3 用户管理（/api/v2）
 
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | /api/v2/users | 用户列表（含角色分配） |
-| POST | /api/v2/users | 创建用户 |
-| GET | /api/v2/users/{id} | 用户详情 |
-| PUT | /api/v2/users/{id} | 更新用户 |
-| DELETE | /api/v2/users/{id} | 删除用户（禁止删除 admin 与本人） |
-| PUT | /api/v2/users/{id}/password | 修改密码 |
-| GET | /api/v2/users/{id}/password-status | 查询是否为默认密码 |
-| PUT | /api/v2/users/{id}/roles | 分配/替换角色 |
-| GET | /api/v2/users/{id}/permissions | 用户有效权限 |
-| GET | /api/v2/users/{id}/permission-overrides | 用户自定义权限覆盖列表 |
-| PUT | /api/v2/users/{id}/permission-overrides | 全量替换用户权限覆盖 |
-| GET | /api/v2/me/permissions | 当前用户有效权限 `{key: name}` |
+| 方法   | 路径                                    | 说明                              |
+| ------ | --------------------------------------- | --------------------------------- |
+| GET    | /api/v2/users                           | 用户列表（含角色分配）            |
+| POST   | /api/v2/users                           | 创建用户                          |
+| GET    | /api/v2/users/{id}                      | 用户详情                          |
+| PUT    | /api/v2/users/{id}                      | 更新用户                          |
+| DELETE | /api/v2/users/{id}                      | 删除用户（禁止删除 admin 与本人） |
+| PUT    | /api/v2/users/{id}/password             | 修改密码                          |
+| GET    | /api/v2/users/{id}/password-status      | 查询是否为默认密码                |
+| PUT    | /api/v2/users/{id}/roles                | 分配/替换角色                     |
+| GET    | /api/v2/users/{id}/permissions          | 用户有效权限                      |
+| GET    | /api/v2/users/{id}/permission-overrides | 用户自定义权限覆盖列表            |
+| PUT    | /api/v2/users/{id}/permission-overrides | 全量替换用户权限覆盖              |
+| GET    | /api/v2/me/permissions                  | 当前用户有效权限 `{key: name}`    |
 
 ### 4.2 RBAC3 角色管理（/api/v2）
 
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | /api/v2/roles | 角色列表 |
-| POST | /api/v2/roles | 创建角色 |
-| GET | /api/v2/roles/{id} | 角色详情 |
-| PUT | /api/v2/roles/{id} | 更新角色 |
-| DELETE | /api/v2/roles/{id} | 删除角色 |
-| POST | /api/v2/roles/{id}/parents | 添加父角色 |
-| DELETE | /api/v2/roles/{id}/parents/{parent_id} | 移除父角色 |
-| GET | /api/v2/roles/{id}/permissions | 有效权限 |
-| GET | /api/v2/roles/{id}/permissions/direct | 直接权限列表 |
-| GET | /api/v2/roles/{id}/permissions/detail | 继承 + 直接权限 |
-| PUT | /api/v2/roles/{id}/permissions | 更新直接权限 |
-| GET | /api/v2/roles/{id}/permissions/preview/{parent_role_id} | 预览添加父角色后继承的权限 |
-| GET | /api/v2/roles/{id}/inheritance | 角色继承关系（祖先链 + 后代树 + 各层级直接权限） |
+| 方法   | 路径                                                    | 说明                                             |
+| ------ | ------------------------------------------------------- | ------------------------------------------------ |
+| GET    | /api/v2/roles                                           | 角色列表                                         |
+| POST   | /api/v2/roles                                           | 创建角色                                         |
+| GET    | /api/v2/roles/{id}                                      | 角色详情                                         |
+| PUT    | /api/v2/roles/{id}                                      | 更新角色                                         |
+| DELETE | /api/v2/roles/{id}                                      | 删除角色                                         |
+| POST   | /api/v2/roles/{id}/parents                              | 添加父角色                                       |
+| DELETE | /api/v2/roles/{id}/parents/{parent_id}                  | 移除父角色                                       |
+| GET    | /api/v2/roles/{id}/permissions                          | 有效权限                                         |
+| GET    | /api/v2/roles/{id}/permissions/direct                   | 直接权限列表                                     |
+| GET    | /api/v2/roles/{id}/permissions/detail                   | 继承 + 直接权限                                  |
+| PUT    | /api/v2/roles/{id}/permissions                          | 更新直接权限                                     |
+| GET    | /api/v2/roles/{id}/permissions/preview/{parent_role_id} | 预览添加父角色后继承的权限                       |
+| GET    | /api/v2/roles/{id}/inheritance                          | 角色继承关系（祖先链 + 后代树 + 各层级直接权限） |
 
 ### 4.3 RBAC3 资源与权限管理（/api/v2）
 
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | /api/v2/resources | 资源树 |
-| POST | /api/v2/resources | 新增资源 |
-| PUT | /api/v2/resources/{id} | 更新资源 |
-| DELETE | /api/v2/resources/{id} | 删除资源 |
-| GET | /api/v2/permission-enums | 权限枚举（key + name + description） |
-| GET | /api/v2/permission-pages | 页面权限枚举 |
-| POST | /api/v2/permissions | 新增权限 |
-| PUT | /api/v2/permissions/{id} | 更新权限 |
-| DELETE | /api/v2/permissions/{id} | 删除权限 |
+| 方法   | 路径                     | 说明                                 |
+| ------ | ------------------------ | ------------------------------------ |
+| GET    | /api/v2/resources        | 资源树                               |
+| POST   | /api/v2/resources        | 新增资源                             |
+| PUT    | /api/v2/resources/{id}   | 更新资源                             |
+| DELETE | /api/v2/resources/{id}   | 删除资源                             |
+| GET    | /api/v2/permission-enums | 权限枚举（key + name + description） |
+| GET    | /api/v2/permission-pages | 页面权限枚举                         |
+| POST   | /api/v2/permissions      | 新增权限                             |
+| PUT    | /api/v2/permissions/{id} | 更新权限                             |
+| DELETE | /api/v2/permissions/{id} | 删除权限                             |
 
 ### 4.4 认证与用户管理
 
 #### POST /api/v2/users — 创建用户
 
 **行为差异**：
+
 - **管理员**：直接创建用户，返回 201
 - **非管理员**：创建 `UserCreationRequest` 审核记录，返回 202
 
 **安全校验**：
+
 - 非管理员只能创建 `operator` 角色
 - 用户名/邮箱唯一性校验
 - 禁止创建 `admin` 角色
@@ -378,14 +383,16 @@ async def validate_role_hierarchy(
 #### PUT /api/v2/users/{id}/password — 修改密码
 
 **密码策略**：
-| 场景 | 行为 |
-|------|------|
-| 超级管理员重置他人密码 | 无需旧密码，直接重置 |
-| 管理员重置他人密码 | 无需旧密码，直接重置 |
-| 用户修改自己的默认密码 | 无需旧密码，直接设新密码 |
-| 用户修改自己的非默认密码 | 必须提供旧密码验证 |
+
+| 场景                     | 行为                     |
+| ------------------------ | ------------------------ |
+| 超级管理员重置他人密码   | 无需旧密码，直接重置     |
+| 管理员重置他人密码       | 无需旧密码，直接重置     |
+| 用户修改自己的默认密码   | 无需旧密码，直接设新密码 |
+| 用户修改自己的非默认密码 | 必须提供旧密码验证       |
 
 **新密码格式验证**：
+
 - 首字符必须为字母（a-zA-Z）
 - 仅允许字符：`a-zA-Z0-9._@$`
 - 长度至少 6 位
@@ -418,6 +425,7 @@ async def list_users(db: AsyncSession = Depends(get_db),
 ```
 
 **机制说明**：
+
 - `@RequiresPermissions(expr, context=None)` 装饰器将权限表达式与上下文写入端点函数的 `_requires_perm_info_` 标记位
 - `PermAPIRoute` 在注册路由时读取该标记，自动构造 `require_permission(expr, ctx)` 依赖并追加到 `dependencies`
 - 支持传入上下文（如 `{"content": some_content_obj}`）供表达式内置函数使用
@@ -437,6 +445,7 @@ require_permission("isAdmin() || isOwnContent(content)")
 **表达式判断**：通过 `is_expression(permission_key)` 判断是否为表达式（字符串中包含 `|`、`&`、`(`、`)`、`!` 任一字符即为表达式）。
 
 **校验流程**：
+
 1. 获取用户有效权限（`get_user_effective_permissions`）
 2. 查询 `RBACUserPermissionOverride` 表中 `granted=False` 的记录，得到 `denied_keys` 集合
 3. 调用 `flatten_effective_permissions(effective, db, denied_keys)` 展平为 `{ key: name }` 格式（denied_keys 中的 key 会被剔除）
@@ -457,8 +466,10 @@ router.beforeEach(async (to) => {
   const permStore = usePermissionStore()
 
   if (!userStore.userInfo) await userStore.fetchUserInfo()
-  if (permStore.lastPermissionsUserId !== userStore.userInfo.id
-      || Object.keys(permStore.permissions).length === 0) {
+  if (
+    permStore.lastPermissionsUserId !== userStore.userInfo.id ||
+    Object.keys(permStore.permissions).length === 0
+  ) {
     await permStore.loadPermissions(userStore.userInfo.id)
   }
 
@@ -483,10 +494,7 @@ function hasPerm(to: RouteLocationNormalized): boolean {
 
 ```typescript
 // stores/permission.ts
-function hasPermission(
-  keyOrExpr: string,
-  ctx?: PermContext,
-): boolean {
+function hasPermission(keyOrExpr: string, ctx?: PermContext): boolean {
   if (!isExpression(keyOrExpr)) {
     return keyOrExpr in permissions.value
   }
@@ -494,11 +502,14 @@ function hasPermission(
 }
 
 // directives/permission.ts —— DOM 移除/恢复机制（WeakMap 缓存 + Comment 占位符）
-const _permCache = new WeakMap<HTMLElement, {
-  placeholder: Comment
-  originalParent: Node
-  originalNext: Node | null
-}>()
+const _permCache = new WeakMap<
+  HTMLElement,
+  {
+    placeholder: Comment
+    originalParent: Node
+    originalNext: Node | null
+  }
+>()
 
 function removeEl(el: HTMLElement) {
   const parent = el.parentNode
@@ -526,11 +537,14 @@ function restoreEl(el: HTMLElement) {
 const vPerm: ObjectDirective<HTMLElement, string | PermBinding> = {
   mounted: checkAndApply,
   updated: checkAndApply,
-  beforeUnmount(el) { _permCache.delete(el) },
+  beforeUnmount(el) {
+    _permCache.delete(el)
+  },
 }
 ```
 
 **v-perm 指令说明**：
+
 - 相比 `display: none`，采用真实 DOM 移除 + `Comment('v-perm')` 占位符机制，权限不足时元素从 DOM 树中彻底移除
 - `WeakMap` 缓存原节点关系（父节点、兄弟节点、占位符），权限恢复时可在原位置重新插入
 - `mounted` 与 `updated` 钩子均调用 `checkAndApply`，权限状态变化时自动移除/恢复
@@ -542,12 +556,12 @@ const vPerm: ObjectDirective<HTMLElement, string | PermBinding> = {
 
 ### 6.1 密码策略
 
-| 规则 | 说明 |
-|------|------|
-| 首字符 | 必须为字母（a-zA-Z） |
+| 规则     | 说明                          |
+| -------- | ----------------------------- |
+| 首字符   | 必须为字母（a-zA-Z）          |
 | 合法字符 | 字母 + 数字 + `.` `_` `@` `$` |
-| 最小长度 | 6 位 |
-| 存储方式 | bcrypt 哈希 |
+| 最小长度 | 6 位                          |
+| 存储方式 | bcrypt 哈希                   |
 
 ### 6.2 默认密码机制
 
@@ -574,6 +588,7 @@ const vPerm: ObjectDirective<HTMLElement, string | PermBinding> = {
 ### 7.1 RBAC3 用户管理（RBACUserManage.vue）
 
 **功能**：
+
 - 用户列表展示（用户名/昵称/邮箱/角色/创建时间）
 - 角色筛选
 - 添加账号（管理员直接创建，非管理员提交审核）
@@ -583,17 +598,19 @@ const vPerm: ObjectDirective<HTMLElement, string | PermBinding> = {
 - 删除用户
 
 **权限控制**：
-| 操作按钮 | 显示条件 |
-|----------|----------|
-| 添加账号 | `users:create:write` 权限 |
-| 权限配置 | 管理员 或 本人（非 admin 用户） |
+
+| 操作按钮 | 显示条件                                       |
+| -------- | ---------------------------------------------- |
+| 添加账号 | `users:create:write` 权限                      |
+| 权限配置 | 管理员 或 本人（非 admin 用户）                |
 | 修改密码 | 管理员 或 本人 + `users:change_password:write` |
-| 编辑 | 管理员 或 本人 + `users:update:write` |
-| 删除 | `users:delete:write` + 非 admin 用户 |
+| 编辑     | 管理员 或 本人 + `users:update:write`          |
+| 删除     | `users:delete:write` + 非 admin 用户           |
 
 ### 7.2 角色管理（RBACRoleManage.vue）
 
 **功能**：
+
 - 角色列表（按超级管理员→管理员→运营者→审核员→自定义角色排序）
 - 角色 CRUD（内置角色不可编辑/删除）
 - 父子关系配置（DAG 校验，禁止成环）
@@ -602,6 +619,7 @@ const vPerm: ObjectDirective<HTMLElement, string | PermBinding> = {
 ### 7.3 权限管理（RBACPermissionManage.vue）
 
 **功能**：
+
 - 按资源树配置角色权限
 - 区分继承权限与直接权限（继承权限不可取消）
 - 显示权限描述信息
@@ -610,6 +628,7 @@ const vPerm: ObjectDirective<HTMLElement, string | PermBinding> = {
 ### 7.4 权限字典管理（RBACPermissionEnumManage.vue）
 
 **功能**：
+
 - 权限枚举 CRUD（key、名称、描述编辑）
 - 权限 key 格式校验
 - 页面权限与操作权限筛选
@@ -617,6 +636,7 @@ const vPerm: ObjectDirective<HTMLElement, string | PermBinding> = {
 ### 7.5 用户自定义权限（RBACUserPermissionCustomize.vue）
 
 **功能**：
+
 - 为用户单独授予或拒绝特定权限
 - 覆盖角色默认权限
 - 重置为角色默认权限
@@ -624,6 +644,7 @@ const vPerm: ObjectDirective<HTMLElement, string | PermBinding> = {
 ### 7.6 约束管理（RBACConstraintManage.vue）
 
 **功能**：
+
 - 互斥/先决/基数约束 CRUD
 - 约束角色关联配置
 - 实时校验提示
@@ -631,6 +652,7 @@ const vPerm: ObjectDirective<HTMLElement, string | PermBinding> = {
 ### 7.7 用户创建审核（UserCreationReview.vue）
 
 **功能**：
+
 - 待审核申请列表
 - 审批通过（自动创建用户）
 - 审批驳回（需填写驳回原因）

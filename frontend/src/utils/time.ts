@@ -91,7 +91,9 @@ export function formatRelativeTime(dateStr: string | null | undefined): string {
 }
 
 export function getCurrentTimezoneLabel(): string {
-  return REGION_OPTIONS.find((r) => r.value === displayTimezone.value)?.label || displayTimezone.value
+  return (
+    REGION_OPTIONS.find((r) => r.value === displayTimezone.value)?.label || displayTimezone.value
+  )
 }
 
 export { dayjs }

@@ -302,12 +302,12 @@ func (c *InspectionTasksController) Recheck() {
 			fmt.Sprintf("「%s」AI 复核第 %d 次：%s。%s", item.ItemName, item.RecheckCount, statusText, result.Reason),
 			user.ID, user.Nickname)
 		results = append(results, map[string]interface{}{
-			"item_id":      item.ID,
-			"item_name":    item.ItemName,
-			"fixed":        result.Fixed,
-			"score":        result.Score,
-			"reason":       result.Reason,
-			"status":       item.Status,
+			"item_id":       item.ID,
+			"item_name":     item.ItemName,
+			"fixed":         result.Fixed,
+			"score":         result.Score,
+			"reason":        result.Reason,
+			"status":        item.Status,
 			"recheck_count": item.RecheckCount,
 		})
 		checkedNames = append(checkedNames, item.ItemName)

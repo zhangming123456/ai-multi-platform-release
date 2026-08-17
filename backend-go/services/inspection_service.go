@@ -974,8 +974,8 @@ func AnalyzeInspectionStream(storeName string, items []InspectionAIItem, photos 
 		}
 
 		reqSummary := map[string]interface{}{
-			"model":      model,
-			"baseURL":    baseURL,
+			"model":       model,
+			"baseURL":     baseURL,
 			"tool_choice": len(tools) > 0,
 		}
 		msgSummaries := make([]map[string]interface{}, 0, len(messages))
@@ -1016,9 +1016,9 @@ func AnalyzeInspectionStream(storeName string, items []InspectionAIItem, photos 
 		}
 
 		respSummary := map[string]interface{}{
-			"status":     resp.StatusCode,
-			"model":      model,
-			"stream":     true,
+			"status": resp.StatusCode,
+			"model":  model,
+			"stream": true,
 		}
 		respDetailBytes, _ := json.MarshalIndent(respSummary, "", "  ")
 		events <- AIStreamEvent{Event: "response_data", Message: "收到模型响应", Detail: string(respDetailBytes)}

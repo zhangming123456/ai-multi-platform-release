@@ -260,226 +260,228 @@ erDiagram
 
 #### rbac_roles（角色表）
 
-| 字段 | 类型 | 约束 | 说明 |
-|------|------|------|------|
-| id | VARCHAR(36) | PK | UUID 主键 |
-| name | VARCHAR(50) | UK, NOT NULL | 角色标识名（如 admin、manager、operator） |
-| display_name | VARCHAR(100) | NOT NULL | 中文展示名 |
-| description | TEXT | | 角色描述 |
-| role_type | VARCHAR(20) | DEFAULT 'other' | 角色类型：admin / other |
-| is_super_admin | BOOLEAN | DEFAULT FALSE | 是否为超级管理员 |
-| is_builtin | BOOLEAN | DEFAULT FALSE | 是否为内置角色（不可删除） |
-| created_at | TIMESTAMP | DEFAULT CURRENT_TIMESTAMP | 创建时间 |
-| updated_at | TIMESTAMP | DEFAULT CURRENT_TIMESTAMP | 更新时间 |
+| 字段           | 类型         | 约束                      | 说明                                      |
+| -------------- | ------------ | ------------------------- | ----------------------------------------- |
+| id             | VARCHAR(36)  | PK                        | UUID 主键                                 |
+| name           | VARCHAR(50)  | UK, NOT NULL              | 角色标识名（如 admin、manager、operator） |
+| display_name   | VARCHAR(100) | NOT NULL                  | 中文展示名                                |
+| description    | TEXT         |                           | 角色描述                                  |
+| role_type      | VARCHAR(20)  | DEFAULT 'other'           | 角色类型：admin / other                   |
+| is_super_admin | BOOLEAN      | DEFAULT FALSE             | 是否为超级管理员                          |
+| is_builtin     | BOOLEAN      | DEFAULT FALSE             | 是否为内置角色（不可删除）                |
+| created_at     | TIMESTAMP    | DEFAULT CURRENT_TIMESTAMP | 创建时间                                  |
+| updated_at     | TIMESTAMP    | DEFAULT CURRENT_TIMESTAMP | 更新时间                                  |
 
 #### rbac_resources（资源表）
 
-| 字段 | 类型 | 约束 | 说明 |
-|------|------|------|------|
-| id | VARCHAR(36) | PK | UUID 主键 |
-| key | VARCHAR(100) | UK, NOT NULL | 权限 key（如 dashboard:read、content:create:write） |
-| name | VARCHAR(100) | NOT NULL | 中文显示名称 |
-| description | TEXT | | 权限描述说明 |
-| parent_id | VARCHAR(36) | FK → rbac_resources.id | 父资源 ID，支持资源树 |
-| is_active | BOOLEAN | DEFAULT TRUE | 是否启用 |
-| created_at | TIMESTAMP | DEFAULT CURRENT_TIMESTAMP | 创建时间 |
+| 字段        | 类型         | 约束                      | 说明                                                |
+| ----------- | ------------ | ------------------------- | --------------------------------------------------- |
+| id          | VARCHAR(36)  | PK                        | UUID 主键                                           |
+| key         | VARCHAR(100) | UK, NOT NULL              | 权限 key（如 dashboard:read、content:create:write） |
+| name        | VARCHAR(100) | NOT NULL                  | 中文显示名称                                        |
+| description | TEXT         |                           | 权限描述说明                                        |
+| parent_id   | VARCHAR(36)  | FK → rbac_resources.id    | 父资源 ID，支持资源树                               |
+| is_active   | BOOLEAN      | DEFAULT TRUE              | 是否启用                                            |
+| created_at  | TIMESTAMP    | DEFAULT CURRENT_TIMESTAMP | 创建时间                                            |
 
 **资源类型推断**：根据 key 格式自动推断，无需存储 type 字段。
+
 - `{name}:read` 或 `{name}:write`（2 段式）→ `page`（页面权限）
 - `{name}:{operation}:{read|write}`（3 段式）→ `action`（操作权限）
 
 #### rbac_permissions（权限表）
 
-| 字段 | 类型 | 约束 | 说明 |
-|------|------|------|------|
-| id | VARCHAR(36) | PK | UUID 主键 |
-| resource_id | VARCHAR(36) | FK → rbac_resources.id, NOT NULL | 关联资源 |
-| operation | VARCHAR(50) | NOT NULL | 操作类型：read / write / create / update / delete / approve / reject / execute |
-| key | VARCHAR(150) | UK, NOT NULL | 权限 key（如 content:create:write） |
-| is_active | BOOLEAN | DEFAULT TRUE | 是否启用 |
-| created_at | TIMESTAMP | DEFAULT CURRENT_TIMESTAMP | 创建时间 |
+| 字段        | 类型         | 约束                             | 说明                                                                           |
+| ----------- | ------------ | -------------------------------- | ------------------------------------------------------------------------------ |
+| id          | VARCHAR(36)  | PK                               | UUID 主键                                                                      |
+| resource_id | VARCHAR(36)  | FK → rbac_resources.id, NOT NULL | 关联资源                                                                       |
+| operation   | VARCHAR(50)  | NOT NULL                         | 操作类型：read / write / create / update / delete / approve / reject / execute |
+| key         | VARCHAR(150) | UK, NOT NULL                     | 权限 key（如 content:create:write）                                            |
+| is_active   | BOOLEAN      | DEFAULT TRUE                     | 是否启用                                                                       |
+| created_at  | TIMESTAMP    | DEFAULT CURRENT_TIMESTAMP        | 创建时间                                                                       |
 
 #### rbac_role_hierarchy（角色继承表）
 
-| 字段 | 类型 | 约束 | 说明 |
-|------|------|------|------|
-| id | VARCHAR(36) | PK | UUID 主键 |
-| parent_role_id | VARCHAR(36) | FK → rbac_roles.id, NOT NULL | 父角色 |
-| child_role_id | VARCHAR(36) | FK → rbac_roles.id, NOT NULL | 子角色 |
-| created_at | TIMESTAMP | DEFAULT CURRENT_TIMESTAMP | 创建时间 |
+| 字段           | 类型        | 约束                         | 说明      |
+| -------------- | ----------- | ---------------------------- | --------- |
+| id             | VARCHAR(36) | PK                           | UUID 主键 |
+| parent_role_id | VARCHAR(36) | FK → rbac_roles.id, NOT NULL | 父角色    |
+| child_role_id  | VARCHAR(36) | FK → rbac_roles.id, NOT NULL | 子角色    |
+| created_at     | TIMESTAMP   | DEFAULT CURRENT_TIMESTAMP    | 创建时间  |
 
 **约束**：禁止成环（parent 不能是 child 的后代，也不能等于 child）。
 
 #### rbac_role_permissions（角色权限表）
 
-| 字段 | 类型 | 约束 | 说明 |
-|------|------|------|------|
-| id | VARCHAR(36) | PK | UUID 主键 |
-| role_id | VARCHAR(36) | FK → rbac_roles.id, NOT NULL | 角色 ID |
-| permission_id | VARCHAR(36) | FK → rbac_permissions.id, NOT NULL | 权限 ID |
-| grant_type | VARCHAR(20) | DEFAULT 'direct' | 授权来源：direct（直接）/ inherited（继承） |
-| created_at | TIMESTAMP | DEFAULT CURRENT_TIMESTAMP | 创建时间 |
+| 字段          | 类型        | 约束                               | 说明                                        |
+| ------------- | ----------- | ---------------------------------- | ------------------------------------------- |
+| id            | VARCHAR(36) | PK                                 | UUID 主键                                   |
+| role_id       | VARCHAR(36) | FK → rbac_roles.id, NOT NULL       | 角色 ID                                     |
+| permission_id | VARCHAR(36) | FK → rbac_permissions.id, NOT NULL | 权限 ID                                     |
+| grant_type    | VARCHAR(20) | DEFAULT 'direct'                   | 授权来源：direct（直接）/ inherited（继承） |
+| created_at    | TIMESTAMP   | DEFAULT CURRENT_TIMESTAMP          | 创建时间                                    |
 
 #### rbac_user_role_assignments（用户角色分配表）
 
-| 字段 | 类型 | 约束 | 说明 |
-|------|------|------|------|
-| id | VARCHAR(36) | PK | UUID 主键 |
-| user_id | VARCHAR(36) | FK → users.id, NOT NULL | 用户 ID |
-| role_id | VARCHAR(36) | FK → rbac_roles.id, NOT NULL | 角色 ID |
-| grant_type | VARCHAR(20) | DEFAULT 'direct' | 分配类型：direct / inherited |
-| valid_from | TIMESTAMP | | 生效时间 |
-| valid_until | TIMESTAMP | | 失效时间 |
-| created_at | TIMESTAMP | DEFAULT CURRENT_TIMESTAMP | 创建时间 |
+| 字段        | 类型        | 约束                         | 说明                         |
+| ----------- | ----------- | ---------------------------- | ---------------------------- |
+| id          | VARCHAR(36) | PK                           | UUID 主键                    |
+| user_id     | VARCHAR(36) | FK → users.id, NOT NULL      | 用户 ID                      |
+| role_id     | VARCHAR(36) | FK → rbac_roles.id, NOT NULL | 角色 ID                      |
+| grant_type  | VARCHAR(20) | DEFAULT 'direct'             | 分配类型：direct / inherited |
+| valid_from  | TIMESTAMP   |                              | 生效时间                     |
+| valid_until | TIMESTAMP   |                              | 失效时间                     |
+| created_at  | TIMESTAMP   | DEFAULT CURRENT_TIMESTAMP    | 创建时间                     |
 
 #### rbac_user_permission_overrides（用户权限覆盖表）
 
-| 字段 | 类型 | 约束 | 说明 |
-|------|------|------|------|
-| id | VARCHAR(36) | PK | UUID 主键 |
-| user_id | VARCHAR(36) | FK → users.id ON DELETE CASCADE, NOT NULL | 用户 ID |
-| permission_key | VARCHAR(150) | NOT NULL | 权限 key |
-| granted | BOOLEAN | NOT NULL | 是否授予（true=授予，false=拒绝） |
-| created_at | TIMESTAMP | DEFAULT CURRENT_TIMESTAMP | 创建时间 |
-| updated_at | TIMESTAMP | DEFAULT CURRENT_TIMESTAMP | 更新时间 |
+| 字段           | 类型         | 约束                                      | 说明                              |
+| -------------- | ------------ | ----------------------------------------- | --------------------------------- |
+| id             | VARCHAR(36)  | PK                                        | UUID 主键                         |
+| user_id        | VARCHAR(36)  | FK → users.id ON DELETE CASCADE, NOT NULL | 用户 ID                           |
+| permission_key | VARCHAR(150) | NOT NULL                                  | 权限 key                          |
+| granted        | BOOLEAN      | NOT NULL                                  | 是否授予（true=授予，false=拒绝） |
+| created_at     | TIMESTAMP    | DEFAULT CURRENT_TIMESTAMP                 | 创建时间                          |
+| updated_at     | TIMESTAMP    | DEFAULT CURRENT_TIMESTAMP                 | 更新时间                          |
 
 **唯一约束**：`(user_id, permission_key)`
 
 #### rbac_constraints（约束表）
 
-| 字段 | 类型 | 约束 | 说明 |
-|------|------|------|------|
-| id | VARCHAR(36) | PK | UUID 主键 |
-| name | VARCHAR(100) | NOT NULL | 约束名称 |
-| description | TEXT | | 约束描述 |
-| constraint_type | VARCHAR(50) | NOT NULL | 约束类型：mutual_exclusive / prerequisite / cardinality |
-| config | JSON | DEFAULT '{}' | 类型相关配置 |
-| is_active | BOOLEAN | DEFAULT TRUE | 是否启用 |
-| created_at | TIMESTAMP | DEFAULT CURRENT_TIMESTAMP | 创建时间 |
+| 字段            | 类型         | 约束                      | 说明                                                    |
+| --------------- | ------------ | ------------------------- | ------------------------------------------------------- |
+| id              | VARCHAR(36)  | PK                        | UUID 主键                                               |
+| name            | VARCHAR(100) | NOT NULL                  | 约束名称                                                |
+| description     | TEXT         |                           | 约束描述                                                |
+| constraint_type | VARCHAR(50)  | NOT NULL                  | 约束类型：mutual_exclusive / prerequisite / cardinality |
+| config          | JSON         | DEFAULT '{}'              | 类型相关配置                                            |
+| is_active       | BOOLEAN      | DEFAULT TRUE              | 是否启用                                                |
+| created_at      | TIMESTAMP    | DEFAULT CURRENT_TIMESTAMP | 创建时间                                                |
 
 **config 示例**：
+
 - `mutual_exclusive`：`{"scope": "static"}`（同一用户不能同时拥有两个互斥角色）
 - `prerequisite`：`{"require_all": true}`（拥有目标角色前必须先拥有先决角色）
 - `cardinality`：`{"max_users": 3}`（某角色最多分配用户数）
 
 #### rbac_constraint_role_associations（约束角色关联表）
 
-| 字段 | 类型 | 约束 | 说明 |
-|------|------|------|------|
-| id | VARCHAR(36) | PK | UUID 主键 |
-| constraint_id | VARCHAR(36) | FK → rbac_constraints.id, NOT NULL | 约束 ID |
-| role_id | VARCHAR(36) | FK → rbac_roles.id, NOT NULL | 角色 ID |
-| association_type | VARCHAR(50) | NOT NULL | 关联类型：subject / target / prerequisite |
+| 字段             | 类型        | 约束                               | 说明                                      |
+| ---------------- | ----------- | ---------------------------------- | ----------------------------------------- |
+| id               | VARCHAR(36) | PK                                 | UUID 主键                                 |
+| constraint_id    | VARCHAR(36) | FK → rbac_constraints.id, NOT NULL | 约束 ID                                   |
+| role_id          | VARCHAR(36) | FK → rbac_roles.id, NOT NULL       | 角色 ID                                   |
+| association_type | VARCHAR(50) | NOT NULL                           | 关联类型：subject / target / prerequisite |
 
 ### 2.2 业务表
 
 #### users（用户表）
 
-| 字段 | 类型 | 约束 | 说明 |
-|------|------|------|------|
-| id | VARCHAR(36) | PK | UUID 主键，超级管理员固定为 `"1"` |
-| username | VARCHAR(100) | UK, NOT NULL | 登录用户名 |
-| email | VARCHAR(255) | UK | 邮箱 |
-| hashed_password | VARCHAR(255) | NOT NULL | bcrypt 哈希密码 |
-| nickname | VARCHAR(100) | NOT NULL | 显示昵称 |
-| role | VARCHAR(50) | DEFAULT 'operator', NOT NULL | 角色名称（保留作标签/迁移用） |
-| avatar_url | VARCHAR(500) | | 头像链接 |
-| created_at | TIMESTAMP | DEFAULT CURRENT_TIMESTAMP | 创建时间 |
-| updated_at | TIMESTAMP | DEFAULT CURRENT_TIMESTAMP | 更新时间 |
+| 字段            | 类型         | 约束                         | 说明                              |
+| --------------- | ------------ | ---------------------------- | --------------------------------- |
+| id              | VARCHAR(36)  | PK                           | UUID 主键，超级管理员固定为 `"1"` |
+| username        | VARCHAR(100) | UK, NOT NULL                 | 登录用户名                        |
+| email           | VARCHAR(255) | UK                           | 邮箱                              |
+| hashed_password | VARCHAR(255) | NOT NULL                     | bcrypt 哈希密码                   |
+| nickname        | VARCHAR(100) | NOT NULL                     | 显示昵称                          |
+| role            | VARCHAR(50)  | DEFAULT 'operator', NOT NULL | 角色名称（保留作标签/迁移用）     |
+| avatar_url      | VARCHAR(500) |                              | 头像链接                          |
+| created_at      | TIMESTAMP    | DEFAULT CURRENT_TIMESTAMP    | 创建时间                          |
+| updated_at      | TIMESTAMP    | DEFAULT CURRENT_TIMESTAMP    | 更新时间                          |
 
 #### accounts（平台账号表）
 
-| 字段 | 类型 | 约束 | 说明 |
-|------|------|------|------|
-| id | VARCHAR(36) | PK | UUID 主键 |
-| user_id | VARCHAR(36) | FK → users.id, NOT NULL | 所属用户 |
-| platform | VARCHAR(50) | NOT NULL | 平台类型 |
-| nickname | VARCHAR(200) | NOT NULL | 平台昵称 |
-| avatar_url | VARCHAR(500) | | 头像 |
-| status | VARCHAR(20) | DEFAULT 'active' | 状态 |
-| cookie_data | TEXT | | Cookie 数据 |
-| access_token | TEXT | | Access Token |
-| token_expires_at | TIMESTAMP | | Token 过期时间 |
-| last_check_at | TIMESTAMP | | 最后检查时间 |
-| error_message | TEXT | | 错误信息 |
-| created_at | TIMESTAMP | DEFAULT CURRENT_TIMESTAMP | 创建时间 |
-| updated_at | TIMESTAMP | DEFAULT CURRENT_TIMESTAMP | 更新时间 |
+| 字段             | 类型         | 约束                      | 说明           |
+| ---------------- | ------------ | ------------------------- | -------------- |
+| id               | VARCHAR(36)  | PK                        | UUID 主键      |
+| user_id          | VARCHAR(36)  | FK → users.id, NOT NULL   | 所属用户       |
+| platform         | VARCHAR(50)  | NOT NULL                  | 平台类型       |
+| nickname         | VARCHAR(200) | NOT NULL                  | 平台昵称       |
+| avatar_url       | VARCHAR(500) |                           | 头像           |
+| status           | VARCHAR(20)  | DEFAULT 'active'          | 状态           |
+| cookie_data      | TEXT         |                           | Cookie 数据    |
+| access_token     | TEXT         |                           | Access Token   |
+| token_expires_at | TIMESTAMP    |                           | Token 过期时间 |
+| last_check_at    | TIMESTAMP    |                           | 最后检查时间   |
+| error_message    | TEXT         |                           | 错误信息       |
+| created_at       | TIMESTAMP    | DEFAULT CURRENT_TIMESTAMP | 创建时间       |
+| updated_at       | TIMESTAMP    | DEFAULT CURRENT_TIMESTAMP | 更新时间       |
 
 #### contents（内容表）
 
-| 字段 | 类型 | 约束 | 说明 |
-|------|------|------|------|
-| id | VARCHAR(36) | PK | UUID 主键 |
-| user_id | VARCHAR(36) | FK → users.id, NOT NULL | 创建者 |
-| title | VARCHAR(500) | NOT NULL | 标题 |
-| body | TEXT | NOT NULL | 正文 |
-| platform | VARCHAR(50) | NOT NULL | 目标平台 |
-| status | VARCHAR(20) | DEFAULT 'draft' | 状态 |
-| media_urls | TEXT | DEFAULT '[]' | 媒体 URL 列表（JSON） |
-| ai_generated | BOOLEAN | DEFAULT FALSE | 是否 AI 生成 |
-| original_content_id | VARCHAR(36) | FK → contents.id | 原始内容 ID（AI 变体） |
-| created_at | TIMESTAMP | DEFAULT CURRENT_TIMESTAMP | 创建时间 |
-| updated_at | TIMESTAMP | DEFAULT CURRENT_TIMESTAMP | 更新时间 |
+| 字段                | 类型         | 约束                      | 说明                   |
+| ------------------- | ------------ | ------------------------- | ---------------------- |
+| id                  | VARCHAR(36)  | PK                        | UUID 主键              |
+| user_id             | VARCHAR(36)  | FK → users.id, NOT NULL   | 创建者                 |
+| title               | VARCHAR(500) | NOT NULL                  | 标题                   |
+| body                | TEXT         | NOT NULL                  | 正文                   |
+| platform            | VARCHAR(50)  | NOT NULL                  | 目标平台               |
+| status              | VARCHAR(20)  | DEFAULT 'draft'           | 状态                   |
+| media_urls          | TEXT         | DEFAULT '[]'              | 媒体 URL 列表（JSON）  |
+| ai_generated        | BOOLEAN      | DEFAULT FALSE             | 是否 AI 生成           |
+| original_content_id | VARCHAR(36)  | FK → contents.id          | 原始内容 ID（AI 变体） |
+| created_at          | TIMESTAMP    | DEFAULT CURRENT_TIMESTAMP | 创建时间               |
+| updated_at          | TIMESTAMP    | DEFAULT CURRENT_TIMESTAMP | 更新时间               |
 
 #### publish_tasks（发布任务表）
 
-| 字段 | 类型 | 约束 | 说明 |
-|------|------|------|------|
-| id | VARCHAR(36) | PK | UUID 主键 |
-| content_id | VARCHAR(36) | FK → contents.id, NOT NULL | 内容 ID |
-| account_id | VARCHAR(36) | FK → accounts.id, NOT NULL | 账号 ID |
-| status | VARCHAR(20) | DEFAULT 'pending' | 任务状态 |
-| scheduled_at | TIMESTAMP | | 计划发布时间 |
-| published_at | TIMESTAMP | | 实际发布时间 |
-| error_message | TEXT | | 错误信息 |
-| retry_count | INTEGER | DEFAULT 0 | 重试次数 |
-| created_at | TIMESTAMP | DEFAULT CURRENT_TIMESTAMP | 创建时间 |
-| updated_at | TIMESTAMP | DEFAULT CURRENT_TIMESTAMP | 更新时间 |
+| 字段          | 类型        | 约束                       | 说明         |
+| ------------- | ----------- | -------------------------- | ------------ |
+| id            | VARCHAR(36) | PK                         | UUID 主键    |
+| content_id    | VARCHAR(36) | FK → contents.id, NOT NULL | 内容 ID      |
+| account_id    | VARCHAR(36) | FK → accounts.id, NOT NULL | 账号 ID      |
+| status        | VARCHAR(20) | DEFAULT 'pending'          | 任务状态     |
+| scheduled_at  | TIMESTAMP   |                            | 计划发布时间 |
+| published_at  | TIMESTAMP   |                            | 实际发布时间 |
+| error_message | TEXT        |                            | 错误信息     |
+| retry_count   | INTEGER     | DEFAULT 0                  | 重试次数     |
+| created_at    | TIMESTAMP   | DEFAULT CURRENT_TIMESTAMP  | 创建时间     |
+| updated_at    | TIMESTAMP   | DEFAULT CURRENT_TIMESTAMP  | 更新时间     |
 
 #### model_configs（模型配置表）
 
 全局模型配置表，不与特定用户绑定（无 user_id 字段）。
 
-| 字段 | 类型 | 约束 | 说明 |
-|------|------|------|------|
-| id | VARCHAR(64) | PK | 配置 ID（非 UUID，如 `plan-xxx`） |
-| name | VARCHAR(100) | NOT NULL | 配置名称 |
-| display_name | VARCHAR(100) | NOT NULL | 展示名称 |
-| provider | VARCHAR(20) | NOT NULL | 提供商 |
-| mode | VARCHAR(20) | NOT NULL | 模式 |
-| api_format | VARCHAR(50) | NOT NULL, DEFAULT 'openai_chat' | API 格式 |
-| api_key | VARCHAR(500) | | API 密钥 |
-| base_url | VARCHAR(500) | | 基础 URL |
-| full_url | BOOLEAN | NOT NULL, DEFAULT FALSE | 是否使用完整 URL |
-| model | VARCHAR(2000) | NOT NULL | 模型名称 |
-| multimodal | BOOLEAN | NOT NULL, DEFAULT FALSE | 是否多模态 |
-| model_series | VARCHAR(50) | NOT NULL, DEFAULT 'default' | 模型系列 |
-| context_input | INTEGER | NOT NULL, DEFAULT 128000 | 输入上下文长度 |
-| context_output | INTEGER | NOT NULL, DEFAULT 4096 | 输出上下文长度 |
-| tool_call_rounds | INTEGER | NOT NULL, DEFAULT 200 | 工具调用轮数 |
-| enabled | BOOLEAN | NOT NULL, DEFAULT FALSE | 是否启用 |
-| monthly_quota | INTEGER | NOT NULL, DEFAULT 1000000 | 月度配额 |
-| used_tokens | INTEGER | NOT NULL, DEFAULT 0 | 已用 Token 数 |
-| created_at | TIMESTAMP | NOT NULL, DEFAULT CURRENT_TIMESTAMP | 创建时间 |
-| updated_at | TIMESTAMP | NOT NULL, DEFAULT CURRENT_TIMESTAMP | 更新时间 |
+| 字段             | 类型          | 约束                                | 说明                              |
+| ---------------- | ------------- | ----------------------------------- | --------------------------------- |
+| id               | VARCHAR(64)   | PK                                  | 配置 ID（非 UUID，如 `plan-xxx`） |
+| name             | VARCHAR(100)  | NOT NULL                            | 配置名称                          |
+| display_name     | VARCHAR(100)  | NOT NULL                            | 展示名称                          |
+| provider         | VARCHAR(20)   | NOT NULL                            | 提供商                            |
+| mode             | VARCHAR(20)   | NOT NULL                            | 模式                              |
+| api_format       | VARCHAR(50)   | NOT NULL, DEFAULT 'openai_chat'     | API 格式                          |
+| api_key          | VARCHAR(500)  |                                     | API 密钥                          |
+| base_url         | VARCHAR(500)  |                                     | 基础 URL                          |
+| full_url         | BOOLEAN       | NOT NULL, DEFAULT FALSE             | 是否使用完整 URL                  |
+| model            | VARCHAR(2000) | NOT NULL                            | 模型名称                          |
+| multimodal       | BOOLEAN       | NOT NULL, DEFAULT FALSE             | 是否多模态                        |
+| model_series     | VARCHAR(50)   | NOT NULL, DEFAULT 'default'         | 模型系列                          |
+| context_input    | INTEGER       | NOT NULL, DEFAULT 128000            | 输入上下文长度                    |
+| context_output   | INTEGER       | NOT NULL, DEFAULT 4096              | 输出上下文长度                    |
+| tool_call_rounds | INTEGER       | NOT NULL, DEFAULT 200               | 工具调用轮数                      |
+| enabled          | BOOLEAN       | NOT NULL, DEFAULT FALSE             | 是否启用                          |
+| monthly_quota    | INTEGER       | NOT NULL, DEFAULT 1000000           | 月度配额                          |
+| used_tokens      | INTEGER       | NOT NULL, DEFAULT 0                 | 已用 Token 数                     |
+| created_at       | TIMESTAMP     | NOT NULL, DEFAULT CURRENT_TIMESTAMP | 创建时间                          |
+| updated_at       | TIMESTAMP     | NOT NULL, DEFAULT CURRENT_TIMESTAMP | 更新时间                          |
 
 #### user_creation_requests（用户创建审核表）
 
-| 字段 | 类型 | 约束 | 说明 |
-|------|------|------|------|
-| id | VARCHAR(36) | PK | UUID 主键 |
-| requester_id | VARCHAR(36) | FK → users.id | 申请人 ID |
-| username | VARCHAR(100) | NOT NULL | 待创建用户名 |
-| email | VARCHAR(255) | | 待创建邮箱 |
-| hashed_password | VARCHAR(255) | NOT NULL | 密码哈希 |
-| nickname | VARCHAR(100) | NOT NULL | 昵称 |
-| role | VARCHAR(50) | | 角色 |
-| avatar_url | VARCHAR(500) | | 头像 |
-| status | VARCHAR(20) | DEFAULT 'pending' | 审核状态 |
-| reviewer_id | VARCHAR(36) | FK → users.id | 审批人 |
-| reject_reason | VARCHAR(500) | | 驳回原因 |
-| created_at | TIMESTAMP | DEFAULT CURRENT_TIMESTAMP | 创建时间 |
-| updated_at | TIMESTAMP | DEFAULT CURRENT_TIMESTAMP | 更新时间 |
+| 字段            | 类型         | 约束                      | 说明         |
+| --------------- | ------------ | ------------------------- | ------------ |
+| id              | VARCHAR(36)  | PK                        | UUID 主键    |
+| requester_id    | VARCHAR(36)  | FK → users.id             | 申请人 ID    |
+| username        | VARCHAR(100) | NOT NULL                  | 待创建用户名 |
+| email           | VARCHAR(255) |                           | 待创建邮箱   |
+| hashed_password | VARCHAR(255) | NOT NULL                  | 密码哈希     |
+| nickname        | VARCHAR(100) | NOT NULL                  | 昵称         |
+| role            | VARCHAR(50)  |                           | 角色         |
+| avatar_url      | VARCHAR(500) |                           | 头像         |
+| status          | VARCHAR(20)  | DEFAULT 'pending'         | 审核状态     |
+| reviewer_id     | VARCHAR(36)  | FK → users.id             | 审批人       |
+| reject_reason   | VARCHAR(500) |                           | 驳回原因     |
+| created_at      | TIMESTAMP    | DEFAULT CURRENT_TIMESTAMP | 创建时间     |
+| updated_at      | TIMESTAMP    | DEFAULT CURRENT_TIMESTAMP | 更新时间     |
 
 ## 3. DDL
 

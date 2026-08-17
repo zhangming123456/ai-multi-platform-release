@@ -64,9 +64,9 @@ func migrateSchema() error {
 		return err
 	}
 	type migration struct {
-		table   string
-		column  string
-		ddl     string
+		table  string
+		column string
+		ddl    string
 	}
 	migrations := []migration{
 		{"inspections", "template_id", "ALTER TABLE inspections ADD COLUMN template_id varchar(36) DEFAULT ''"},
