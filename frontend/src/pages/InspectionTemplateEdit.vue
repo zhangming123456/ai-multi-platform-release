@@ -15,7 +15,7 @@
     </PageHeader>
 
     <a-spin :loading="loading" tip="加载中..." class="w-full px-4 md:px-6 lg:px-8 pb-24">
-      <div class="max-w-4xl space-y-4 relative">
+      <div ref="checkItemsRef" class="max-w-4xl space-y-4 relative">
         <div class="rounded-2xl border border-[#E5E5EA] bg-white/70 backdrop-blur-xl p-5">
           <div class="text-[15px] font-semibold text-[#1D1D1F] mb-4">基本信息</div>
           <a-form :model="form" layout="vertical">
@@ -269,7 +269,9 @@
                             :max-rows="4"
                             placeholder="填写该项的检查标准（500 字以内）..."
                           />
-                          <div>支持拖拽 / 粘贴图片，或粘贴图片 URL 自动识别为标准图</div>
+                          <template #extra>
+                            <div>支持拖拽 / 粘贴图片，或粘贴图片 URL 自动识别为标准图</div>
+                          </template>
                         </a-form-item>
                       </template>
 
@@ -295,37 +297,41 @@
                             :key="optIndex"
                             class="flex items-center gap-1.5 mb-1.5"
                           >
-                            <span class="text-[11px] text-[#86868b] w-7 shrink-0">{{
-                              item.score_type === 'pass_fail' ? '序号' : '分值'
-                            }}</span>
-                            <a-select
-                              v-if="item.score_type === 'score'"
-                              :model-value="Number(opt.score)"
-                              size="mini"
-                              class="!w-24"
-                              placeholder="选择分值"
-                              @change="(val: any) => onOptionScoreSelect(item, optIndex, val)"
-                            >
-                              <a-option
-                                v-for="v in ALLOWED_SCORE_VALUES"
-                                :key="v"
-                                :value="v"
-                                :disabled="
-                                  item.score_options.some(
-                                    (o, i) => i !== optIndex && Number(o.score) === v,
-                                  )
-                                "
-                                >{{ v }}</a-option
+                            <div class="flex items-center">
+                              <span class="text-[11px] text-[#86868b] w-7 shrink-0">
+                                {{ item.score_type === 'pass_fail' ? '序号' : '分值' }}
+                              </span>
+                              <a-select
+                                v-if="item.score_type === 'score'"
+                                :model-value="Number(opt.score)"
+                                size="mini"
+                                class="!w-15"
+                                placeholder="选择分值"
+                                @change="(val: any) => onOptionScoreSelect(item, optIndex, val)"
                               >
-                            </a-select>
-                            <span
-                              v-else
-                              class="inline-flex items-center justify-center rounded-md bg-[#F5F5F7] text-[#1D1D1F] text-[13px] font-semibold min-w-[60px] h-[28px] px-2 select-none tabular-nums"
-                              >{{ optIndex + 1 }}</span
-                            >
-                            <span class="text-[11px] text-[#86868b] w-7 shrink-0">{{
-                              item.score_type === 'pass_fail' ? '选项' : '描述'
-                            }}</span>
+                                <a-option
+                                  v-for="v in ALLOWED_SCORE_VALUES"
+                                  :key="v"
+                                  :value="v"
+                                  :disabled="
+                                    item.score_options.some(
+                                      (o, i) => i !== optIndex && Number(o.score) === v,
+                                    )
+                                  "
+                                >
+                                  {{ v }}
+                                </a-option>
+                              </a-select>
+                              <span
+                                v-else
+                                class="inline-flex items-center justify-center rounded-md text-[#1D1D1F] text-[13px] font-semibold h-[28px] px-0.5 select-none tabular-nums"
+                              >
+                                {{ optIndex + 1 }}
+                              </span>
+                            </div>
+                            <span class="text-[11px] text-[#86868b] w-7 shrink-0">
+                              {{ item.score_type === 'pass_fail' ? '选项' : '描述' }}
+                            </span>
                             <a-input
                               v-model="opt.label"
                               :placeholder="
@@ -365,34 +371,40 @@
 
                       <template v-if="expandedItemKeys.has(item.key)">
                         <a-form-item field-class="!mb-2">
-                          <div class="flex flex-col gap-1.5">
+                          <div class="flex flex-wrap items-center gap-2">
                             <div
                               class="flex items-center justify-between rounded-lg bg-[#F5F5F7] px-3 py-2"
                             >
                               <div class="flex items-center gap-2">
-                                <div>
-                                  <div class="text-[13px] font-medium text-[#1D1D1F]">问题描述</div>
-                                  <div class="text-[11px] text-[#86868b]">
-                                    控制巡店时该字段是否展示与必填
+                                <div class="flex flex-col gap-3">
+                                  <div class="flex flex-col gap-1.5">
+                                    <div class="text-[13px] font-medium text-[#1D1D1F]">
+                                      问题描述
+                                    </div>
+                                    <div class="text-[11px] text-[#86868b]">
+                                      控制巡店时该字段是否展示与必填
+                                    </div>
                                   </div>
-                                </div>
-                              </div>
-                              <div class="flex items-center gap-3">
-                                <div class="flex items-center gap-1.5">
-                                  <span class="text-[11px] text-[#86868b]">显示</span>
-                                  <a-switch v-model="item.show_remark" size="small" />
-                                </div>
-                                <div
-                                  class="flex items-center gap-1.5"
-                                  :class="!item.show_remark ? 'opacity-40' : ''"
-                                >
-                                  <span class="text-[11px] text-[#86868b]">必填</span>
-                                  <a-switch
-                                    :model-value="item.show_remark ? item.require_remark : false"
-                                    :disabled="!item.show_remark"
-                                    size="small"
-                                    @change="(val: any) => (item.require_remark = val)"
-                                  />
+                                  <div class="flex items-center gap-3">
+                                    <div class="flex items-center gap-1.5">
+                                      <span class="text-[11px] text-[#86868b]">显示</span>
+                                      <a-switch v-model="item.show_remark" size="small" />
+                                    </div>
+                                    <div
+                                      class="flex items-center gap-1.5"
+                                      :class="!item.show_remark ? 'opacity-40' : ''"
+                                    >
+                                      <span class="text-[11px] text-[#86868b]">必填</span>
+                                      <a-switch
+                                        :model-value="
+                                          item.show_remark ? item.require_remark : false
+                                        "
+                                        :disabled="!item.show_remark"
+                                        size="small"
+                                        @change="(val: any) => (item.require_remark = val)"
+                                      />
+                                    </div>
+                                  </div>
                                 </div>
                               </div>
                             </div>
@@ -400,29 +412,33 @@
                               class="flex items-center justify-between rounded-lg bg-[#F5F5F7] px-3 py-2"
                             >
                               <div class="flex items-center gap-2">
-                                <div>
-                                  <div class="text-[13px] font-medium text-[#1D1D1F]">巡店图片</div>
-                                  <div class="text-[11px] text-[#86868b]">
-                                    控制巡店时该字段是否展示与必填
+                                <div class="flex flex-col gap-3">
+                                  <div class="flex flex-col gap-1.5">
+                                    <div class="text-[13px] font-medium text-[#1D1D1F]">
+                                      巡店图片
+                                    </div>
+                                    <div class="text-[11px] text-[#86868b]">
+                                      控制巡店时该字段是否展示与必填
+                                    </div>
                                   </div>
-                                </div>
-                              </div>
-                              <div class="flex items-center gap-3">
-                                <div class="flex items-center gap-1.5">
-                                  <span class="text-[11px] text-[#86868b]">显示</span>
-                                  <a-switch v-model="item.show_photo" size="small" />
-                                </div>
-                                <div
-                                  class="flex items-center gap-1.5"
-                                  :class="!item.show_photo ? 'opacity-40' : ''"
-                                >
-                                  <span class="text-[11px] text-[#86868b]">必填</span>
-                                  <a-switch
-                                    :model-value="item.show_photo ? item.require_photo : false"
-                                    :disabled="!item.show_photo"
-                                    size="small"
-                                    @change="(val: any) => (item.require_photo = val)"
-                                  />
+                                  <div class="flex items-center gap-3">
+                                    <div class="flex items-center gap-1.5">
+                                      <span class="text-[11px] text-[#86868b]">显示</span>
+                                      <a-switch v-model="item.show_photo" size="small" />
+                                    </div>
+                                    <div
+                                      class="flex items-center gap-1.5"
+                                      :class="!item.show_photo ? 'opacity-40' : ''"
+                                    >
+                                      <span class="text-[11px] text-[#86868b]">必填</span>
+                                      <a-switch
+                                        :model-value="item.show_photo ? item.require_photo : false"
+                                        :disabled="!item.show_photo"
+                                        size="small"
+                                        @change="(val: any) => (item.require_photo = val)"
+                                      />
+                                    </div>
+                                  </div>
                                 </div>
                               </div>
                             </div>
@@ -703,6 +719,7 @@ import AttachmentInputArea from '@/components/AttachmentInputArea.vue'
 import { uploadImageFile } from '@/composables/useFileUpload'
 import type { InspectionTemplate, InspectionMaterial, Paginated } from '@/types'
 import api from '@/utils/api'
+import { useResizeObserver } from '@vueuse/core'
 
 interface ScoreOptionRow {
   score: number
@@ -809,7 +826,7 @@ const sectionErrors = ref(new Set<string>())
 const collapsedCategories = ref(new Set<number>())
 const categoryErrors = ref(new Set<number>())
 const showFloatingBar = ref(false)
-const barRight = ref(20)
+const barRight = ref(0)
 const editingCategoryIndex = ref(-1)
 const expandedItemKeys = ref(new Set<number>())
 const guideAdvancedKey = ref<number | null>(null)
@@ -833,15 +850,25 @@ function markProgrammaticScroll() {
 }
 
 let scrollRafId: number | null = null
+
+const checkItemsRef = ref<HTMLElement | undefined>()
+
+useResizeObserver(checkItemsRef, handleBarRight)
+
+function handleBarRight() {
+  // 计算浮动栏 right 位置，使其贴近检查项区域右侧
+  const container = document.querySelector('.max-w-4xl.relative') as HTMLElement | null
+  if (container) {
+    const rect = container.getBoundingClientRect()
+    barRight.value = Math.max(0, window.innerWidth - rect.right - 30)
+  }
+}
+
 function onScroll() {
   const mainEl = document.querySelector('main')
   if (!mainEl) return
   showFloatingBar.value = mainEl.scrollTop > 180
-  const container = document.querySelector('.max-w-4xl.relative') as HTMLElement | null
-  if (container) {
-    const rect = container.getBoundingClientRect()
-    barRight.value = Math.max(20, window.innerWidth - rect.right - 56)
-  }
+  handleBarRight()
   if (Date.now() < programmaticScrollUntil) return
   if (scrollRafId !== null) return
   scrollRafId = requestAnimationFrame(() => {

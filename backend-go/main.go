@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"net/http"
+	"os"
 
 	"github.com/beego/beego/v2/server/web"
 	"github.com/beego/beego/v2/server/web/context"
@@ -173,7 +174,11 @@ func registerRoutes() {
 }
 
 func main() {
-	if err := services.InitDatabase("app.db"); err != nil {
+	dbPath := os.Getenv("DB_PATH")
+	if dbPath == "" {
+		dbPath = "app.db"
+	}
+	if err := services.InitDatabase(dbPath); err != nil {
 		log.Fatalf("初始化数据库失败: %v", err)
 	}
 	if err := services.SeedUsers(); err != nil {

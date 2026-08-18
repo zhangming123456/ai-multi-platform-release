@@ -39,3 +39,4 @@ Thumbs.db
 
 # Docker
 docker/volumes/
+docker/data/
