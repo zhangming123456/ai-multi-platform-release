@@ -78,10 +78,19 @@ export async function compressImage(file: File, maxSize = 1600, quality = 0.8): 
   })
 }
 
-export async function uploadImageFile(file: File): Promise<string> {
+export async function uploadImageFile(
+  file: File,
+  onProgress?: (percent: number) => void,
+): Promise<string> {
   const formData = new FormData()
   formData.append('file', file, file.name)
-  const res = await api.post('/uploads', formData)
+  const res = await api.post('/uploads', formData, {
+    onUploadProgress: (e) => {
+      if (onProgress && e.total && e.total > 0) {
+        onProgress(Math.round((e.loaded / e.total) * 100))
+      }
+    },
+  })
   return res.data?.url || ''
 }
 

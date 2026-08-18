@@ -37,11 +37,15 @@
                 :max-length="500"
                 :min-rows="3"
                 :max-rows="6"
-                placeholder="填写该项的检查标准...&#10;支持拖拽 / 粘贴图片，或粘贴图片链接自动识别为标准图"
+                placeholder="填写该项的检查标准..."
               />
-              <div class="text-[11px] text-[#86868b] mt-1.5">
-                单张不超过 10MB，最多 {{ MAX_STANDARD_IMAGES }} 张
-              </div>
+              <template #extra>
+                <div class="text-[11px] text-[#86868b] mt-1.5">
+                  单张不超过 10MB，最多 {{ MAX_STANDARD_IMAGES }} 张 ({{ standardImages.length }}/{{
+                    MAX_STANDARD_IMAGES
+                  }}), 支持拖拽 / 粘贴图片，或粘贴图片链接自动识别为标准图
+                </div>
+              </template>
             </a-form-item>
 
             <a-form-item label="评分方式" required>

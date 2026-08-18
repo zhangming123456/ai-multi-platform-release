@@ -267,8 +267,9 @@
                             :max-length="500"
                             :min-rows="2"
                             :max-rows="4"
-                            placeholder="填写该项的检查标准（500 字以内）...&#10;支持拖拽 / 粘贴图片，或粘贴图片 URL 自动识别为标准图"
+                            placeholder="填写该项的检查标准（500 字以内）..."
                           />
+                          <div>支持拖拽 / 粘贴图片，或粘贴图片 URL 自动识别为标准图</div>
                         </a-form-item>
                       </template>
 

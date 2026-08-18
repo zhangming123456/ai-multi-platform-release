@@ -4,7 +4,9 @@
 >
 > **v1.4 变更**：
 >
-> 1. **卡片式附件区域**：附件展示从网格缩略图改为横向卡片条。每张卡片固定 68px 高、220px 宽、8px 圆角，左侧 52×52px 方形缩略图/视频首帧/文件图标，右侧文件名 + 扩展名/类型 · 大小，右上角固定删除按钮（hover 额外显示图片编辑按钮）。支持横向滚动，light/dark 主题均适配。
+> 1. **卡片式附件区域**：附件展示从网格缩略图改为横向卡片条。每张卡片 200×60px（compact 模式 178×52px）、8px 圆角，左侧 44×44px（compact 38×38px）方形缩略图/视频首帧/文件图标，右侧文件名 + 扩展名/类型 · 大小，右上角固定删除按钮（hover 额外显示图片编辑按钮）。
+> 2. **真实上传进度**：`upload` 函数签名扩展为 `(file, onProgress?) => Promise<string>`，`uploadImageFile` 通过 axios `onUploadProgress` 上报真实百分比，卡片元信息区显示 `上传中... 63%`（progressMap 为响应式 Map，进度实时刷新）。
+> 3. **左右滚动箭头**：卡片条超出容器宽度时，左右两侧显示圆形箭头按钮（随滚动位置自动显隐），点击平滑滚动 240px；light/dark 主题均适配。
 >
 > **v1.3 变更**：
 >
@@ -47,13 +49,15 @@
 
 ```
 ┌─────────────────────────────────────────┐
-│  附件预览区（aia-cards）                 │
+│  附件预览区（aia-cards-wrap）            │
 │  ├─ 横向卡片条，超出可横向滚动           │
-│  ├─ 每张卡片：左侧 52×52 缩略图/视频首帧/文件图标 │
+│  ├─ 左右箭头按钮（可滚动时自动显隐）     │
+│  ├─ 每张卡片：左侧 44×44 缩略图/视频首帧/文件图标 │
 │  │             右侧文件名 + 扩展名/类型 · 大小   │
 │  │             右上角固定删除按钮        │
 │  │             hover 图片卡片显示编辑按钮 │
-│  ├─ pending / uploading：缩略图叠加 spinner │
+│  ├─ pending：spinner + "待上传"          │
+│  ├─ uploading：spinner + "上传中... 63%" │
 │  └─ 点击整张卡片查看（图片→ImageViewerModal │
 │      视频→播放弹窗，文件→新窗口下载）    │
 ├─────────────────────────────────────────┤
@@ -77,14 +81,15 @@
 ┌─────────────────────────────────────────────┐
 │  #title 插槽（可选，标题说明区）              │
 ├─────────────────────────────────────────────┤
-│  #empty 插槽 / 附件卡片区（aia-cards）        │
+│  #empty 插槽 / 附件卡片区（aia-cards-wrap）   │
 │  ├─ 横向卡片条，超出可滚动                    │
-│  ├─ 每张卡片：左侧 52×52 缩略图              │
+│  ├─ 左右箭头按钮（可滚动时自动显隐）          │
+│  ├─ 每张卡片：左侧 44×44 缩略图              │
 │  │             右侧文件名 + 扩展名/类型 · 大小 │
 │  │             右上角固定删除按钮             │
 │  │             hover 时额外显示图片编辑按钮    │
 │  ├─ pending 项：缩略图叠加 spinner + "待上传"  │
-│  └─ uploading 项：缩略图叠加 spinner + "上传中..."│
+│  └─ uploading 项：缩略图叠加 spinner + "上传中... x%" │
 ├─────────────────────────────────────────────┤
 │  文本输入区（a-textarea，透明无边框）         │
 │  ├─ auto-size 自动高度（minRows/maxRows）     │
@@ -99,28 +104,28 @@
 
 #### Props
 
-| Prop                  | 类型                               | 默认值                              | 说明                                                                                                                |
-| --------------------- | ---------------------------------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| `modelValue`          | `string[]`                         | 必传                                | 附件 URL 数组（v-model 绑定）                                                                                       |
-| `upload`              | `(file: File) => Promise<string>`  | 可选（默认 undefined）              | 文件上传函数，由业务页面注入；**不传时组件仅收集文件**（供 `getPendingFiles()` 取 File 走 base64 直发），不执行上传 |
-| `uploadMode`          | `'auto' \| 'manual'`               | `'manual'`                          | 上传模式：`auto` 选中即上传；`manual` 暂存 pending，提交前父级调 `flushPending()` 批量上传                          |
-| `fileTypes`           | `('image' \| 'video' \| 'file')[]` | `['image']`                         | 允许的文件类型集合，驱动 accept、大小限制与工具栏图标                                                               |
-| `text`                | `string`                           | `''`                                | 文本内容（`v-model:text` 绑定）                                                                                     |
-| `maxCount`            | `number`                           | `0`（不限）                         | 最大附件数量                                                                                                        |
-| `disabled`            | `boolean`                          | `false`                             | 禁用态（隐藏操作按钮、上传按钮禁用）                                                                                |
-| `bordered`            | `boolean`                          | `true`                              | 是否显示卡片边框                                                                                                    |
-| `compact`             | `boolean`                          | `false`                             | 紧凑模式（缩略图 60px）                                                                                             |
-| `placeholder`         | `string`                           | 内置默认                            | textarea 占位符                                                                                                     |
-| `hint`                | `string`                           | `支持拖拽 / 粘贴图片，链接自动识别` | 工具栏提示文字                                                                                                      |
-| `maxLength`           | `number`                           | `0`（不限）                         | 文本最大字数（>0 时显示字数统计）                                                                                   |
-| `showWordLimit`       | `boolean`                          | `true`                              | 是否显示字数统计                                                                                                    |
-| `minRows` / `maxRows` | `number`                           | `2` / `5`                           | textarea 自动高度行数范围                                                                                           |
-| `showTextarea`        | `boolean`                          | `true`                              | 独立开关：是否显示文本输入区                                                                                        |
-| `showImages`          | `boolean`                          | `true`                              | 独立开关：是否显示附件预览区                                                                                        |
-| `extractUrls`         | `boolean`                          | `true`                              | 是否从文本中自动提取图片/视频/文件 URL 并转为缩略图（内置逻辑）                                                     |
-| `accept`              | `string`                           | 由 `fileTypes` 生成                 | 文件选择器 accept（可覆盖）                                                                                         |
-| `theme`               | `'light' \| 'dark'`                | `'light'`                           | 主题：`dark` 深色背景适配创作内容页                                                                                 |
-| `enterBehavior`       | `'newline' \| 'send'`              | `'newline'`                         | 回车行为：`send` 时 Enter 触发 `@enter`，Cmd/Ctrl+Enter 换行                                                        |
+| Prop                  | 类型                                                                      | 默认值                              | 说明                                                                                                                                                                                                                    |
+| --------------------- | ------------------------------------------------------------------------- | ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `modelValue`          | `string[]`                                                                | 必传                                | 附件 URL 数组（v-model 绑定）                                                                                                                                                                                           |
+| `upload`              | `(file: File, onProgress?: (percent: number) => void) => Promise<string>` | 可选（默认 undefined）              | 文件上传函数，由业务页面注入；第二个参数为**真实上传进度回调**（0~100 整数，配合 `uploadImageFile` 的 axios `onUploadProgress`）；**不传时组件仅收集文件**（供 `getPendingFiles()` 取 File 走 base64 直发），不执行上传 |
+| `uploadMode`          | `'auto' \| 'manual'`                                                      | `'manual'`                          | 上传模式：`auto` 选中即上传；`manual` 暂存 pending，提交前父级调 `flushPending()` 批量上传                                                                                                                              |
+| `fileTypes`           | `('image' \| 'video' \| 'file')[]`                                        | `['image']`                         | 允许的文件类型集合，驱动 accept、大小限制与工具栏图标                                                                                                                                                                   |
+| `text`                | `string`                                                                  | `''`                                | 文本内容（`v-model:text` 绑定）                                                                                                                                                                                         |
+| `maxCount`            | `number`                                                                  | `0`（不限）                         | 最大附件数量                                                                                                                                                                                                            |
+| `disabled`            | `boolean`                                                                 | `false`                             | 禁用态（隐藏操作按钮、上传按钮禁用）                                                                                                                                                                                    |
+| `bordered`            | `boolean`                                                                 | `true`                              | 是否显示卡片边框                                                                                                                                                                                                        |
+| `compact`             | `boolean`                                                                 | `false`                             | 紧凑模式（卡片 178×52px、缩略图 38×38px、字号 11/9px）                                                                                                                                                                  |
+| `placeholder`         | `string`                                                                  | 内置默认                            | textarea 占位符                                                                                                                                                                                                         |
+| `hint`                | `string`                                                                  | `支持拖拽 / 粘贴图片，链接自动识别` | 工具栏提示文字                                                                                                                                                                                                          |
+| `maxLength`           | `number`                                                                  | `0`（不限）                         | 文本最大字数（>0 时显示字数统计）                                                                                                                                                                                       |
+| `showWordLimit`       | `boolean`                                                                 | `true`                              | 是否显示字数统计                                                                                                                                                                                                        |
+| `minRows` / `maxRows` | `number`                                                                  | `2` / `5`                           | textarea 自动高度行数范围                                                                                                                                                                                               |
+| `showTextarea`        | `boolean`                                                                 | `true`                              | 独立开关：是否显示文本输入区                                                                                                                                                                                            |
+| `showImages`          | `boolean`                                                                 | `true`                              | 独立开关：是否显示附件预览区                                                                                                                                                                                            |
+| `extractUrls`         | `boolean`                                                                 | `true`                              | 是否从文本中自动提取图片/视频/文件 URL 并转为缩略图（内置逻辑）                                                                                                                                                         |
+| `accept`              | `string`                                                                  | 由 `fileTypes` 生成                 | 文件选择器 accept（可覆盖）                                                                                                                                                                                             |
+| `theme`               | `'light' \| 'dark'`                                                       | `'light'`                           | 主题：`dark` 深色背景适配创作内容页                                                                                                                                                                                     |
+| `enterBehavior`       | `'newline' \| 'send'`                                                     | `'newline'`                         | 回车行为：`send` 时 Enter 触发 `@enter`，Cmd/Ctrl+Enter 换行                                                                                                                                                            |
 
 #### Emits
 
@@ -146,10 +151,19 @@
 
 ```typescript
 // composables/useFileUpload.ts
-export async function uploadImageFile(file: File): Promise<string> {
+export async function uploadImageFile(
+  file: File,
+  onProgress?: (percent: number) => void,
+): Promise<string> {
   const formData = new FormData()
   formData.append('file', file, file.name)
-  const res = await api.post('/uploads', formData)
+  const res = await api.post('/uploads', formData, {
+    onUploadProgress: (e) => {
+      if (onProgress && e.total && e.total > 0) {
+        onProgress(Math.round((e.loaded / e.total) * 100))
+      }
+    },
+  })
   return res.data?.url || ''
 }
 ```
@@ -168,6 +182,7 @@ const areaRef = ref<{ flushPending: () => Promise<boolean> }>()
 
 async function handleSave() {
   if (areaRef.value && !(await areaRef.value.flushPending())) return
+  // flushPending 期间卡片实时显示 "上传中... 63%"（真实进度）
   // 此时 pending 文件已上传，images 中为正式 URL，继续提交表单
 }
 </script>
@@ -512,54 +527,60 @@ const FILE_TYPE_LIMITS: Record<AttachmentFileType, number> = {
 附件展示区由网格缩略图改为横向卡片条，核心结构与样式：
 
 ```vue
-<div class="aia-cards">
-  <div
-    v-for="(item, index) in displayItems"
-    :key="item.key"
-    class="aia-card"
-    :class="{ 'aia-card--pending': item.pending, 'aia-card--uploading': isUploading(item.key) }"
-    @click="openViewer(index)"
-  >
-    <div class="aia-card__thumb">
-      <!-- image / video / file icon -->
-      <a-spin v-if="item.pending || isUploading(item.key)" :size="16" />
+<div class="aia-cards-wrap">
+  <div ref="cardsRef" class="aia-cards" @scroll="updateScrollState">
+    <div
+      v-for="(item, index) in displayItems"
+      :key="item.key"
+      class="aia-card"
+      :class="{ 'aia-card--pending': item.pending, 'aia-card--uploading': isUploading(item.key) }"
+      @click="openViewer(index)"
+    >
+      <div class="aia-card__thumb">
+        <!-- image / video / file icon -->
+        <a-spin v-if="item.pending || isUploading(item.key)" :size="16" />
+      </div>
+      <div class="aia-card__info">
+        <span class="aia-card__name">{{ item.name }}</span>
+        <span class="aia-card__meta">{{ cardMeta(item) }}</span>
+      </div>
+      <div class="aia-card__actions">
+        <button v-if="item.type === 'image'" @click.stop="openEditor(index)">编辑</button>
+      </div>
+      <button class="aia-card__delete" @click.stop="removeItem(index)">删除</button>
     </div>
-    <div class="aia-card__info">
-      <span class="aia-card__name">{{ item.name }}</span>
-      <span class="aia-card__meta">{{ cardMeta(item) }}</span>
-    </div>
-    <div class="aia-card__actions">
-      <button v-if="item.type === 'image'" @click.stop="openEditor(index)">编辑</button>
-    </div>
-    <button class="aia-card__delete" @click.stop="removeItem(index)">删除</button>
   </div>
+  <button v-if="canScrollLeft" class="aia-cards__arrow aia-cards__arrow--left" @click="scrollCards(-1)" />
+  <button v-if="canScrollRight" class="aia-cards__arrow aia-cards__arrow--right" @click="scrollCards(1)" />
 </div>
 ```
 
-**尺寸规范**：
+**尺寸规范**（普通模式 / compact 模式）：
 
-| 元素                         | 尺寸 / 样式                                            |
-| ---------------------------- | ------------------------------------------------------ |
-| 卡片容器 `.aia-card`         | 宽 220px，高 68px，圆角 8px，间距 12px                 |
-| 缩略图 `.aia-card__thumb`    | 52×52px，圆角 6px                                      |
-| 文件名 `.aia-card__name`     | 13px，单行截断，深灰/浅色（dark 为 #f2f2f7）           |
-| 元信息 `.aia-card__meta`     | 11px，格式为 `扩展名 · 大小` 或 `待上传` / `上传中...` |
-| 编辑按钮 `.aia-card__action` | 20×20px，圆形白底，阴影，默认隐藏，hover 卡片时显示    |
-| 删除按钮 `.aia-card__delete` | 20×20px，圆形白底，阴影，始终可见                      |
-| 滚动容器 `.aia-cards`        | `flex-wrap: nowrap; overflow-x: auto;`                 |
+| 元素                         | 普通模式（默认）              | compact 模式 |
+| ---------------------------- | ----------------------------- | ------------ |
+| 卡片容器 `.aia-card`         | 200×60px，圆角 8px，间距 12px | 178×52px     |
+| 缩略图 `.aia-card__thumb`    | 44×44px，圆角 6px             | 38×38px      |
+| 文件名 `.aia-card__name`     | 12px，单行截断                | 11px         |
+| 元信息 `.aia-card__meta`     | 10px                          | 9px          |
+| 编辑按钮 `.aia-card__action` | 20×20px，圆形白底，hover 显示 | 同左         |
+| 删除按钮 `.aia-card__delete` | 20×20px，圆形白底，始终可见   | 同左         |
+| 滚动容器 `.aia-cards`        | `nowrap; overflow-x: auto`    | 同左         |
+| 滚动箭头 `.aia-cards__arrow` | 24×24px 圆形白底，随滚动显隐  | 同左         |
 
 **状态样式**：
 
-- **正常已上传**：白色背景（light）/ #3a3a3c（dark），显示扩展名 + 文件大小
+- **正常已上传**：白色背景（light）/ #3a3a3c（dark），显示 `扩展名 · 大小`
 - **pending（手动模式）**：显示蓝色 `待上传` 文案 + 缩略图 spinner
-- **uploading（auto 模式）**：显示蓝色 `上传中...` 文案 + 缩略图 spinner
-- **hover**：卡片背景微亮，操作按钮淡入
+- **uploading（上传中）**：显示蓝色 `上传中... 63%` 文案（真实上传百分比，progressMap 响应式实时刷新）+ 缩略图 spinner
+- **hover**：卡片背景微亮，编辑按钮淡入
 
 **交互**：
 
 - 点击整张卡片触发查看（图片 → 查看器 / 视频 → 播放弹窗 / 文件 → 新窗口）
-- 删除按钮始终可见（图中为右上角固定 ×）；编辑按钮仅在图片卡片 hover 时出现
-- 横向排列，超出容器宽度时底部出现滚动条
+- 删除按钮始终可见（右上角固定 ×）；编辑按钮仅在图片卡片 hover 时出现
+- 横向排列；卡片条超出容器宽度时，左右两侧出现圆形箭头按钮，点击平滑滚动 240px
+- 滚动到最左/最右时对应箭头自动隐藏；容器 resize 或卡片增减后箭头状态自动刷新
 
 ### 2.7.4 ContentCreate 接入与 base64 直发（v1.3）
 
@@ -1197,7 +1218,6 @@ Authorization: Bearer <token>
 
 ### 7.2 功能增强
 
-- **进度显示**：上传/压缩过程中显示进度条
 - **断点续传**：大文件分片上传
 - **图片滤镜**：亮度、对比度、饱和度调节（Fabric.js 内置 `filters` 能力）
 - **裁剪预设比例**：1:1、4:3、16:9 等常用比例裁剪框
@@ -1208,18 +1228,18 @@ Authorization: Bearer <token>
 
 ## 8. 相关文件
 
-| 文件                                              | 说明                                                                                        |
-| ------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| `frontend/src/components/AttachmentInputArea.vue` | **公共一体化输入区组件**（textarea + 类型化预览 + 工具栏 + 查看/编辑/删除 + 手动/自动上传） |
-| `frontend/src/composables/useFileUpload.ts`       | 文件上传工具（校验/压缩/uploadImageFile/base64）                                            |
-| `frontend/src/composables/useUrlExtractor.ts`     | URL 提取与文本清理工具（图片/视频/文件）                                                    |
-| `frontend/src/pages/ContentCreate.vue`            | 创作内容页（使用组件，dark 主题 + 回车发送 + base64 直发）                                  |
-| `frontend/src/pages/InspectionEdit.vue`           | 巡店编辑页（检查项级输入，保存前 flushPending）                                             |
-| `frontend/src/pages/InspectionMaterialEdit.vue`   | 素材标准图编辑（保存前 flushPending）                                                       |
-| `frontend/src/pages/InspectionTemplateEdit.vue`   | 模板编辑（v-for 内 Map refs，保存前 flushPending）                                          |
-| `frontend/src/pages/InspectionTaskDetail.vue`     | 整改弹窗（提交前 flushPending）                                                             |
-| `frontend/src/components/ImageViewerModal.vue`    | 图片查看器（缩放/拖拽/翻页）                                                                |
-| `frontend/src/components/ImageEditorModal.vue`    | 图片编辑器（Fabric.js 裁剪/旋转/压缩）                                                      |
-| `backend/app/schemas/content.py`                  | 后端类型定义                                                                                |
-| `backend/app/services/ai_service.py`              | AI 服务处理                                                                                 |
-| `frontend/vite.config.ts`                         | Vite 代理配置                                                                               |
+| 文件                                              | 说明                                                                                                               |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `frontend/src/components/AttachmentInputArea.vue` | **公共一体化输入区组件**（textarea + 横向卡片预览 + 左右滚动箭头 + 真实上传进度 + 查看/编辑/删除 + 手动/自动上传） |
+| `frontend/src/composables/useFileUpload.ts`       | 文件上传工具（校验/压缩/uploadImageFile/base64）                                                                   |
+| `frontend/src/composables/useUrlExtractor.ts`     | URL 提取与文本清理工具（图片/视频/文件）                                                                           |
+| `frontend/src/pages/ContentCreate.vue`            | 创作内容页（使用组件，dark 主题 + 回车发送 + base64 直发）                                                         |
+| `frontend/src/pages/InspectionEdit.vue`           | 巡店编辑页（检查项级输入，保存前 flushPending）                                                                    |
+| `frontend/src/pages/InspectionMaterialEdit.vue`   | 素材标准图编辑（保存前 flushPending）                                                                              |
+| `frontend/src/pages/InspectionTemplateEdit.vue`   | 模板编辑（v-for 内 Map refs，保存前 flushPending）                                                                 |
+| `frontend/src/pages/InspectionTaskDetail.vue`     | 整改弹窗（提交前 flushPending）                                                                                    |
+| `frontend/src/components/ImageViewerModal.vue`    | 图片查看器（缩放/拖拽/翻页）                                                                                       |
+| `frontend/src/components/ImageEditorModal.vue`    | 图片编辑器（Fabric.js 裁剪/旋转/压缩）                                                                             |
+| `backend/app/schemas/content.py`                  | 后端类型定义                                                                                                       |
+| `backend/app/services/ai_service.py`              | AI 服务处理                                                                                                        |
+| `frontend/vite.config.ts`                         | Vite 代理配置                                                                                                      |

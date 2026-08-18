@@ -16,54 +16,72 @@
     <slot name="title" />
 
     <div v-if="showImages" class="aia-preview">
-      <div v-if="displayItems.length > 0" class="aia-cards">
-        <div
-          v-for="(item, index) in displayItems"
-          :key="item.key"
-          class="aia-card"
-          :class="{
-            'aia-card--pending': item.pending,
-            'aia-card--uploading': isUploading(item.key),
-          }"
-          @click="openViewer(index)"
-        >
-          <div class="aia-card__thumb">
-            <img
-              v-if="item.type === 'image'"
-              :src="item.pending ? previewUrl(item) : item.url"
-              :alt="item.name"
-            />
-            <video
-              v-else-if="item.type === 'video'"
-              :src="item.pending ? previewUrl(item) : item.url"
-              muted
-              playsinline
-              preload="metadata"
-            />
-            <div v-else class="aia-card__file-icon">
-              <IconFile :size="22" />
+      <div v-if="displayItems.length > 0" class="aia-cards-wrap">
+        <div ref="cardsRef" class="aia-cards" @scroll="updateScrollState">
+          <div
+            v-for="(item, index) in displayItems"
+            :key="item.key"
+            class="aia-card"
+            :class="{
+              'aia-card--pending': item.pending,
+              'aia-card--uploading': isUploading(item.key),
+            }"
+            @click="openViewer(index)"
+          >
+            <div class="aia-card__thumb">
+              <img
+                v-if="item.type === 'image'"
+                :src="item.pending ? previewUrl(item) : item.url"
+                :alt="item.name"
+              />
+              <video
+                v-else-if="item.type === 'video'"
+                :src="item.pending ? previewUrl(item) : item.url"
+                muted
+                playsinline
+                preload="metadata"
+              />
+              <div v-else class="aia-card__file-icon">
+                <IconFile :size="22" />
+              </div>
+              <div v-if="item.pending || isUploading(item.key)" class="aia-card__spinner">
+                <a-spin :size="16" />
+              </div>
             </div>
-            <div v-if="item.pending || isUploading(item.key)" class="aia-card__spinner">
-              <a-spin :size="16" />
+            <div class="aia-card__info">
+              <span class="aia-card__name" :title="item.name">{{ item.name }}</span>
+              <span class="aia-card__meta">{{ cardMeta(item) }}</span>
             </div>
-          </div>
-          <div class="aia-card__info">
-            <span class="aia-card__name" :title="item.name">{{ item.name }}</span>
-            <span class="aia-card__meta">{{ cardMeta(item) }}</span>
-          </div>
-          <div v-if="!disabled" class="aia-card__actions">
-            <a-tooltip v-if="item.type === 'image' && (item.pending || !!upload)" content="编辑">
-              <button type="button" class="aia-card__action" @click.stop="openEditor(index)">
-                <IconEdit :size="12" />
+            <div v-if="!disabled" class="aia-card__actions">
+              <a-tooltip v-if="item.type === 'image' && (item.pending || !!upload)" content="编辑">
+                <button type="button" class="aia-card__action" @click.stop="openEditor(index)">
+                  <IconEdit :size="12" />
+                </button>
+              </a-tooltip>
+            </div>
+            <a-tooltip v-if="!disabled" content="删除">
+              <button type="button" class="aia-card__delete" @click.stop="removeItem(index)">
+                <IconClose :size="12" />
               </button>
             </a-tooltip>
           </div>
-          <a-tooltip v-if="!disabled" content="删除">
-            <button type="button" class="aia-card__delete" @click.stop="removeItem(index)">
-              <IconClose :size="12" />
-            </button>
-          </a-tooltip>
         </div>
+        <button
+          v-if="canScrollLeft"
+          type="button"
+          class="aia-cards__arrow aia-cards__arrow--left"
+          @click="scrollCards(-1)"
+        >
+          <IconLeft :size="14" />
+        </button>
+        <button
+          v-if="canScrollRight"
+          type="button"
+          class="aia-cards__arrow aia-cards__arrow--right"
+          @click="scrollCards(1)"
+        >
+          <IconRight :size="14" />
+        </button>
       </div>
       <slot v-else name="empty" />
     </div>
@@ -84,7 +102,14 @@
 
     <div class="aia-toolbar">
       <div class="aia-toolbar-left">
-        <a-tooltip :content="uploadBtnTooltip">
+        <a-tooltip>
+          <template #content>
+            <p style="max-width: 200px">
+              <span>{{ uploadBtnTooltip }}</span>
+              <span v-if="maxCount > 0"> ({{ displayItems.length }}/{{ maxCount }}) </span>
+              <span v-if="hintText">, {{ hintText }}</span>
+            </p>
+          </template>
           <span class="aia-toolbar-btn-wrap">
             <button
               type="button"
@@ -96,8 +121,6 @@
             </button>
           </span>
         </a-tooltip>
-        <span v-if="maxCount > 0" class="aia-count">{{ displayItems.length }}/{{ maxCount }}</span>
-        <span v-if="hintText" class="aia-hint">{{ hintText }}</span>
         <slot name="toolbar-left" />
       </div>
       <div class="aia-toolbar-right">
@@ -134,7 +157,16 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, nextTick, defineAsyncComponent, onBeforeUnmount } from 'vue'
+import {
+  ref,
+  computed,
+  reactive,
+  nextTick,
+  defineAsyncComponent,
+  onMounted,
+  onBeforeUnmount,
+  watch,
+} from 'vue'
 import { Message } from '@arco-design/web-vue'
 import {
   IconPlus,
@@ -143,6 +175,8 @@ import {
   IconFile,
   IconEdit,
   IconClose,
+  IconLeft,
+  IconRight,
 } from '@arco-design/web-vue/es/icon'
 import ImageViewerModal from '@/components/ImageViewerModal.vue'
 import type { ViewerItem } from '@/components/ImageViewerModal.vue'
@@ -193,7 +227,7 @@ const MAX_SIZE_BY_TYPE: Record<AttachmentFileType, number> = {
 const props = withDefaults(
   defineProps<{
     modelValue: string[]
-    upload?: (file: File) => Promise<string>
+    upload?: (file: File, onProgress?: (percent: number) => void) => Promise<string>
     uploadMode?: 'auto' | 'manual'
     fileTypes?: AttachmentFileType[]
     text?: string
@@ -263,6 +297,11 @@ const pendingItems = ref<PendingItem[]>([])
 const objectUrlMap = new Map<File, string>()
 const uploadingKeys = ref<Set<string>>(new Set())
 const urlSizeMap = new Map<string, number>()
+const progressMap = reactive(new Map<string, number>())
+
+const cardsRef = ref<HTMLDivElement>()
+const canScrollLeft = ref(false)
+const canScrollRight = ref(false)
 
 const images = computed<string[]>({
   get: () => props.modelValue || [],
@@ -386,11 +425,25 @@ function extName(name: string): string {
 }
 
 function cardMeta(item: DisplayItem): string {
-  if (isUploading(item.key)) return '上传中...'
+  if (isUploading(item.key)) {
+    const p = progressMap.get(item.key)
+    return p != null ? `上传中... ${p}%` : '上传中...'
+  }
   if (item.pending) return '待上传'
   const label = extName(item.name).toUpperCase() || fileTypeLabelText(item.type)
   const size = item.size > 0 ? formatSize(item.size) : ''
   return size ? `${label} · ${size}` : label
+}
+
+function updateScrollState() {
+  const el = cardsRef.value
+  if (!el) return
+  canScrollLeft.value = el.scrollLeft > 2
+  canScrollRight.value = el.scrollLeft + el.clientWidth < el.scrollWidth - 2
+}
+
+function scrollCards(dir: number) {
+  cardsRef.value?.scrollBy({ left: dir * 240, behavior: 'smooth' })
 }
 
 function typeFromFile(file: File): AttachmentFileType | null {
@@ -469,13 +522,14 @@ async function addFiles(files: File[]) {
         uploadingKeys.value.add(itemKey)
         try {
           const processed = type === 'image' ? await compressImage(file) : file
-          const url = await props.upload(processed)
+          const url = await props.upload(processed, (p) => progressMap.set(itemKey, p))
           if (url) {
             urlSizeMap.set(url, processed.size)
             images.value = [...images.value, url]
           }
         } finally {
           uploadingKeys.value.delete(itemKey)
+          progressMap.delete(itemKey)
         }
       } else {
         pendingItems.value = [
@@ -504,7 +558,7 @@ async function flushPending(): Promise<boolean> {
       uploadingKeys.value.add(item.key)
       try {
         const processed = item.type === 'image' ? await compressImage(item.file) : item.file
-        const url = await props.upload(processed)
+        const url = await props.upload(processed, (p) => progressMap.set(item.key, p))
         if (!url) {
           Message.error(`「${item.name}」上传失败`)
           return false
@@ -513,6 +567,7 @@ async function flushPending(): Promise<boolean> {
         images.value = [...images.value, url]
       } finally {
         uploadingKeys.value.delete(item.key)
+        progressMap.delete(item.key)
       }
     }
     pendingItems.value = []
@@ -540,6 +595,7 @@ function removeItem(index: number) {
       if (item.file) objectUrlMap.delete(item.file)
     }
     uploadingKeys.value.delete(item.key)
+    progressMap.delete(item.key)
     pendingItems.value = pendingItems.value.filter((p) => p.key !== item.key)
   } else {
     if (item.url) urlSizeMap.delete(item.url)
@@ -592,8 +648,9 @@ async function handleEditorConfirm(result: { blob: Blob; name: string }) {
   }
   if (!props.upload) return
   uploading.value = true
+  uploadingKeys.value.add(item.key)
   try {
-    const url = await props.upload(file)
+    const url = await props.upload(file, (p) => progressMap.set(item.key, p))
     if (url) {
       const i = images.value.indexOf(item.url || '')
       if (i >= 0) {
@@ -605,6 +662,8 @@ async function handleEditorConfirm(result: { blob: Blob; name: string }) {
       Message.success('图片编辑已保存')
     }
   } finally {
+    uploadingKeys.value.delete(item.key)
+    progressMap.delete(item.key)
     uploading.value = false
     emitChange()
   }
@@ -697,7 +756,18 @@ function processText(raw: string) {
   emitChange()
 }
 
+onMounted(() => {
+  window.addEventListener('resize', updateScrollState)
+  nextTick(updateScrollState)
+})
+
+watch(
+  () => displayItems.value.length,
+  () => nextTick(updateScrollState),
+)
+
 onBeforeUnmount(() => {
+  window.removeEventListener('resize', updateScrollState)
   objectUrlMap.forEach((u) => URL.revokeObjectURL(u))
   objectUrlMap.clear()
 })
@@ -733,24 +803,58 @@ defineExpose({ handlePaste, pickFiles, addFiles, flushPending, getPendingFiles }
 .aia-preview {
   min-height: 0;
 }
+.aia-cards-wrap {
+  position: relative;
+  margin-bottom: 10px;
+}
 .aia-cards {
   display: flex;
   flex-wrap: nowrap;
   gap: 12px;
-  margin-bottom: 10px;
   overflow-x: auto;
   padding-bottom: 2px;
+  scrollbar-width: thin;
+}
+.aia-cards__arrow {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 2;
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.95);
+  color: #4e5969;
+  cursor: pointer;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+}
+.aia-cards__arrow:hover {
+  background: #fff;
+  color: rgb(var(--primary-6));
+}
+.aia-cards__arrow--left {
+  left: -2px;
+}
+.aia-cards__arrow--right {
+  right: -2px;
 }
 .aia-card {
   position: relative;
   flex: 0 0 auto;
   display: flex;
   align-items: center;
-  gap: 10px;
-  width: 220px;
-  height: 68px;
+  gap: 8px;
+  width: 200px;
+  height: 60px;
   border-radius: 8px;
-  padding: 8px;
+  padding: 6px 8px;
   border: 1px solid rgba(0, 0, 0, 0.06);
   background: #fff;
   cursor: pointer;
@@ -775,8 +879,8 @@ defineExpose({ handlePaste, pickFiles, addFiles, flushPending, getPendingFiles }
 .aia-card__thumb {
   position: relative;
   flex: 0 0 auto;
-  width: 52px;
-  height: 52px;
+  width: 44px;
+  height: 44px;
   border-radius: 6px;
   overflow: hidden;
   background: #f2f2f7;
@@ -805,13 +909,14 @@ defineExpose({ handlePaste, pickFiles, addFiles, flushPending, getPendingFiles }
 .aia-card__info {
   flex: 1;
   min-width: 0;
+  padding-right: 24px;
   display: flex;
   flex-direction: column;
   justify-content: center;
   gap: 4px;
 }
 .aia-card__name {
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 500;
   color: #1d2129;
   line-height: 1.4;
@@ -821,9 +926,10 @@ defineExpose({ handlePaste, pickFiles, addFiles, flushPending, getPendingFiles }
   white-space: nowrap;
 }
 .aia-card__meta {
-  font-size: 11px;
+  font-size: 10px;
   color: #86909c;
   line-height: 1.3;
+  margin-top: 2px;
 }
 .aia-card__actions {
   position: absolute;
@@ -977,20 +1083,20 @@ defineExpose({ handlePaste, pickFiles, addFiles, flushPending, getPendingFiles }
   display: block;
 }
 .aia-root--compact .aia-card {
-  width: 200px;
-  height: 60px;
-  padding: 6px;
-  gap: 8px;
+  width: 178px;
+  height: 52px;
+  padding: 5px 6px;
+  gap: 6px;
 }
 .aia-root--compact .aia-card__thumb {
-  width: 44px;
-  height: 44px;
+  width: 38px;
+  height: 38px;
 }
 .aia-root--compact .aia-card__name {
-  font-size: 12px;
+  font-size: 11px;
 }
 .aia-root--compact .aia-card__meta {
-  font-size: 10px;
+  font-size: 9px;
 }
 .aia-root--dark {
   background: #2c2c2e;
@@ -1025,6 +1131,15 @@ defineExpose({ handlePaste, pickFiles, addFiles, flushPending, getPendingFiles }
 }
 .aia-root--dark .aia-card__thumb {
   background: #2c2c2e;
+}
+.aia-root--dark .aia-cards__arrow {
+  background: rgba(60, 60, 62, 0.95);
+  color: #aeaeb2;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+}
+.aia-root--dark .aia-cards__arrow:hover {
+  background: #48484a;
+  color: #ffffff;
 }
 .aia-root--dark .aia-card__name {
   color: #f2f2f7;

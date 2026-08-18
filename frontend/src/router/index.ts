@@ -5,7 +5,8 @@ import { usePermissionStore } from '@/stores/permission'
 
 declare module 'vue-router' {
   interface RouteMeta {
-    sidebarType?: 'top' | 'content' | 'review' | 'inspection' | 'platforms' | 'rbac' | 'system'
+    sidebarType?:
+      'top' | 'content' | 'review' | 'inspection' | 'platforms' | 'rbac' | 'system' | 'material'
     sidebarOrder?: number
     icon?: string
   }
