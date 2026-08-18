@@ -57,16 +57,12 @@
                 <IconEdit :size="12" />
               </button>
             </a-tooltip>
-            <a-tooltip content="删除">
-              <button
-                type="button"
-                class="aia-card__action aia-card__action--danger"
-                @click.stop="removeItem(index)"
-              >
-                <IconClose :size="12" />
-              </button>
-            </a-tooltip>
           </div>
+          <a-tooltip v-if="!disabled" content="删除">
+            <button type="button" class="aia-card__delete" @click.stop="removeItem(index)">
+              <IconClose :size="12" />
+            </button>
+          </a-tooltip>
         </div>
       </div>
       <slot v-else name="empty" />
@@ -832,7 +828,7 @@ defineExpose({ handlePaste, pickFiles, addFiles, flushPending, getPendingFiles }
 .aia-card__actions {
   position: absolute;
   top: 4px;
-  right: 4px;
+  right: 28px;
   display: flex;
   align-items: center;
   gap: 4px;
@@ -841,6 +837,29 @@ defineExpose({ handlePaste, pickFiles, addFiles, flushPending, getPendingFiles }
 }
 .aia-card:hover .aia-card__actions {
   opacity: 1;
+}
+.aia-card__delete {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.95);
+  color: #4e5969;
+  cursor: pointer;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+}
+.aia-card__delete:hover {
+  background: #fff;
+  color: #f53f3f;
 }
 .aia-card__action {
   width: 20px;
@@ -861,9 +880,6 @@ defineExpose({ handlePaste, pickFiles, addFiles, flushPending, getPendingFiles }
 .aia-card__action:hover {
   background: #fff;
   color: rgb(var(--primary-6));
-}
-.aia-card__action--danger:hover {
-  color: #f53f3f;
 }
 .aia-textarea {
   background-color: transparent;

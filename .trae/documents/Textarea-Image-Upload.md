@@ -47,22 +47,25 @@
 
 ```
 ┌─────────────────────────────────────────┐
-│  已上传文件预览区（chat-attachments）     │
-│  ├─ 图片/视频缩略图 + 文件名            │
-│  ├─ hover 操作层：查看 / 编辑 / 删除     │
-│  └─ 查看→ImageViewerModal，编辑→ImageEditorModal │
+│  附件预览区（aia-cards）                 │
+│  ├─ 横向卡片条，超出可横向滚动           │
+│  ├─ 每张卡片：左侧 52×52 缩略图/视频首帧/文件图标 │
+│  │             右侧文件名 + 扩展名/类型 · 大小   │
+│  │             右上角固定删除按钮        │
+│  │             hover 图片卡片显示编辑按钮 │
+│  ├─ pending / uploading：缩略图叠加 spinner │
+│  └─ 点击整张卡片查看（图片→ImageViewerModal │
+│      视频→播放弹窗，文件→新窗口下载）    │
 ├─────────────────────────────────────────┤
 │  文本输入区（a-textarea）                │
 │  ├─ 自动高度调整（minRows: 3, maxRows: 5）│
 │  ├─ 粘贴图片自动识别                    │
 │  └─ 文本中 URL 自动提取                 │
 ├─────────────────────────────────────────┤
-│  工具栏（chat-toolbar）                  │
-│  ├─ 上传文件按钮（accept: image/*,video/*）│
-│  ├─ 图片按钮（accept: image/*）          │
-│  ├─ 视频按钮（accept: video/*）          │
-│  ├─ 文件大小提示                         │
-│  └─ 发送按钮                             │
+│  工具栏（aia-toolbar）                   │
+│  ├─ 上传按钮（按 fileTypes 生成 accept） │
+│  ├─ 数量计数 + 提示文案                  │
+│  └─ 发送/业务自定义按钮                  │
 └─────────────────────────────────────────┘
 ```
 
@@ -527,8 +530,8 @@ const FILE_TYPE_LIMITS: Record<AttachmentFileType, number> = {
     </div>
     <div class="aia-card__actions">
       <button v-if="item.type === 'image'" @click.stop="openEditor(index)">编辑</button>
-      <button @click.stop="removeItem(index)">删除</button>
     </div>
+    <button class="aia-card__delete" @click.stop="removeItem(index)">删除</button>
   </div>
 </div>
 ```
@@ -541,7 +544,8 @@ const FILE_TYPE_LIMITS: Record<AttachmentFileType, number> = {
 | 缩略图 `.aia-card__thumb`    | 52×52px，圆角 6px                                      |
 | 文件名 `.aia-card__name`     | 13px，单行截断，深灰/浅色（dark 为 #f2f2f7）           |
 | 元信息 `.aia-card__meta`     | 11px，格式为 `扩展名 · 大小` 或 `待上传` / `上传中...` |
-| 操作按钮 `.aia-card__action` | 20×20px，圆形白底，阴影，默认隐藏，hover 卡片时显示    |
+| 编辑按钮 `.aia-card__action` | 20×20px，圆形白底，阴影，默认隐藏，hover 卡片时显示    |
+| 删除按钮 `.aia-card__delete` | 20×20px，圆形白底，阴影，始终可见                      |
 | 滚动容器 `.aia-cards`        | `flex-wrap: nowrap; overflow-x: auto;`                 |
 
 **状态样式**：
@@ -752,13 +756,14 @@ async function startAiGeneration() {
 
 #### 2.11.2 交互流程
 
-1. **上传/粘贴**：图片进入附件预览区。
-2. **hover 悬浮**：预览缩略图上悬浮显示「查看」与「编辑」图标。
-3. **编辑入口**：点击「编辑」，打开 `ImageEditorModal`。
-4. **画布调整**：在 Fabric.js 画布内进行裁剪/旋转操作。
-5. **实时预览**：编辑器提供即时预览效果。
-6. **确认应用**：点击确认，导出编辑后的图片数据流（Blob/Base64）并覆盖本地附件原图。
-7. **取消/关闭**：丢弃所有临时编辑，保留原图不变。
+1. **上传/粘贴**：图片以横向卡片形式进入附件预览区。
+2. **点击卡片**：打开 `ImageViewerModal` 查看大图（滚轮缩放、拖拽平移、多图翻页）。
+3. **hover 悬浮**：图片卡片 hover 时显示「编辑」图标；删除按钮始终可见。
+4. **编辑入口**：点击「编辑」，打开 `ImageEditorModal`。
+5. **画布调整**：在 Fabric.js 画布内进行裁剪/旋转操作。
+6. **实时预览**：编辑器提供即时预览效果。
+7. **确认应用**：点击确认，导出编辑后的图片数据流（Blob/Base64）并覆盖本地附件原图。
+8. **取消/关闭**：丢弃所有临时编辑，保留原图不变。
 
 #### 2.11.3 图片查看器
 
