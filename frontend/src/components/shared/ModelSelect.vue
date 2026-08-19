@@ -18,9 +18,11 @@
       :value="opt.key"
       :disabled="requireVision && !opt.hasVision"
     >
-      {{ opt.planName }} · {{ opt.modelId }}
-      <span v-if="requireVision && !opt.hasVision" class="text-[#FF3B30] text-[12px]">
-        （不支持视觉）
+      <span class="provider-opt">
+        <span>{{ opt.planName }} · {{ opt.modelId }}</span>
+        <span v-if="requireVision && !opt.hasVision" class="text-[#FF3B30] text-[12px]">
+          （不支持视觉）
+        </span>
       </span>
     </a-option>
   </a-select>
@@ -138,10 +140,10 @@ onMounted(() => {
 </script>
 <style scoped lang="scss">
 :global(.arco-select-dropdown:has(.provider-opt)) {
-  min-width: 340px;
+  min-width: 300px;
   width: max-content !important;
   max-width: min(560px, 92vw);
-  background: #2c2c2e;
+  //background: #2c2c2e;
   border: 1px solid rgba(255, 255, 255, 0.08);
   box-shadow:
     0 8px 32px rgba(0, 0, 0, 0.5),
