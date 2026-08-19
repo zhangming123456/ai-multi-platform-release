@@ -2601,7 +2601,10 @@ onMounted(async () => {
       const plan = tokenPlanStore.enabledPlans.find((p) => p.id === selectedPlanId.value)
       if (plan) {
         const models = parseModelField(plan.model)
-        if (models.length > 0) selectedModelId.value = models[0].id
+        if (models.length > 0) {
+          selectedModelId.value = models[0].id
+          selectedHasVision.value = models[0].types.includes('vision')
+        }
       }
     }
     if (isEdit.value) {
