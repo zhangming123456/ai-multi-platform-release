@@ -535,15 +535,19 @@
               </a-button>
             </a-tooltip>
             <a-tooltip
-              :content="`分类${activeCategory + 1}/第${activeItemInGroup + 1}检查项`"
+              :content="`第 ${activeCategory + 1}/${activeItemInGroup + 1} 项`"
               position="left"
             >
               <div
-                class="flex flex-col items-center justify-center rounded-xl bg-white border border-[#E5E5EA] shadow-md px-2.5 py-1.5 select-none"
+                class="flex flex-col gap-1 items-center justify-center rounded-xl bg-white border border-[#E5E5EA] shadow-md px-1 py-1.5 select-none"
               >
-                <span class="text-[14px] font-bold text-[#165DFF] leading-none tabular-nums"
-                  >{{ activeCategory + 1 }}/{{ activeItemInGroup + 1 }}</span
-                >
+                <span class="text-[13px] font-bold text-[#165DFF] leading-none tabular-nums">
+                  {{ activeCategory + 1 }}
+                </span>
+                <div class="border border-[#E5E5EA] w-full" />
+                <span class="text-[13px] font-bold text-[#165DFF] leading-none tabular-nums">
+                  {{ activeItemInGroup + 1 }}
+                </span>
               </div>
             </a-tooltip>
             <a-tooltip content="下一个检查项" position="left">
@@ -588,9 +592,9 @@
       class="fixed bottom-0 right-0 z-30 border-t border-[#E5E5EA] bg-white/90 backdrop-blur-xl px-4 md:px-6 lg:px-8 py-3 flex items-center justify-between transition-all duration-350 ease-out"
       :style="{ left: 'var(--f-aside-width)' }"
     >
-      <span class="text-[13px] text-[#86868b]"
-        >共 {{ items.length }} 个检查项，{{ groupedItems.length }} 个分类</span
-      >
+      <span class="text-[13px] text-[#86868b]">
+        共 {{ items.length }} 个检查项，{{ groupedItems.length }} 个分类
+      </span>
       <div class="flex items-center gap-3">
         <a-button @click="goBack">返回</a-button>
         <a-button

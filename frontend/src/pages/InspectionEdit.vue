@@ -25,22 +25,13 @@
         </div>
         <a-form :model="form" layout="vertical">
           <a-form-item label="模型">
-            <a-select
+            <ModelSelect
               :model-value="activeModelKey"
-              placeholder="选择模型"
+              :auto-select="false"
+              :require-vision="selectedHasVision"
               :size="selectSize as any"
               @change="onModelChange"
-            >
-              <a-option v-for="opt in modelOptions" :key="opt.key" :value="opt.key">
-                <span class="provider-opt">
-                  <span class="provider-opt__name">
-                    <span class="provider-opt__bracket">【</span>{{ opt.planName
-                    }}<span class="provider-opt__bracket">】</span>
-                  </span>
-                  <span class="provider-opt__model">{{ opt.modelId }}</span>
-                </span>
-              </a-option>
-            </a-select>
+            />
           </a-form-item>
           <a-form-item label="巡店现场描述">
             <div
@@ -315,7 +306,7 @@
       </div>
     </DefineAiInspectPanel>
 
-    <div class="px-4 md:px-6 lg:px-8 flex-1">
+    <div class="px-4 md:px-6 lg:px-8 flex-1 pb-24">
       <a-spin :loading="loading" tip="加载中..." class="w-full">
         <div class="grid grid-cols-1 xl:grid-cols-3 gap-4">
           <div class="xl:col-span-2 space-y-4">
@@ -776,18 +767,25 @@
     </div>
 
     <div
-      class="sticky bottom-0 z-30 border-t border-[#E5E5EA] bg-white/90 backdrop-blur-xl px-4 md:px-6 lg:px-8 py-3 flex items-center justify-end gap-2"
+      class="fixed bottom-0 right-0 z-30 border-t border-[#E5E5EA] bg-white/90 backdrop-blur-xl px-4 md:px-6 lg:px-8 py-3 flex items-center justify-between transition-all duration-350 ease-out"
+      :style="{ left: 'var(--f-aside-width)' }"
     >
-      <a-button @click="goBack">返回</a-button>
-      <a-button
-        v-perm="isEdit ? 'inspection:update:write' : 'inspection:create:write'"
-        type="primary"
-        :loading="saving"
-        :disabled="!isEditable || saving"
-        @click="handleSave"
-      >
-        保存
-      </a-button>
+      <span class="text-[13px] text-[#86868b]">
+        共 {{ scoreRows.length }} 个检查项，{{ categoryGroups.length }} 个分类
+      </span>
+
+      <div class="flex items-center gap-3">
+        <a-button @click="goBack">返回</a-button>
+        <a-button
+          v-perm="isEdit ? 'inspection:update:write' : 'inspection:create:write'"
+          type="primary"
+          :loading="saving"
+          :disabled="!isEditable || saving"
+          @click="handleSave"
+        >
+          保存
+        </a-button>
+      </div>
     </div>
   </div>
 </template>
@@ -812,6 +810,7 @@ import {
 } from '@arco-design/web-vue/es/icon'
 import PageHeader from '@/components/layout/PageHeader.vue'
 import AttachmentInputArea from '@/components/AttachmentInputArea.vue'
+import ModelSelect, { type ModelSelectValue } from '@/components/shared/ModelSelect.vue'
 import { uploadImageFile } from '@/composables/useFileUpload'
 import { extractImageUrlsFromText, cleanUrlsFromText } from '@/composables/useUrlExtractor'
 import { useTokenPlanStore, parseModelField } from '@/stores/tokenPlan'
@@ -1395,24 +1394,7 @@ function levelText(level: LogLevel): string {
   }
   return map[level] || level.toUpperCase()
 }
-
-// 合并的模型选项，格式同 ContentCreate：【服务商】模型ID，key 为 planId:modelId
-interface ModelOption {
-  key: string
-  planName: string
-  modelId: string
-}
-
-const modelOptions = computed<ModelOption[]>(() => {
-  const options: ModelOption[] = []
-  for (const p of tokenPlanStore.enabledPlans) {
-    const planName = p.displayName || p.name
-    for (const m of parseModelField(p.model)) {
-      if (m.id) options.push({ key: `${p.id}:${m.id}`, planName, modelId: m.id })
-    }
-  }
-  return options
-})
+const selectedHasVision = ref(true)
 
 const activeModelKey = computed(() => {
   if (!selectedPlanId.value) return ''
@@ -1428,12 +1410,10 @@ const selectedModelSupportsVision = computed(() => {
   return model ? model.types.includes('vision') : false
 })
 
-function onModelChange(val: unknown) {
-  if (typeof val !== 'string') return
-  const idx = val.indexOf(':')
-  if (idx <= 0) return
-  selectedPlanId.value = val.slice(0, idx)
-  selectedModelId.value = val.slice(idx + 1)
+function onModelChange(val: ModelSelectValue) {
+  selectedPlanId.value = val.planId
+  selectedModelId.value = val.modelId
+  selectedHasVision.value = val.hasVision
 }
 
 const inspectorName = computed(
@@ -2657,29 +2637,6 @@ function nowLocalString() {
 </script>
 
 <style scoped lang="scss">
-.provider-opt {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 6px;
-}
-.provider-opt__name {
-  font-weight: 500;
-}
-.provider-opt__bracket {
-  color: #007aff;
-  font-weight: 600;
-}
-.provider-opt__model {
-  font-size: 12px;
-  color: #86909c;
-  font-family: 'SF Mono', Menlo, Consolas, monospace;
-}
-:deep(.arco-select-dropdown:has(.provider-opt)) {
-  min-width: 280px;
-  width: max-content !important;
-  max-width: min(480px, 92vw);
-}
-
 /* ===== 反馈问题 + 图片上传一体化输入区 ===== */
 .feedback-input-area {
   width: 100%;

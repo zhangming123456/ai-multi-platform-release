@@ -24,7 +24,7 @@
           <div ref="planListRef">
             <a-space direction="vertical" :size="14" fill>
               <div
-                v-for="(plan, index) in store.plans"
+                v-for="plan in store.plans"
                 :key="plan.id"
                 class="plan-card"
                 :class="{ active: store.activePlanId === plan.id && plan.enabled }"
@@ -301,22 +301,8 @@
               <IconRefresh :class="{ 'tp-spin': fetching }" />{{ fetching ? '拉取中' : '拉取列表' }}
             </button>
           </div>
-          <div class="model-list">
-            <div
-              v-for="(entry, idx) in form.models"
-              :key="idx"
-              class="model-entry"
-              :class="{
-                dragging: dragIndex === idx,
-                'drag-over': dragOverIndex === idx && dragIndex !== idx,
-              }"
-              draggable="true"
-              @dragstart="onDragStart(idx, $event)"
-              @dragend="onDragEnd($event)"
-              @dragover="onDragOver(idx, $event)"
-              @dragleave="onDragLeave"
-              @drop="onDrop(idx)"
-            >
+          <div ref="modelListRef" class="model-list">
+            <div v-for="(entry, idx) in form.models" :key="idx" class="model-entry">
               <div class="model-entry__top">
                 <span class="model-entry__grip" title="拖拽排序">
                   <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
@@ -948,44 +934,32 @@ function removeModelEntry(idx: number) {
 const planListRef = ref<HTMLElement | null>(null)
 let planSortable: Sortable | null = null
 
-const dragIndex = ref<number | null>(null)
-const dragOverIndex = ref<number | null>(null)
+const modelListRef = ref<HTMLElement | null>(null)
+let modelsSortable: Sortable | null = null
 
-function onDragStart(idx: number, event: DragEvent) {
-  dragIndex.value = idx
-  if (event.dataTransfer) {
-    event.dataTransfer.effectAllowed = 'move'
-    event.dataTransfer.setData('text/plain', String(idx))
+function initModelsSortable() {
+  if (!modelListRef.value) return
+  destroyModelsSortable()
+  modelsSortable = new Sortable(modelListRef.value, {
+    handle: '.model-entry__grip',
+    animation: 150,
+    ghostClass: 'dragging',
+    chosenClass: 'drag-chosen',
+    onEnd: (evt) => {
+      if (evt.oldIndex === undefined || evt.newIndex === undefined) return
+      if (evt.oldIndex === evt.newIndex) return
+      const models = form.value.models
+      const [removed] = models.splice(evt.oldIndex, 1)
+      models.splice(evt.newIndex, 0, removed)
+    },
+  })
+}
+
+function destroyModelsSortable() {
+  if (modelsSortable) {
+    modelsSortable.destroy()
+    modelsSortable = null
   }
-  const el = event.target as HTMLElement
-  requestAnimationFrame(() => el.classList.add('dragging'))
-}
-
-function onDragEnd(event: DragEvent) {
-  dragIndex.value = null
-  dragOverIndex.value = null
-  const el = event.target as HTMLElement
-  el.classList.remove('dragging')
-}
-
-function onDragOver(idx: number, event: DragEvent) {
-  event.preventDefault()
-  if (event.dataTransfer) event.dataTransfer.dropEffect = 'move'
-  if (dragIndex.value === null || dragIndex.value === idx) return
-  dragOverIndex.value = idx
-}
-
-function onDragLeave() {
-  dragOverIndex.value = null
-}
-
-function onDrop(idx: number) {
-  if (dragIndex.value === null || dragIndex.value === idx) return
-  const models = form.value.models
-  const item = models.splice(dragIndex.value, 1)[0]
-  models.splice(idx, 0, item)
-  dragIndex.value = null
-  dragOverIndex.value = null
 }
 
 function onModelIdInput(entry: ModelEntry, val: string) {
@@ -1135,6 +1109,7 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   document.body.classList.remove('tp-cabin-open')
   destroyPlanSortable()
+  destroyModelsSortable()
 })
 
 watch(
@@ -1209,6 +1184,11 @@ function providerLetter(p: PlanProvider) {
 
 watch(showModal, (v) => {
   document.body.classList.toggle('tp-cabin-open', v)
+  if (v) {
+    nextTick(() => initModelsSortable())
+  } else {
+    destroyModelsSortable()
+  }
 })
 
 onMounted(() => {
@@ -1896,7 +1876,7 @@ body.tp-cabin-open .tp-opt-meta {
   opacity: 0.45;
   transform: scale(0.98);
 }
-.model-entry.drag-over {
+.model-entry.drag-chosen {
   border-color: #007aff;
   box-shadow: 0 0 0 2px rgba(0, 122, 255, 0.18);
 }

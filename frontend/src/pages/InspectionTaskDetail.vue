@@ -229,25 +229,7 @@
             <div class="space-y-4">
               <div class="rounded-2xl border border-[#E5E5EA] bg-white/70 backdrop-blur-xl p-5">
                 <div class="text-[15px] font-semibold text-[#1D1D1F] mb-3">AI 复核模型</div>
-                <a-select
-                  v-model="selectedModelKey"
-                  placeholder="选择模型"
-                  class="w-full"
-                  allow-clear
-                  @change="onModelChange"
-                >
-                  <a-option
-                    v-for="opt in modelOptions"
-                    :key="opt.key"
-                    :value="opt.key"
-                    :disabled="!opt.hasVision"
-                  >
-                    {{ opt.planName }} · {{ opt.modelId }}
-                    <span v-if="!opt.hasVision" class="text-[#FF3B30] text-[12px]"
-                      >（不支持视觉）</span
-                    >
-                  </a-option>
-                </a-select>
+                <ModelSelect @change="onModelChange" />
                 <div class="text-[12px] text-[#86868b] mt-2">AI 复核需选择支持视觉理解的模型。</div>
               </div>
 
@@ -350,23 +332,15 @@ import { useRoute, useRouter } from 'vue-router'
 import { Message } from '@arco-design/web-vue'
 import PageHeader from '@/components/layout/PageHeader.vue'
 import AttachmentInputArea from '@/components/AttachmentInputArea.vue'
+import ModelSelect, { type ModelSelectValue } from '@/components/shared/ModelSelect.vue'
 import { uploadImageFile } from '@/composables/useFileUpload'
 import { formatDateTime } from '@/utils/time'
-import { useTokenPlanStore, parseModelField } from '@/stores/tokenPlan'
 import { useUserStore } from '@/stores/user'
 import type { InspectionTask, InspectionTaskItem, InspectionTaskLog } from '@/types'
 import api from '@/utils/api'
 
-interface ModelOption {
-  key: string
-  planName: string
-  modelId: string
-  hasVision: boolean
-}
-
 const route = useRoute()
 const router = useRouter()
-const tokenPlanStore = useTokenPlanStore()
 const userStore = useUserStore()
 
 const loading = ref(false)
@@ -395,9 +369,9 @@ function setRectifyAreaRef(item: { id: string }, el: unknown) {
 const confirmResults = ref<Record<string, boolean>>({})
 const confirmComments = ref<Record<string, string>>({})
 
-const selectedModelKey = ref('')
 const selectedPlanId = ref('')
 const selectedModelId = ref('')
+const selectedHasVision = ref(false)
 
 const currentUserId = computed(() => userStore.userInfo?.id || '')
 
@@ -419,22 +393,6 @@ const canRecheck = computed(
 const canManualConfirm = computed(
   () => task.value && task.value.status === 'manual_review' && manualItems.value.length > 0,
 )
-
-const modelOptions = computed<ModelOption[]>(() => {
-  const options: ModelOption[] = []
-  for (const p of tokenPlanStore.enabledPlans) {
-    const planName = p.displayName || p.name
-    for (const m of parseModelField(p.model)) {
-      options.push({
-        key: `${p.id}:${m.id}`,
-        planName,
-        modelId: m.id,
-        hasVision: m.types.includes('vision'),
-      })
-    }
-  }
-  return options
-})
 
 const selectedItems = computed(() =>
   items.value.filter((it) => selectedItemIds.value.includes(it.id)),
@@ -527,16 +485,10 @@ function isSelectable(status: string): boolean {
   return ['pending', 'not_fixed', 'submitted', 'manual'].includes(status)
 }
 
-function onModelChange(val: unknown) {
-  if (typeof val !== 'string') return
-  const idx = val.indexOf(':')
-  if (idx <= 0) {
-    selectedPlanId.value = ''
-    selectedModelId.value = ''
-    return
-  }
-  selectedPlanId.value = val.slice(0, idx)
-  selectedModelId.value = val.slice(idx + 1)
+function onModelChange(val: ModelSelectValue) {
+  selectedPlanId.value = val.planId
+  selectedModelId.value = val.modelId
+  selectedHasVision.value = val.hasVision
 }
 
 function openSubmitModal() {
@@ -589,8 +541,7 @@ async function handleRecheck() {
     Message.warning('请选择 AI 复核模型')
     return
   }
-  const supportsVision = modelOptions.value.find((o) => o.key === selectedModelKey.value)?.hasVision
-  if (!supportsVision) {
+  if (!selectedHasVision.value) {
     Message.warning('请选择支持视觉理解的模型')
     return
   }
@@ -672,15 +623,7 @@ function goBack() {
   router.push({ name: 'InspectionTaskList' })
 }
 
-onMounted(async () => {
-  await tokenPlanStore.loadPlans()
-  if (tokenPlanStore.enabledPlans.length > 0) {
-    const first = modelOptions.value.find((o) => o.hasVision)
-    if (first) {
-      selectedModelKey.value = first.key
-      onModelChange(first.key)
-    }
-  }
-  await fetchDetail()
+onMounted(() => {
+  fetchDetail()
 })
 </script>
