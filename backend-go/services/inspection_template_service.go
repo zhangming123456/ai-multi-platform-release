@@ -1,7 +1,13 @@
 package services
 
 import (
+	"bufio"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -276,6 +282,478 @@ func CountTemplateItems(templateID string) (int64, error) {
 		Filter("template_id", templateID).
 		Filter("is_active", true).
 		Count()
+}
+
+// AIGenerateTemplateItemRequest AI 生成检查项请求。
+type AIGenerateTemplateItemRequest struct {
+	PlanID             string         `json:"plan_id"`
+	ModelID            string         `json:"model_id"`
+	Description        string         `json:"description"`
+	Photos             []UploadedFile `json:"photos"`
+	ExistingCategories []string       `json:"existing_categories"`
+}
+
+// AIGenerateTemplateItemResult AI 生成的检查项结果。
+type AIGenerateTemplateItemResult struct {
+	Category       string               `json:"category"`
+	Title          string               `json:"title"`
+	Standard       string               `json:"standard"`
+	StandardImages []string             `json:"standard_images"`
+	ScoreType      string               `json:"score_type"`
+	MaxScore       int                  `json:"max_score"`
+	ScoreOptions   []models.ScoreOption `json:"score_options"`
+}
+
+// AIGenerateTemplateResult AI 生成的模板信息（名称、描述）与检查项列表。
+type AIGenerateTemplateResult struct {
+	TemplateName        string                         `json:"template_name"`
+	TemplateDescription string                         `json:"template_description"`
+	Items               []AIGenerateTemplateItemResult `json:"items"`
+}
+
+// buildTemplateItemAIMessages 构建 AI 生成检查项所需的 messages / tools / toolChoice。
+func buildTemplateItemAIMessages(req AIGenerateTemplateItemRequest, supportsVision bool) ([]chatMessage, []toolDefinition, interface{}) {
+	photoDesc := ""
+	uploadedPhotos := make([]UploadedFile, 0, len(req.Photos))
+	for _, p := range req.Photos {
+		if p.Data == "" {
+			continue
+		}
+		uploadedPhotos = append(uploadedPhotos, p)
+	}
+	if len(uploadedPhotos) > 0 {
+		photoDesc = fmt.Sprintf("已上传 %d 张图片，请优先基于图片内容识别可检查的项目。", len(uploadedPhotos))
+	}
+
+	descLine := ""
+	if d := strings.TrimSpace(req.Description); d != "" {
+		descLine = fmt.Sprintf("用户文字描述：%s\n", d)
+	}
+
+	catLine := ""
+	if len(req.ExistingCategories) > 0 {
+		catLine = fmt.Sprintf("当前模板已有分类（请优先将识别出的检查项归入这些分类，分类名尽量保持一致；无法匹配时再创建新分类）：%s\n", strings.Join(req.ExistingCategories, "、"))
+	}
+
+	prompt := fmt.Sprintf(`你是一名专业的连锁门店巡店督导专家，擅长根据门店现场图片或文字描述，设计标准化检查表。
+
+任务：请从用户提供的图片和/或文字描述中，生成：
+1. template_name（模板名称）：简短明确，概括该检查表用途，20 字以内；
+2. template_description（模板描述）：一句话说明模板适用场景与覆盖范围，50 字以内；
+3. items（检查项列表）：识别所有适合作为巡店检查的项目，每个项目包含：
+   - category（分类）：检查项所属分类，要求简洁、统一，优先使用已有分类；
+   - title（检查项标题）：简短明确，15 字以内；
+   - standard（检查标准）：具体可执行的判定标准，30-80 字；
+   - standard_images（标准图 URL 列表）：如果用户上传的图片适合作为该检查项的标准参考图，请使用图片原始 data URL 填入（支持多张），否则留空数组；
+   - score_type（评分方式）：固定为 "score"（分值评分）；
+   - max_score（满分）：固定为 5；
+   - score_options（评分选项）：固定为 [{"score":0,"label":"0分"},{"score":5,"label":"5分"}]。
+
+%s
+%s
+%s
+
+请直接调用 submit_template_items 工具提交结果，禁止输出工具调用以外的任何解释性文字、markdown 代码块或普通文本。`, photoDesc, descLine, catLine)
+
+	schema := map[string]interface{}{
+		"type": "object",
+		"properties": map[string]interface{}{
+			"template_name":        map[string]interface{}{"type": "string", "description": "模板名称，概括检查表用途，20 字以内"},
+			"template_description": map[string]interface{}{"type": "string", "description": "模板描述，说明适用场景与覆盖范围，50 字以内"},
+			"items": map[string]interface{}{
+				"type":        "array",
+				"description": "识别出的检查项列表",
+				"items": map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"category":        map[string]interface{}{"type": "string", "description": "检查项分类，优先匹配已有分类"},
+						"title":           map[string]interface{}{"type": "string", "description": "检查项标题，15 字以内"},
+						"standard":        map[string]interface{}{"type": "string", "description": "具体可执行的检查标准"},
+						"standard_images": map[string]interface{}{"type": "array", "description": "标准图 URL 列表，无法确定则留空", "items": map[string]interface{}{"type": "string"}},
+						"score_type":      map[string]interface{}{"type": "string", "enum": []string{"score"}, "description": "评分方式"},
+						"max_score":       map[string]interface{}{"type": "integer", "description": "满分"},
+						"score_options":   map[string]interface{}{"type": "array", "description": "评分选项"},
+					},
+					"required": []string{"category", "title", "standard", "score_type", "max_score", "score_options"},
+				},
+			},
+		},
+		"required": []string{"items"},
+	}
+
+	messages := []chatMessage{{
+		Role:    "system",
+		Content: "你是专业的连锁门店巡店督导专家，擅长设计标准化检查表。使用中文回复。必须且只能调用 submit_template_items 工具返回结构化结果，禁止输出工具调用以外的任何解释性文字、markdown 代码块或普通文本。",
+	}}
+
+	if supportsVision && len(uploadedPhotos) > 0 {
+		messages = append(messages, chatMessage{Role: "user", Content: buildInspectionVisionContent(prompt, nil, uploadedPhotos)})
+	} else {
+		messages = append(messages, chatMessage{Role: "user", Content: prompt})
+	}
+
+	tools := []toolDefinition{{
+		Type: "function",
+		Function: toolFunctionSpec{
+			Name:        "submit_template_items",
+			Description: "提交 AI 识别生成的检查表模板检查项列表",
+			Parameters:  schema,
+		},
+	}}
+	toolChoice := map[string]interface{}{
+		"type": "function",
+		"function": map[string]interface{}{
+			"name": "submit_template_items",
+		},
+	}
+	return messages, tools, toolChoice
+}
+
+// GenerateTemplateItemsByAI 根据图片或文字描述，让 AI 识别并生成结构化检查项列表。
+func GenerateTemplateItemsByAI(req AIGenerateTemplateItemRequest) ([]AIGenerateTemplateItemResult, error) {
+	apiKey, baseURL, model, planName, supportsVision, err := ResolveModelConfig(req.PlanID, req.ModelID)
+	if err != nil {
+		return nil, err
+	}
+
+	messages, tools, toolChoice := buildTemplateItemAIMessages(req, supportsVision)
+
+	resp, err := callChatCompletionsWithTools(apiKey, baseURL, model, messages, tools, toolChoice, 8000)
+	if err != nil {
+		return nil, aiCallError(planName, err)
+	}
+	if resp.StatusCode == http.StatusBadRequest {
+		bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
+		resp.Body.Close()
+		lower := strings.ToLower(string(bodyBytes))
+		if strings.Contains(lower, "tool_choice") || strings.Contains(lower, "tool choice") {
+			resp, err = callChatCompletionsWithTools(apiKey, baseURL, model, messages, tools, nil, 8000)
+			if err != nil {
+				return nil, aiCallError(planName, err)
+			}
+		} else {
+			return nil, aiCallError(planName, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(bodyBytes)))
+		}
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
+		return nil, aiCallError(planName, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(bodyBytes)))
+	}
+
+	var raw struct {
+		Choices []struct {
+			Message struct {
+				Content   string           `json:"content"`
+				ToolCalls []toolCallResult `json:"tool_calls"`
+			} `json:"message"`
+		} `json:"choices"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
+		return nil, aiCallError(planName, err)
+	}
+	if len(raw.Choices) == 0 {
+		return nil, aiCallError(planName, fmt.Errorf("模型无返回内容"))
+	}
+
+	choice := raw.Choices[0]
+	var args string
+	if len(choice.Message.ToolCalls) > 0 {
+		args = strings.TrimSpace(choice.Message.ToolCalls[0].Function.Arguments)
+	} else {
+		args = stripCodeFence(choice.Message.Content)
+	}
+
+	parsed, parseErr := parseGeneratedItems(args, req.ExistingCategories)
+	if parseErr != nil {
+		return nil, aiCallError(planName, fmt.Errorf("模型返回格式异常，无法解析"))
+	}
+	return parsed, nil
+}
+
+// GenerateTemplateItemsByAIStream 根据图片或文字描述，流式生成检查项列表，通过 events 输出 SSE 事件。
+func GenerateTemplateItemsByAIStream(req AIGenerateTemplateItemRequest, events chan<- AIStreamEvent) {
+	apiKey, baseURL, model, planName, supportsVision, err := ResolveModelConfig(req.PlanID, req.ModelID)
+	if err != nil {
+		events <- AIStreamEvent{Event: "error", Message: err.Error()}
+		return
+	}
+
+	messages, tools, toolChoice := buildTemplateItemAIMessages(req, supportsVision)
+
+	events <- AIStreamEvent{Event: "log", Level: "info", Message: fmt.Sprintf("使用模型配置 %s（%s）", planName, model)}
+	if len(req.Photos) > 0 {
+		events <- AIStreamEvent{Event: "log", Level: "info", Message: fmt.Sprintf("附带 %d 张图片（多模态识别）", len(req.Photos))}
+	}
+	if len(req.ExistingCategories) > 0 {
+		events <- AIStreamEvent{Event: "log", Level: "info", Message: fmt.Sprintf("已提供 %d 个已有分类用于归类", len(req.ExistingCategories))}
+	}
+
+	var resp *http.Response
+	resp, err = callChatCompletionsStreamWithTools(apiKey, baseURL, model, messages, tools, toolChoice, 8000)
+	if err != nil {
+		events <- AIStreamEvent{Event: "error", Message: fmt.Sprintf("模型「%s」调用失败：%s", planName, err)}
+		return
+	}
+	if resp.StatusCode == http.StatusBadRequest {
+		bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
+		resp.Body.Close()
+		lower := strings.ToLower(string(bodyBytes))
+		if strings.Contains(lower, "tool_choice") || strings.Contains(lower, "tool choice") {
+			events <- AIStreamEvent{Event: "log", Level: "warn", Message: "当前模型不支持强制工具调用，已自动降级为自动模式"}
+			resp, err = callChatCompletionsStreamWithTools(apiKey, baseURL, model, messages, tools, nil, 8000)
+			if err != nil {
+				events <- AIStreamEvent{Event: "error", Message: fmt.Sprintf("模型「%s」调用失败：%s", planName, err)}
+				return
+			}
+		} else {
+			events <- AIStreamEvent{Event: "error", Message: fmt.Sprintf("模型「%s」调用失败：HTTP %d: %s", planName, resp.StatusCode, string(bodyBytes))}
+			return
+		}
+	}
+	if resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
+		resp.Body.Close()
+		events <- AIStreamEvent{Event: "error", Message: fmt.Sprintf("模型「%s」调用失败：HTTP %d: %s", planName, resp.StatusCode, string(bodyBytes))}
+		return
+	}
+	defer resp.Body.Close()
+
+	events <- AIStreamEvent{Event: "log", Level: "req", Message: "POST /chat/completions → SSE 连接已建立"}
+
+	scanner := bufio.NewScanner(resp.Body)
+	fullContent := ""
+	accumulatedArgs := make(map[int]string)
+	accumulatedName := make(map[int]string)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if !strings.HasPrefix(line, "data:") {
+			continue
+		}
+		data := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+		if data == "[DONE]" {
+			break
+		}
+		var chunk struct {
+			Choices []struct {
+				Delta struct {
+					Content   string           `json:"content"`
+					ToolCalls []toolCallResult `json:"tool_calls"`
+				} `json:"delta"`
+			} `json:"choices"`
+		}
+		if err := json.Unmarshal([]byte(data), &chunk); err != nil {
+			continue
+		}
+		if len(chunk.Choices) == 0 {
+			continue
+		}
+		delta := chunk.Choices[0].Delta
+		if delta.Content != "" {
+			fullContent += delta.Content
+			events <- AIStreamEvent{Event: "chunk", Text: delta.Content}
+		}
+		for _, tc := range delta.ToolCalls {
+			idx := 0
+			if tc.Function.Name != "" {
+				accumulatedName[idx] = tc.Function.Name
+			}
+			if tc.Function.Arguments != "" {
+				accumulatedArgs[idx] += tc.Function.Arguments
+			}
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		events <- AIStreamEvent{Event: "error", Message: fmt.Sprintf("读取模型流失败：%s", err)}
+		return
+	}
+
+	var result *AIGenerateTemplateResult
+	for idx, args := range accumulatedArgs {
+		if accumulatedName[idx] != "submit_template_items" {
+			continue
+		}
+		args = strings.TrimSpace(args)
+		if args == "" {
+			continue
+		}
+		if parsed, perr := parseGeneratedTemplateResult(args, req.ExistingCategories); perr == nil {
+			result = parsed
+			events <- AIStreamEvent{Event: "log", Level: "ok", Message: "已解析 submit_template_items 工具调用结果"}
+			break
+		}
+	}
+	if result == nil {
+		if parsed, perr := parseGeneratedTemplateResult(stripCodeFence(fullContent), req.ExistingCategories); perr == nil {
+			result = parsed
+			events <- AIStreamEvent{Event: "log", Level: "ok", Message: "已从文本内容回退解析 JSON 结果"}
+		}
+	}
+	if result == nil || len(result.Items) == 0 {
+		events <- AIStreamEvent{Event: "error", Message: fmt.Sprintf("模型「%s」返回的检查项格式异常，无法解析。请尝试切换到其他模型配置后重试。", planName)}
+		return
+	}
+	events <- AIStreamEvent{Event: "result", Message: "AI 智能添加检查项完成", Data: map[string]interface{}{
+		"template_name":        result.TemplateName,
+		"template_description": result.TemplateDescription,
+		"items":                result.Items,
+	}}
+}
+
+type generatedItemRaw struct {
+	Category       string           `json:"category"`
+	Title          string           `json:"title"`
+	Standard       string           `json:"standard"`
+	StandardImages []string         `json:"standard_images"`
+	ScoreType      string           `json:"score_type"`
+	MaxScore       json.RawMessage  `json:"max_score"`
+	ScoreOptions   []scoreOptionRaw `json:"score_options"`
+}
+
+type generatedTemplateRaw struct {
+	TemplateName        string             `json:"template_name"`
+	TemplateDescription string             `json:"template_description"`
+	Items               []generatedItemRaw `json:"items"`
+}
+
+type scoreOptionRaw struct {
+	Score json.RawMessage `json:"score"`
+	Label string          `json:"label"`
+}
+
+func parseIntRaw(raw json.RawMessage, fallback float64) float64 {
+	if len(raw) == 0 {
+		return fallback
+	}
+	s := strings.Trim(string(raw), `"`)
+	if s == "" {
+		return fallback
+	}
+	n, err := strconv.ParseFloat(s, 64)
+	if err != nil {
+		return fallback
+	}
+	return n
+}
+
+func normalizeRawItems(items []generatedItemRaw, existingCategories []string) []AIGenerateTemplateItemResult {
+	result := make([]AIGenerateTemplateItemResult, 0, len(items))
+	for _, it := range items {
+		title := strings.TrimSpace(it.Title)
+		if title == "" {
+			continue
+		}
+		opts := make([]models.ScoreOption, 0, len(it.ScoreOptions))
+		for _, o := range it.ScoreOptions {
+			opts = append(opts, models.ScoreOption{Score: parseIntRaw(o.Score, 0), Label: o.Label})
+		}
+		result = append(result, AIGenerateTemplateItemResult{
+			Category:       it.Category,
+			Title:          title,
+			Standard:       it.Standard,
+			StandardImages: it.StandardImages,
+			ScoreType:      it.ScoreType,
+			MaxScore:       int(parseIntRaw(it.MaxScore, 5)),
+			ScoreOptions:   opts,
+		})
+	}
+	return normalizeGeneratedItems(result, existingCategories)
+}
+
+func parseGeneratedItems(raw string, existingCategories []string) ([]AIGenerateTemplateItemResult, error) {
+	result, err := parseGeneratedTemplateResult(raw, existingCategories)
+	if err != nil {
+		return nil, err
+	}
+	if len(result.Items) == 0 {
+		return nil, fmt.Errorf("无法解析为检查项列表")
+	}
+	return result.Items, nil
+}
+
+func parseGeneratedTemplateResult(raw string, existingCategories []string) (*AIGenerateTemplateResult, error) {
+	s := strings.TrimSpace(raw)
+	if s == "" {
+		return nil, fmt.Errorf("空内容")
+	}
+	var wrapper generatedTemplateRaw
+	if err := json.Unmarshal([]byte(s), &wrapper); err == nil && (wrapper.Items != nil || strings.TrimSpace(wrapper.TemplateName) != "") {
+		return normalizeGeneratedTemplate(wrapper, existingCategories), nil
+	}
+	var arr []generatedItemRaw
+	if err := json.Unmarshal([]byte(s), &arr); err == nil && len(arr) > 0 {
+		return &AIGenerateTemplateResult{
+			Items: normalizeRawItems(arr, existingCategories),
+		}, nil
+	}
+	var one generatedItemRaw
+	if err := json.Unmarshal([]byte(s), &one); err == nil && strings.TrimSpace(one.Title) != "" {
+		return &AIGenerateTemplateResult{
+			Items: normalizeRawItems([]generatedItemRaw{one}, existingCategories),
+		}, nil
+	}
+	return nil, fmt.Errorf("无法解析为模板信息")
+}
+
+func normalizeGeneratedTemplate(raw generatedTemplateRaw, existingCategories []string) *AIGenerateTemplateResult {
+	return &AIGenerateTemplateResult{
+		TemplateName:        strings.TrimSpace(raw.TemplateName),
+		TemplateDescription: strings.TrimSpace(raw.TemplateDescription),
+		Items:               normalizeRawItems(raw.Items, existingCategories),
+	}
+}
+
+func normalizeGeneratedItems(items []AIGenerateTemplateItemResult, existingCategories []string) []AIGenerateTemplateItemResult {
+	result := make([]AIGenerateTemplateItemResult, 0, len(items))
+	for _, it := range items {
+		it.Title = strings.TrimSpace(it.Title)
+		it.Standard = strings.TrimSpace(it.Standard)
+		if it.Title == "" {
+			continue
+		}
+		it.Category = matchCategory(strings.TrimSpace(it.Category), existingCategories)
+		if it.ScoreType == "" {
+			it.ScoreType = "score"
+		}
+		if it.MaxScore <= 0 {
+			it.MaxScore = 5
+		}
+		if len(it.ScoreOptions) == 0 {
+			it.ScoreOptions = []models.ScoreOption{{Score: 0, Label: "0分"}, {Score: 5, Label: "5分"}}
+		}
+		if it.StandardImages == nil {
+			it.StandardImages = []string{}
+		}
+		result = append(result, it)
+	}
+	return result
+}
+
+func matchCategory(category string, existingCategories []string) string {
+	category = strings.TrimSpace(category)
+	if category == "" {
+		return "未分类"
+	}
+	lower := strings.ToLower(category)
+	for _, c := range existingCategories {
+		if strings.TrimSpace(c) == "" {
+			continue
+		}
+		if strings.ToLower(strings.TrimSpace(c)) == lower {
+			return strings.TrimSpace(c)
+		}
+	}
+	for _, c := range existingCategories {
+		trimmed := strings.TrimSpace(c)
+		if trimmed == "" {
+			continue
+		}
+		lowerC := strings.ToLower(trimmed)
+		if strings.Contains(lowerC, lower) || strings.Contains(lower, lowerC) {
+			return trimmed
+		}
+	}
+	return category
 }
 
 // SeedInspectionTemplatesBulk 批量创建 10 条检查表模板（每条带若干检查项），用于测试数据初始化

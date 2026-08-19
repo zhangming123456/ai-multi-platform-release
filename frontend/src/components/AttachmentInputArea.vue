@@ -310,15 +310,21 @@ const fileList = computed<string[]>({
 
 const text = computed(() => props.modelValue ?? '')
 
+function dataUrlType(url: string): AttachmentFileType | null {
+  if (url.startsWith('data:image/')) return 'image'
+  if (url.startsWith('data:video/')) return 'video'
+  return null
+}
+
 const displayItems = computed<DisplayItem[]>(() => {
   const result: DisplayItem[] = []
   fileList.value.forEach((url, i) => {
     result.push({
       key: `u-${i}`,
-      type: typeFromUrl(url) || 'file',
+      type: dataUrlType(url) || typeFromUrl(url) || 'file',
       url,
       pending: false,
-      name: urlFileName(url),
+      name: url.startsWith('data:') ? '本地图片' : urlFileName(url),
       size: urlSizeMap.get(url) || 0,
     })
   })
@@ -775,7 +781,13 @@ onBeforeUnmount(() => {
 defineExpose({ handlePaste, pickFiles, addFiles, flushPending, getPendingFiles })
 </script>
 
-<style scoped>
+<style scoped lang="scss">
+:deep(.arco-input).arco-input-wrapper:not(.arco-input-disabled),
+:deep(.aia-textarea).arco-textarea-wrapper:not(.arco-textarea-disabled) {
+  background-color: transparent !important;
+  border-color: transparent !important;
+}
+
 .aia-root {
   width: 100%;
   border: 1px solid #e5e5ea;

@@ -110,6 +110,8 @@ func registerRoutes() {
 	inspectionTemplates := &controllers.InspectionTemplatesController{}
 	web.Router("/api/inspection-templates/", inspectionTemplates, "get:List;post:Create")
 	web.Router("/api/inspection-templates/all", inspectionTemplates, "get:ListAll")
+	web.Router("/api/inspection-templates/ai-generate-items", inspectionTemplates, "post:AIGenerateItems")
+	web.Router("/api/inspection-templates/ai-generate-items-stream", inspectionTemplates, "post:AIGenerateItemsStream")
 	web.Router("/api/inspection-templates/:template_id", inspectionTemplates, "get:Get;put:Update;delete:Delete")
 
 	inspectionMaterials := &controllers.InspectionMaterialsController{}

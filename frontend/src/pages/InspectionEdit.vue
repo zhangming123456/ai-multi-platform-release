@@ -34,65 +34,6 @@
             />
           </a-form-item>
           <a-form-item label="巡店现场描述">
-            <!--            <div-->
-            <!--              class="feedback-input-area"-->
-            <!--              :class="{ 'feedback-input-area&#45;&#45;dragging': isAIDragging }"-->
-            <!--              @dragenter="handleAIDragEnter"-->
-            <!--              @dragleave="handleAIDragLeave"-->
-            <!--              @dragover="handleAIDragOver"-->
-            <!--              @drop="handleAIDrop"-->
-            <!--            >-->
-            <!--              &lt;!&ndash; 已上传图片预览 &ndash;&gt;-->
-            <!--              <div v-if="aiPhotos.length > 0" class="feedback-thumbs">-->
-            <!--                <div v-for="(photo, pIdx) in aiPhotos" :key="photo.uid" class="feedback-thumb-item">-->
-            <!--                  <img :src="photo.url" class="feedback-thumb-img" />-->
-            <!--                  <button type="button" class="feedback-thumb-remove" @click="removeAIPhoto(pIdx)">-->
-            <!--                    <IconClose :size="12" />-->
-            <!--                  </button>-->
-            <!--                  <span class="feedback-thumb-name">{{ photo.name }}</span>-->
-            <!--                </div>-->
-            <!--              </div>-->
-
-            <!--              &lt;!&ndash; 文本输入区 &ndash;&gt;-->
-            <!--              <a-textarea-->
-            <!--                v-model="aiKeywords"-->
-            <!--                placeholder="填写巡店现场发现，例如：门口地垫破损、消防通道被遮挡、收银台前有杂物堆放…"-->
-            <!--                :auto-size="{ minRows: 3, maxRows: 6 }"-->
-            <!--                :max-length="500"-->
-            <!--                show-word-limit-->
-            <!--                class="feedback-textarea"-->
-            <!--                @paste="handleAIPaste"-->
-            <!--                @input="handleAIInput"-->
-            <!--                @keydown="handleAIKeydown"-->
-            <!--              />-->
-
-            <!--              &lt;!&ndash; 工具栏 &ndash;&gt;-->
-            <!--              <div class="feedback-toolbar">-->
-            <!--                <div class="feedback-toolbar-left">-->
-            <!--                  <button-->
-            <!--                    type="button"-->
-            <!--                    class="feedback-toolbar-btn"-->
-            <!--                    :disabled="aiPhotos.length >= 10"-->
-            <!--                    @click="triggerAIUpload(fromDrawer)"-->
-            <!--                  >-->
-            <!--                    <IconImage :size="16" />-->
-            <!--                  </button>-->
-            <!--                  <span class="text-[12px] text-[#86868b]">图片</span>-->
-            <!--                  <span class="text-[11px] text-[#86868b]">{{ aiPhotos.length }}/10</span>-->
-            <!--                  <span class="text-[11px] text-[#86868b]">单张≤10MB</span>-->
-            <!--                </div>-->
-            <!--              </div>-->
-
-            <!--              &lt;!&ndash; 隐藏文件输入 &ndash;&gt;-->
-            <!--              <input-->
-            <!--                :ref="(el: any) => (fromDrawer ? setAIDrawerFileInput(el) : setAIFileInput(el))"-->
-            <!--                type="file"-->
-            <!--                accept="image/*"-->
-            <!--                multiple-->
-            <!--                class="hidden"-->
-            <!--                @change="(e: Event) => onAIFileInputChange(e)"-->
-            <!--              />-->
-            <!--            </div>-->
             <AttachmentInputArea
               ref="aiKeywordsRef"
               v-model="aiKeywords"

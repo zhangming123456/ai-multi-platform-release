@@ -11,6 +11,18 @@
             <span class="hidden md:inline">从素材库添加</span>
           </a-button>
         </a-tooltip>
+        <a-tooltip content="AI 识别图片或描述，智能添加检查项" mini>
+          <a-button
+            v-perm="'inspection:template:ai_create'"
+            size="mini"
+            type="text"
+            class="!text-[#007AFF]"
+            @click="aiGeneratorVisible = true"
+          >
+            <template #icon><IconRobot :size="13" /></template>
+            <span class="hidden md:inline">AI 智能添加</span>
+          </a-button>
+        </a-tooltip>
       </template>
     </PageHeader>
 
@@ -696,6 +708,12 @@
         />
       </div>
     </a-modal>
+
+    <AITemplateItemGenerator
+      v-model:visible="aiGeneratorVisible"
+      :existing-categories="existingCategories"
+      @confirm="confirmAIGeneratedItems"
+    />
   </div>
 </template>
 
@@ -717,9 +735,13 @@ import {
   IconOrderedList,
   IconCaretDown,
   IconStorage,
+  IconRobot,
 } from '@arco-design/web-vue/es/icon'
 import PageHeader from '@/components/layout/PageHeader.vue'
 import AttachmentInputArea from '@/components/AttachmentInputArea.vue'
+import AITemplateItemGenerator, {
+  type AIGeneratedItem,
+} from '@/components/AITemplateItemGenerator.vue'
 import { uploadImageFile } from '@/composables/useFileUpload'
 import type { InspectionTemplate, InspectionMaterial, Paginated } from '@/types'
 import api from '@/utils/api'
@@ -1184,6 +1206,11 @@ const form = ref({
 })
 const items = ref<ItemRow[]>([])
 let itemKeySeed = 0
+
+const aiGeneratorVisible = ref(false)
+const existingCategories = computed<string[]>(() =>
+  groupedItems.value.map((g) => g.category.trim()).filter((c) => c !== ''),
+)
 
 const standardAreaRefs = new Map<number, { flushPending: () => Promise<boolean> }>()
 function setStandardAreaRef(item: ItemRow, el: unknown) {
@@ -1803,6 +1830,75 @@ function confirmAddFromMaterials() {
   syncItemsFromGroups(groups)
   materialPickerVisible.value = false
   Message.success(`已添加 ${insertCount} 个检查项`)
+  collapsedCategories.value = new Set()
+  if (firstNewKey > 0) {
+    markProgrammaticScroll()
+    nextTick(() => {
+      const el = itemEls[firstNewKey]
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    })
+  }
+}
+
+function confirmAIGeneratedItems(result: {
+  name: string
+  description: string
+  items: AIGeneratedItem[]
+}) {
+  const aiItems = result.items
+  if (!aiItems.length && !result.name && !result.description) return
+  if (result.name && !form.value.name.trim()) {
+    form.value.name = result.name
+  }
+  if (result.description && !form.value.description.trim()) {
+    form.value.description = result.description
+  }
+  if (!aiItems.length) return
+  const groups = groupedItems.value
+    .filter((g) => g.items.length > 0)
+    .map((g) => ({ category: g.category, items: [...g.items] }))
+  let firstNewKey = 0
+  for (const it of aiItems) {
+    itemKeySeed += 1
+    const category = it.category.trim() || ''
+    const standardImages: string[] = it.standard_images ?? []
+    const scoreType = it.score_type === 'pass_fail' ? 'pass_fail' : 'score'
+    const options =
+      it.score_options && it.score_options.length > 0
+        ? it.score_options.map((o) => ({ score: o.score, label: o.label || '' }))
+        : cloneOptions(
+            scoreType === 'pass_fail' ? DEFAULT_PASS_FAIL_OPTIONS : DEFAULT_SCORE_OPTIONS,
+          )
+    const row: ItemRow = {
+      key: itemKeySeed,
+      id: '',
+      category,
+      title: it.title || '',
+      standard: it.standard || '',
+      standard_images: standardImages,
+      standardImages,
+      score_type: scoreType,
+      score_options: options,
+      require_remark: false,
+      require_photo: false,
+      show_remark: true,
+      show_photo: true,
+      category_precondition_enabled: false,
+      category_precondition: '',
+    }
+    if (firstNewKey === 0) firstNewKey = row.key
+    let idx = groups.findIndex((g) => g.category === category)
+    if (idx === -1) {
+      groups.push({ category, items: [] })
+      idx = groups.length - 1
+    }
+    groups[idx].items.push(row)
+  }
+  if (groups.length === 0) {
+    groups.push({ category: '', items: [] })
+  }
+  syncItemsFromGroups(groups)
+  Message.success(`已添加 ${aiItems.length} 个检查项`)
   collapsedCategories.value = new Set()
   if (firstNewKey > 0) {
     markProgrammaticScroll()

@@ -90,29 +90,13 @@
               <a-typography-text
                 type="secondary"
                 class="text-[11px] font-semibold uppercase tracking-[0.06em] block mb-1.5"
-                >正文</a-typography-text
+                >正文（底部含推荐话题标签）</a-typography-text
               >
               <a-textarea
-                :model-value="generatedVariants[activePreview].body"
+                :model-value="bodyWithTags(generatedVariants[activePreview])"
                 read-only
-                :auto-size="{ minRows: 4, maxRows: 10 }"
+                :auto-size="{ minRows: 4, maxRows: 12 }"
               />
-            </div>
-            <div>
-              <a-typography-text
-                type="secondary"
-                class="text-[11px] font-semibold uppercase tracking-[0.06em] block mb-2"
-                >推荐话题标签</a-typography-text
-              >
-              <a-space :size="6" wrap>
-                <a-tag
-                  v-for="tag in generatedVariants[activePreview].hashtags"
-                  :key="tag"
-                  color="arcoblue"
-                >
-                  {{ tag }}
-                </a-tag>
-              </a-space>
             </div>
             <div class="flex items-center justify-end gap-2 pt-1">
               <a-button @click="copyContent">
@@ -176,74 +160,76 @@
 
           <div class="chat-input-section">
             <div class="platform-select-bar">
-              <button
-                v-for="choice in platformChoices"
-                :key="choice.value"
-                type="button"
-                class="platform-chip"
-                :class="{ 'platform-chip--active': selectedPlatforms.includes(choice.value) }"
-                @click="togglePlatform(choice.value)"
-              >
-                <PlatformIcon
-                  :platform="
-                    choice.value as 'wechat_mp' | 'xiaohongshu' | 'douyin' | 'wechat_video'
-                  "
-                  size="sm"
-                />
-                <span>{{ choice.label }}</span>
-              </button>
+              <template v-for="choice in platformChoices" :key="choice.value">
+                <a-tooltip :content="choice.label">
+                  <button
+                    type="button"
+                    class="platform-chip"
+                    :class="{ 'platform-chip--active': selectedPlatforms.includes(choice.value) }"
+                    @click="togglePlatform(choice.value)"
+                  >
+                    <PlatformIcon :platform="choice.value" size="sm" />
+                    <!--<span>{{ choice.label }}</span>-->
+                  </button>
+                </a-tooltip>
+              </template>
             </div>
 
-            <AttachmentInputArea
-              ref="createAreaRef"
-              v-model="promptText"
-              v-model:file-list="fileUrls"
-              theme="dark"
-              :file-types="['image', 'video']"
-              :max-count="MAX_UPLOAD_FILES"
-              :min-rows="3"
-              :max-rows="5"
-              :hint="shortcutHint"
-              :enter-behavior="'send'"
-              placeholder="输入创作需求，使用 #标签 添加关键词，例如：写一篇小红书文案 #穿搭 #夏季"
-              @enter="generate"
-              @change="onAreaChange"
-            >
-              <template #toolbar-right>
-                <span
-                  class="model-select-wrap"
-                  :class="{ 'model-select-wrap--compact': modelCompact }"
+            <a-form ref="createFormRef" layout="vertical" :model="createForm" class="create-form">
+              <a-form-item field="content" :rules="contentRules" class="!mb-0">
+                <AttachmentInputArea
+                  ref="createAreaRef"
+                  v-model="createForm.promptText"
+                  v-model:file-list="createForm.fileUrls"
+                  theme="dark"
+                  :file-types="['image', 'video']"
+                  :max-count="MAX_UPLOAD_FILES"
+                  :min-rows="3"
+                  :max-rows="5"
+                  :hint="shortcutHint"
+                  :enter-behavior="'send'"
+                  placeholder="输入创作需求，使用 #标签 添加关键词，例如：写一篇小红书文案 #穿搭 #夏季"
+                  @enter="generate"
+                  @change="onAreaChange"
                 >
-                  <a-select
-                    :model-value="activeModelKey"
-                    :placeholder="modelOptions.length ? '选择模型' : '无可用模型'"
-                    size="small"
-                    class="chat-model-select"
-                    @change="onModelChange"
-                  >
-                    <a-option v-for="opt in modelOptions" :key="opt.key" :value="opt.key">
-                      <span class="provider-opt">
-                        <span class="provider-opt__name">
-                          <span class="provider-opt__bracket">【</span>{{ opt.planName
-                          }}<span class="provider-opt__bracket">】</span>
-                        </span>
-                        <span class="provider-opt__model">{{ opt.modelId }}</span>
-                      </span>
-                    </a-option>
-                  </a-select>
-                  <IconRobot class="model-select-icon" :size="18" />
-                </span>
-                <button
-                  type="button"
-                  class="send-btn"
-                  :disabled="!canGenerate || isGenerating"
-                  @click="generate"
-                >
-                  <IconArrowUp v-if="!isGenerating" :size="18" />
-                  <IconLoading v-else :size="16" spin />
-                </button>
-              </template>
-            </AttachmentInputArea>
+                  <template #toolbar-right>
+                    <span
+                      class="model-select-wrap"
+                      :class="{ 'model-select-wrap--compact': modelCompact }"
+                    >
+                      <a-select
+                        v-model="createForm.model"
+                        :placeholder="modelOptions.length ? '选择模型' : '无可用模型'"
+                        size="small"
+                        class="chat-model-select"
+                        @change="onModelChange"
+                      >
+                        <a-option v-for="opt in modelOptions" :key="opt.key" :value="opt.key">
+                          <span class="provider-opt">
+                            <span class="provider-opt__name">
+                              <span class="provider-opt__bracket">【</span>{{ opt.planName
+                              }}<span class="provider-opt__bracket">】</span>
+                            </span>
+                            <span class="provider-opt__model">{{ opt.modelId }}</span>
+                          </span>
+                        </a-option>
+                      </a-select>
+                      <IconRobot class="model-select-icon" :size="18" />
+                    </span>
+                    <button
+                      type="button"
+                      class="send-btn"
+                      :disabled="isGenerating"
+                      @click="generate"
+                    >
+                      <IconArrowUp v-if="!isGenerating" :size="18" />
+                      <IconLoading v-else :size="16" spin />
+                    </button>
+                  </template>
+                </AttachmentInputArea>
+              </a-form-item>
+              <a-form-item field="model" :rules="modelRules" style="display: none" />
+            </a-form>
           </div>
         </div>
       </div>
@@ -252,9 +238,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
+import { ref, computed, reactive, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { Message } from '@arco-design/web-vue'
+import type { FormInstance } from '@arco-design/web-vue'
 import {
   IconCopy,
   IconSave,
@@ -272,6 +259,7 @@ import AttachmentInputArea from '@/components/AttachmentInputArea.vue'
 import { useTokenPlanStore, parseModelField } from '@/stores/tokenPlan'
 import { urlFileName } from '@/composables/useUrlExtractor'
 import api from '@/utils/api'
+import type { PlatformIconType } from '@/components/shared/PlatformIcon.ts'
 
 const router = useRouter()
 const store = useTokenPlanStore()
@@ -343,19 +331,51 @@ function levelText(level: LogLevel) {
   }
 }
 
-const promptText = ref('')
 const selectedPlatforms = ref<string[]>(['xiaohongshu'])
 const isGenerating = ref(false)
 const streamingText = ref('')
 const streamingPlatform = ref('')
-const fileUrls = ref<string[]>([])
 const MAX_UPLOAD_FILES = 10
 const hasFiles = ref(false)
 
-const createAreaRef = ref<InstanceType<typeof AttachmentInputArea>>()
+const createFormRef = ref<FormInstance>()
+const createForm = reactive({
+  model: '',
+  promptText: '',
+  fileUrls: [] as string[],
+})
+
+const modelRules = [{ required: true, message: '请选择 AI 模型' }]
+
+const contentRules = [
+  {
+    validator: (_value: unknown, callback: (error?: string) => void) => {
+      const hasKeyword = !!parsedPrompt.value.topic || parsedPrompt.value.keywords.length > 0
+      const hasFile = hasFiles.value
+      if (!hasKeyword && !hasFile) {
+        callback('请输入关键词或上传图片（至少填一项）')
+      } else {
+        callback()
+      }
+    },
+  },
+]
+
+interface PendingFileItem {
+  file: File
+  type: string
+  name: string
+  size: number
+}
+
+const createAreaRef = ref<{
+  getPendingFiles: () => PendingFileItem[]
+  $el?: HTMLElement
+}>()
 
 function onAreaChange(payload: { total: number; pending: number }) {
   hasFiles.value = payload.total > 0
+  void createFormRef.value?.validateField('content').catch(() => {})
 }
 
 const modelCompact = ref(false)
@@ -380,7 +400,7 @@ onUnmounted(() => {
 })
 
 const parsedPrompt = computed(() => {
-  const text = promptText.value
+  const text = createForm.promptText
   const keywords: string[] = []
   const topic = text
     .replace(/#[\p{L}\p{N}_\u4e00-\u9fa5]+/gu, (match) => {
@@ -391,15 +411,12 @@ const parsedPrompt = computed(() => {
   return { topic, keywords }
 })
 
-const canGenerate = computed(
-  () => !!parsedPrompt.value.topic || parsedPrompt.value.keywords.length > 0 || hasFiles.value,
-)
-
 function onModelChange(val: unknown) {
   if (typeof val !== 'string') return
   const idx = val.indexOf(':')
   if (idx <= 0) return
   store.selectModel(val.slice(0, idx), val.slice(idx + 1))
+  void createFormRef.value?.validateField('model').catch(() => {})
 }
 
 interface ModelOption {
@@ -424,6 +441,23 @@ const activeModelKey = computed(() => {
   const modelId = store.selectedModelId || store.activeModelList[0]?.id || ''
   return modelId ? `${store.activePlanId}:${modelId}` : ''
 })
+
+watch(
+  activeModelKey,
+  (key) => {
+    if (key && !createForm.model) {
+      createForm.model = key
+    }
+  },
+  { immediate: true },
+)
+
+watch(
+  () => createForm.promptText,
+  () => {
+    void createFormRef.value?.validateField('content').catch(() => {})
+  },
+)
 
 function togglePlatform(value: string) {
   const idx = selectedPlatforms.value.indexOf(value)
@@ -519,7 +553,7 @@ async function fetchUrlToBase64(url: string): Promise<{ data: string; mime_type:
 
 async function buildFilesPayload(): Promise<{ data: string; mime_type: string }[] | undefined> {
   const pendingFiles = createAreaRef.value?.getPendingFiles() ?? []
-  const urls = fileUrls.value
+  const urls = createForm.fileUrls
   const total = pendingFiles.length + urls.length
   if (total === 0) return undefined
   pushLog('info', `正在编码 ${total} 个素材文件…`)
@@ -550,7 +584,7 @@ watch(streamingText, async () => {
   }
 })
 
-const platformChoices = [
+const platformChoices: { value: PlatformIconType; label: string }[] = [
   { value: 'wechat_mp', label: '公众号' },
   { value: 'xiaohongshu', label: '小红书' },
   { value: 'douyin', label: '抖音' },
@@ -560,6 +594,19 @@ const platformChoices = [
 const generatedVariants = ref<Record<string, { title: string; body: string; hashtags: string[] }>>(
   {},
 )
+
+function hashtagsText(tags: string[]): string {
+  return tags
+    .map((t) => t.trim().replace(/^#+/, ''))
+    .filter(Boolean)
+    .map((t) => `#${t}`)
+    .join(' ')
+}
+
+function bodyWithTags(variant: { body: string; hashtags: string[] }): string {
+  const tags = hashtagsText(variant.hashtags)
+  return tags ? `${variant.body}\n${tags}` : variant.body
+}
 
 const previewPlatforms = computed(() =>
   platformChoices.filter((p) => selectedPlatforms.value.includes(p.value)),
@@ -574,9 +621,12 @@ async function generate() {
     router.push('/settings/token-plan')
     return
   }
-  if (!canGenerate.value) {
-    pushLog('err', '内容主题、关键词、上传文件至少填写一项')
-    Message.error('内容主题、关键词、上传文件至少填写一项')
+  try {
+    await createFormRef.value?.validate()
+  } catch (e) {
+    const errors = e as Record<string, { message: string }[]>
+    const first = Object.values(errors || {})[0]?.[0]?.message
+    if (first) Message.error(first)
     return
   }
   if (hasFiles.value && !store.selectedModelSupportsFiles) {
@@ -763,7 +813,7 @@ async function saveContent() {
   try {
     await api.post('/contents/', {
       title: variant.title,
-      body: variant.body,
+      body: bodyWithTags(variant),
       platform: activePreview.value,
       status: 'draft',
     })
@@ -790,7 +840,7 @@ async function saveContent() {
 async function copyContent() {
   const variant = generatedVariants.value[activePreview.value]
   if (!variant) return
-  const text = `${variant.title}\n\n${variant.body}\n\n${variant.hashtags.join(' ')}`
+  const text = `${variant.title}\n\n${bodyWithTags(variant)}`
   try {
     await navigator.clipboard.writeText(text)
     Message.success('已复制到剪贴板')
@@ -841,7 +891,8 @@ async function copyContent() {
 
 .content-left {
   flex: 1;
-  min-width: 0;
+  min-width: 200px;
+  max-width: 375px;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -857,7 +908,7 @@ async function copyContent() {
 }
 
 .content-left .log-terminal {
-  flex: none;
+  flex: 1;
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -865,14 +916,13 @@ async function copyContent() {
 }
 
 .content-left .log-terminal__body-wrap {
-  flex: none;
+  flex: 1;
   min-height: 0;
   overflow: hidden;
 }
 
 .content-left .log-terminal__body {
-  max-height: 160px;
-  height: 160px;
+  height: 100%;
   min-height: 0;
   overflow-y: auto;
 }
@@ -1054,7 +1104,7 @@ async function copyContent() {
 }
 
 .log-terminal__body {
-  max-height: 240px;
+  max-height: 100%;
   overflow-y: auto;
   padding: 12px 14px;
   font-family: 'SF Mono', ui-monospace, Menlo, Monaco, 'Cascadia Code', 'Roboto Mono', monospace;

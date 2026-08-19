@@ -484,13 +484,9 @@ func callChatCompletionsStreamWithTools(apiKey, baseURL, model string, messages 
 	return resp, nil
 }
 
-// GenerateContentVariants 生成多个内容变体。
-func GenerateContentVariants(topic, platform, style string, keywords []string, count int, planID, modelID string) ([]AIVariant, error) {
-	apiKey, baseURL, model, planName, _, err := ResolveModelConfig(planID, modelID)
-	if err != nil {
-		return nil, err
-	}
-
+// buildContentVariantMessages 构建内容创作 AI 调用的 messages / tools / toolChoice。
+// count > 1 时要求模型一次返回多个变体（submit_content_variants），否则返回单个（submit_content_variant）。
+func buildContentVariantMessages(topic, platform, style string, keywords []string, files []UploadedFile, count int) ([]chatMessage, []toolDefinition, interface{}) {
 	platformStyle := platformStyleMap[platform]
 	if platformStyle == "" {
 		platformStyle = "通用社交媒体风格"
@@ -506,25 +502,195 @@ func GenerateContentVariants(topic, platform, style string, keywords []string, c
 	if subject == "" {
 		if len(keywords) > 0 {
 			subject = "围绕关键词进行创作：" + strings.Join(keywords, "、")
+		} else if len(files) > 0 {
+			subject = "围绕上传的图片/视频素材进行创作"
 		} else {
 			subject = "通用内容创作"
 		}
 	}
+	fileHint := ""
+	if len(files) > 0 {
+		fileHint = "\n\n请结合上传的图片/视频内容进行分析创作，将素材中的关键信息融入文案。"
+	}
 
-	prompt := fmt.Sprintf(`请为以下主题生成 %d 个不同风格的内容变体，目标平台：%s。
+	toolName := "submit_content_variant"
+	toolDesc := "提交 AI 生成的内容变体（含标题、正文、推荐话题标签）"
+	itemSchema := map[string]interface{}{
+		"type": "object",
+		"properties": map[string]interface{}{
+			"title":    map[string]interface{}{"type": "string", "description": "内容标题，简洁有吸引力"},
+			"body":     map[string]interface{}{"type": "string", "description": "内容正文"},
+			"hashtags": map[string]interface{}{"type": "array", "description": "推荐话题标签列表，3-5 个，不含 # 前缀", "items": map[string]interface{}{"type": "string"}},
+		},
+		"required": []string{"title", "body", "hashtags"},
+	}
+
+	var schema map[string]interface{}
+	var callDesc string
+	if count > 1 {
+		toolName = "submit_content_variants"
+		toolDesc = "提交 AI 生成的多个内容变体（每个含标题、正文、推荐话题标签）"
+		schema = map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"variants": map[string]interface{}{
+					"type":        "array",
+					"description": "内容变体列表",
+					"items":       itemSchema,
+				},
+			},
+			"required": []string{"variants"},
+		}
+		callDesc = fmt.Sprintf(`请为以下主题生成 %d 个不同风格的内容变体，目标平台：%s。
 风格要求：%s%s
 
-主题：%s
+主题：%s%s
 
-请以 JSON 数组格式返回，每个变体包含 title（标题）、body（正文）、hashtags（标签列表）。
-直接返回 JSON，不要包含其他说明文字。`, count, platform, platformStyle, keywordsStr, subject)
+请直接调用 %s 工具提交结果，每个变体必须包含 title（标题）、body（正文）、hashtags（推荐话题标签列表，不含 # 前缀）。
+禁止输出工具调用以外的任何解释性文字、markdown 代码块或普通文本。`, count, platform, platformStyle, keywordsStr, subject, fileHint, toolName)
+	} else {
+		schema = itemSchema
+		callDesc = fmt.Sprintf(`请为以下主题生成一篇适合%s发布的内容。
+风格要求：%s%s
 
-	resp, err := callChatCompletions(apiKey, baseURL, model, []chatMessage{
-		{Role: "system", Content: "你是一个专业的社交媒体内容创作助手，擅长为不同平台生成适配的优质内容。使用中文回复。"},
-		{Role: "user", Content: prompt},
-	}, false)
+主题：%s%s
+
+请直接调用 %s 工具提交结果，数据结构必须包含：
+- title（标题）
+- body（正文）
+- hashtags（推荐话题标签列表，3-5 个，不含 # 前缀）
+禁止输出工具调用以外的任何解释性文字、markdown 代码块或普通文本。`, platform, platformStyle, keywordsStr, subject, fileHint, toolName)
+	}
+
+	systemContent := "你是一个专业的社交媒体内容创作助手，擅长为不同平台生成适配的优质内容。使用中文回复。必须且只能调用" + toolName + "工具返回结构化结果，禁止输出工具调用以外的任何解释性文字、markdown 代码块或普通文本。"
+
+	messages := []chatMessage{{Role: "system", Content: systemContent}}
+	if len(files) > 0 {
+		messages = append(messages, chatMessage{Role: "user", Content: buildVisionContent(callDesc, files)})
+	} else {
+		messages = append(messages, chatMessage{Role: "user", Content: callDesc})
+	}
+
+	tools := []toolDefinition{{
+		Type: "function",
+		Function: toolFunctionSpec{
+			Name:        toolName,
+			Description: toolDesc,
+			Parameters:  schema,
+		},
+	}}
+	toolChoice := map[string]interface{}{
+		"type": "function",
+		"function": map[string]interface{}{
+			"name": toolName,
+		},
+	}
+	return messages, tools, toolChoice
+}
+
+func extractHashtags(v interface{}) []string {
+	hashtags := make([]string, 0)
+	if list, ok := v.([]interface{}); ok {
+		for _, item := range list {
+			if s, ok := item.(string); ok {
+				s = strings.TrimSpace(s)
+				if s != "" {
+					hashtags = append(hashtags, s)
+				}
+			}
+		}
+	} else if s, ok := v.(string); ok && s != "" {
+		for _, t := range strings.FieldsFunc(s, func(r rune) bool { return r == ',' || r == '，' || r == ' ' || r == '#' }) {
+			t = strings.TrimSpace(t)
+			if t != "" {
+				hashtags = append(hashtags, t)
+			}
+		}
+	}
+	return hashtags
+}
+
+func buildVariantList(items []map[string]interface{}) []AIVariant {
+	variants := make([]AIVariant, 0, len(items))
+	for _, item := range items {
+		v := AIVariant{Title: toString(item["title"]), Body: toString(item["body"]), Hashtags: extractHashtags(item["hashtags"])}
+		if v.Title != "" || v.Body != "" || len(v.Hashtags) > 0 {
+			variants = append(variants, v)
+		}
+	}
+	return variants
+}
+
+func parseContentVariantArgs(raw string) (AIVariant, bool) {
+	clean := stripCodeFence(raw)
+	var obj map[string]interface{}
+	if err := json.Unmarshal([]byte(clean), &obj); err == nil {
+		v := AIVariant{Title: toString(obj["title"]), Body: toString(obj["body"]), Hashtags: extractHashtags(obj["hashtags"])}
+		if v.Title != "" || v.Body != "" || len(v.Hashtags) > 0 {
+			return v, true
+		}
+	}
+	var list []map[string]interface{}
+	if err := json.Unmarshal([]byte(clean), &list); err == nil && len(list) > 0 {
+		v := AIVariant{Title: toString(list[0]["title"]), Body: toString(list[0]["body"]), Hashtags: extractHashtags(list[0]["hashtags"])}
+		if v.Title != "" || v.Body != "" || len(v.Hashtags) > 0 {
+			return v, true
+		}
+	}
+	return AIVariant{}, false
+}
+
+func parseContentVariantsArgs(raw string) ([]AIVariant, bool) {
+	clean := stripCodeFence(raw)
+	var wrapper struct {
+		Variants []map[string]interface{} `json:"variants"`
+	}
+	if err := json.Unmarshal([]byte(clean), &wrapper); err == nil && len(wrapper.Variants) > 0 {
+		return buildVariantList(wrapper.Variants), true
+	}
+	var list []map[string]interface{}
+	if err := json.Unmarshal([]byte(clean), &list); err == nil && len(list) > 0 {
+		return buildVariantList(list), true
+	}
+	return nil, false
+}
+
+func hashtagsText(hashtags []string) string {
+	clean := make([]string, 0, len(hashtags))
+	for _, t := range hashtags {
+		t = strings.TrimSpace(strings.TrimPrefix(t, "#"))
+		if t != "" {
+			clean = append(clean, "#"+t)
+		}
+	}
+	return strings.Join(clean, " ")
+}
+
+// GenerateContentVariants 生成多个内容变体。
+func GenerateContentVariants(topic, platform, style string, keywords []string, count int, planID, modelID string) ([]AIVariant, error) {
+	apiKey, baseURL, model, planName, _, err := ResolveModelConfig(planID, modelID)
+	if err != nil {
+		return nil, err
+	}
+
+	messages, tools, toolChoice := buildContentVariantMessages(topic, platform, style, keywords, nil, count)
+
+	resp, err := callChatCompletionsWithTools(apiKey, baseURL, model, messages, tools, toolChoice, 8000)
 	if err != nil {
 		return nil, aiCallError(planName, err)
+	}
+	if resp.StatusCode == http.StatusBadRequest {
+		bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
+		resp.Body.Close()
+		lower := strings.ToLower(string(bodyBytes))
+		if strings.Contains(lower, "tool_choice") || strings.Contains(lower, "tool choice") {
+			resp, err = callChatCompletionsWithTools(apiKey, baseURL, model, messages, tools, nil, 8000)
+			if err != nil {
+				return nil, aiCallError(planName, err)
+			}
+		} else {
+			return nil, aiCallError(planName, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(bodyBytes)))
+		}
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
@@ -535,7 +701,8 @@ func GenerateContentVariants(topic, platform, style string, keywords []string, c
 	var result struct {
 		Choices []struct {
 			Message struct {
-				Content string `json:"content"`
+				Content   string           `json:"content"`
+				ToolCalls []toolCallResult `json:"tool_calls"`
 			} `json:"message"`
 		} `json:"choices"`
 	}
@@ -546,18 +713,21 @@ func GenerateContentVariants(topic, platform, style string, keywords []string, c
 		return nil, aiCallError(planName, fmt.Errorf("模型无返回内容"))
 	}
 
-	content := strings.TrimSpace(result.Choices[0].Message.Content)
-	if strings.HasPrefix(content, "```") {
-		parts := strings.Split(content, "```")
-		if len(parts) > 1 {
-			content = strings.TrimSpace(parts[1])
-			content = strings.TrimPrefix(content, "json")
-			content = strings.TrimSpace(content)
-		}
+	args := ""
+	if len(result.Choices[0].Message.ToolCalls) > 0 {
+		args = strings.TrimSpace(result.Choices[0].Message.ToolCalls[0].Function.Arguments)
+	} else {
+		args = strings.TrimSpace(result.Choices[0].Message.Content)
 	}
 
-	var data []map[string]interface{}
-	if err := json.Unmarshal([]byte(content), &data); err != nil {
+	variants, ok := parseContentVariantsArgs(args)
+	if !ok {
+		if v, ok2 := parseContentVariantArgs(args); ok2 {
+			variants = []AIVariant{v}
+			ok = true
+		}
+	}
+	if !ok || len(variants) == 0 {
 		available, aerr := getAvailablePlans()
 		if aerr != nil {
 			return nil, aerr
@@ -566,23 +736,6 @@ func GenerateContentVariants(topic, platform, style string, keywords []string, c
 			Message:        fmt.Sprintf("模型「%s」返回的内容格式异常，无法解析。请尝试切换到其他模型配置后重试。", planName),
 			AvailablePlans: available,
 		}
-	}
-
-	variants := make([]AIVariant, 0, len(data))
-	for _, item := range data {
-		hashtags := make([]string, 0)
-		if h, ok := item["hashtags"].([]interface{}); ok {
-			for _, v := range h {
-				if s, ok := v.(string); ok {
-					hashtags = append(hashtags, s)
-				}
-			}
-		}
-		variants = append(variants, AIVariant{
-			Title:    toString(item["title"]),
-			Body:     toString(item["body"]),
-			Hashtags: hashtags,
-		})
 	}
 	return variants, nil
 }
@@ -606,83 +759,6 @@ func toString(v interface{}) string {
 		return s
 	}
 	return fmt.Sprintf("%v", v)
-}
-
-var titleRe = regexp.MustCompile(`【标题】\s*\n?(.*?)(?:【正文】|\z)`)
-var bodyRe = regexp.MustCompile(`【正文】\s*\n?(.*?)(?:【标签】|\z)`)
-var tagsRe = regexp.MustCompile(`【标签】\s*\n?(.*?)\z`)
-
-// ParseStreamedContent 解析流式生成的文本内容，提取标题、正文和标签。
-func ParseStreamedContent(content string) AIVariant {
-	title := ""
-	body := ""
-	hashtagsStr := ""
-
-	if m := titleRe.FindStringSubmatch(content); m != nil {
-		title = strings.TrimSpace(m[1])
-	}
-	if m := bodyRe.FindStringSubmatch(content); m != nil {
-		body = strings.TrimSpace(m[1])
-	}
-	if m := tagsRe.FindStringSubmatch(content); m != nil {
-		hashtagsStr = strings.TrimSpace(m[1])
-	}
-
-	if title == "" && body == "" {
-		contentClean := strings.TrimSpace(content)
-		if strings.HasPrefix(contentClean, "```") {
-			parts := strings.Split(contentClean, "```")
-			if len(parts) > 1 {
-				contentClean = strings.TrimSpace(parts[1])
-				contentClean = strings.TrimPrefix(contentClean, "json")
-				contentClean = strings.TrimSpace(contentClean)
-			}
-		}
-		var data map[string]interface{}
-		if err := json.Unmarshal([]byte(contentClean), &data); err == nil {
-			hashtags := make([]string, 0)
-			if h, ok := data["hashtags"].([]interface{}); ok {
-				for _, v := range h {
-					if s, ok := v.(string); ok {
-						hashtags = append(hashtags, s)
-					}
-				}
-			}
-			return AIVariant{
-				Title:    toString(data["title"]),
-				Body:     toString(data["body"]),
-				Hashtags: hashtags,
-			}
-		}
-		// 兼容 JSON 数组格式
-		var list []map[string]interface{}
-		if err := json.Unmarshal([]byte(contentClean), &list); err == nil && len(list) > 0 {
-			item := list[0]
-			hashtags := make([]string, 0)
-			if h, ok := item["hashtags"].([]interface{}); ok {
-				for _, v := range h {
-					if s, ok := v.(string); ok {
-						hashtags = append(hashtags, s)
-					}
-				}
-			}
-			return AIVariant{
-				Title:    toString(item["title"]),
-				Body:     toString(item["body"]),
-				Hashtags: hashtags,
-			}
-		}
-		return AIVariant{Title: "(未解析到标题)", Body: strings.TrimSpace(content)}
-	}
-
-	hashtags := make([]string, 0)
-	for _, t := range regexp.MustCompile(`[\s,，]+`).Split(hashtagsStr, -1) {
-		t = strings.TrimSpace(strings.TrimPrefix(t, "#"))
-		if t != "" {
-			hashtags = append(hashtags, t)
-		}
-	}
-	return AIVariant{Title: title, Body: body, Hashtags: hashtags}
 }
 
 // AIStreamEvent 流式生成事件。事件类型: log / chunk / done / error / result / request_data / response_data。
@@ -757,46 +833,7 @@ func GenerateContentStream(topic, platform, style string, keywords []string, pla
 		defer close(events)
 		events <- AIStreamEvent{Event: "log", Level: "info", Message: fmt.Sprintf("使用模型配置 %s（%s）", planName, model)}
 
-		platformStyle := platformStyleMap[platform]
-		if platformStyle == "" {
-			platformStyle = "通用社交媒体风格"
-		}
-		if style != "" {
-			platformStyle += "，额外要求：" + style
-		}
-		keywordsStr := ""
-		if len(keywords) > 0 {
-			keywordsStr = "，关键词：" + strings.Join(keywords, ", ")
-		}
-		subject := strings.TrimSpace(topic)
-		if subject == "" {
-			if len(keywords) > 0 {
-				subject = "围绕关键词进行创作：" + strings.Join(keywords, "、")
-			} else if len(files) > 0 {
-				subject = "围绕上传的图片/视频素材进行创作"
-			} else {
-				subject = "通用内容创作"
-			}
-		}
-		fileHint := ""
-		if len(files) > 0 {
-			fileHint = "\n\n请结合上传的图片/视频内容进行分析创作，将素材中的关键信息融入文案。"
-		}
-		prompt := fmt.Sprintf(`请为以下主题生成一篇适合%s发布的内容。
-风格要求：%s%s
-
-主题：%s%s
-
-请严格按以下格式输出（不要添加其他内容）：
-
-【标题】
-标题内容
-
-【正文】
-正文内容
-
-【标签】
-#标签1 #标签2 #标签3`, platform, platformStyle, keywordsStr, subject, fileHint)
+		messages, tools, toolChoice := buildContentVariantMessages(topic, platform, style, keywords, files, 1)
 
 		if len(files) > 0 {
 			imgCount := 0
@@ -818,26 +855,39 @@ func GenerateContentStream(topic, platform, style string, keywords []string, pla
 			events <- AIStreamEvent{Event: "log", Level: "info", Message: fmt.Sprintf("附带 %s（多模态分析）", strings.Join(parts, "、"))}
 		}
 
-		messages := []chatMessage{{Role: "system", Content: "你是一个专业的社交媒体内容创作助手，擅长为不同平台生成适配的优质内容。使用中文回复。"}}
-		if len(files) > 0 {
-			messages = append(messages, chatMessage{Role: "user", Content: buildVisionContent(prompt, files)})
-		} else {
-			messages = append(messages, chatMessage{Role: "user", Content: prompt})
-		}
-
-		resp, err := callChatCompletions(apiKey, baseURL, model, messages, true)
+		resp, err := callChatCompletionsStreamWithTools(apiKey, baseURL, model, messages, tools, toolChoice, 8000)
 		if err != nil {
 			events <- AIStreamEvent{Event: "error", Message: fmt.Sprintf("模型「%s」调用失败：%s。请尝试切换到其他模型配置后重试。", planName, err)}
 			return
 		}
+		if resp.StatusCode == http.StatusBadRequest {
+			bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
+			resp.Body.Close()
+			lower := strings.ToLower(string(bodyBytes))
+			if strings.Contains(lower, "tool_choice") || strings.Contains(lower, "tool choice") {
+				events <- AIStreamEvent{Event: "log", Level: "warn", Message: "当前模型不支持强制工具调用，已自动降级为自动模式"}
+				resp, err = callChatCompletionsStreamWithTools(apiKey, baseURL, model, messages, tools, nil, 8000)
+				if err != nil {
+					events <- AIStreamEvent{Event: "error", Message: fmt.Sprintf("模型「%s」调用失败：%s。请尝试切换到其他模型配置后重试。", planName, err)}
+					return
+				}
+			} else {
+				events <- AIStreamEvent{Event: "error", Message: fmt.Sprintf("模型「%s」调用失败：HTTP %d: %s。请尝试切换到其他模型配置后重试。", planName, resp.StatusCode, string(bodyBytes))}
+				return
+			}
+		}
 		defer resp.Body.Close()
 		if resp.StatusCode != http.StatusOK {
 			b, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
-			events <- AIStreamEvent{Event: "error", Message: fmt.Sprintf("模型「%s」调用失败：HTTP %d %s。请尝试切换到其他模型配置后重试。", planName, resp.StatusCode, string(b))}
+			events <- AIStreamEvent{Event: "error", Message: fmt.Sprintf("模型「%s」调用失败：HTTP %d: %s。请尝试切换到其他模型配置后重试。", planName, resp.StatusCode, string(b))}
 			return
 		}
 
+		events <- AIStreamEvent{Event: "log", Level: "req", Message: "POST /chat/completions → SSE 连接已建立"}
+
 		fullContent := ""
+		accumulatedArgs := make(map[int]string)
+		accumulatedName := make(map[int]string)
 		scanner := bufio.NewScanner(resp.Body)
 		for scanner.Scan() {
 			line := strings.TrimSpace(scanner.Text())
@@ -851,24 +901,65 @@ func GenerateContentStream(topic, platform, style string, keywords []string, pla
 			var chunk struct {
 				Choices []struct {
 					Delta struct {
-						Content string `json:"content"`
+						Content   string           `json:"content"`
+						ToolCalls []toolCallResult `json:"tool_calls"`
 					} `json:"delta"`
 				} `json:"choices"`
 			}
 			if err := json.Unmarshal([]byte(data), &chunk); err != nil {
 				continue
 			}
-			if len(chunk.Choices) > 0 && chunk.Choices[0].Delta.Content != "" {
-				delta := chunk.Choices[0].Delta.Content
-				fullContent += delta
-				events <- AIStreamEvent{Event: "chunk", Text: delta}
+			if len(chunk.Choices) == 0 {
+				continue
+			}
+			delta := chunk.Choices[0].Delta
+			if delta.Content != "" {
+				fullContent += delta.Content
+				events <- AIStreamEvent{Event: "chunk", Text: delta.Content}
+			}
+			for _, tc := range delta.ToolCalls {
+				idx := 0
+				if tc.Function.Name != "" {
+					accumulatedName[idx] = tc.Function.Name
+				}
+				if tc.Function.Arguments != "" {
+					accumulatedArgs[idx] += tc.Function.Arguments
+				}
 			}
 		}
+		if err := scanner.Err(); err != nil {
+			events <- AIStreamEvent{Event: "error", Message: fmt.Sprintf("读取模型流失败：%s", err)}
+			return
+		}
 
-		variant := ParseStreamedContent(fullContent)
+		var variant *AIVariant
+		for idx, args := range accumulatedArgs {
+			if accumulatedName[idx] != "submit_content_variant" {
+				continue
+			}
+			args = strings.TrimSpace(args)
+			if args == "" {
+				continue
+			}
+			if v, ok := parseContentVariantArgs(args); ok {
+				variant = &v
+				events <- AIStreamEvent{Event: "log", Level: "ok", Message: "已解析 submit_content_variant 工具调用结果"}
+				break
+			}
+		}
+		if variant == nil {
+			if v, ok := parseContentVariantArgs(stripCodeFence(fullContent)); ok {
+				variant = &v
+				events <- AIStreamEvent{Event: "log", Level: "ok", Message: "已从文本内容回退解析 JSON 结果"}
+			}
+		}
+		if variant == nil {
+			events <- AIStreamEvent{Event: "error", Message: fmt.Sprintf("模型「%s」返回的内容格式异常，无法解析。请尝试切换到其他模型配置后重试。", planName)}
+			return
+		}
 		events <- AIStreamEvent{
 			Event:    "done",
-			Variant:  &variant,
+			Variant:  variant,
 			Model:    model,
 			PlanName: planName,
 		}

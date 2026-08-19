@@ -14,33 +14,36 @@
 </template>
 
 <script setup lang="ts">
+import type { PlatformIconType } from '@/components/shared/PlatformIcon.ts'
+
 defineProps<{
-  platform: 'wechat_mp' | 'xiaohongshu' | 'douyin' | 'wechat_video'
+  platform: PlatformIconType
   size?: 'sm' | 'md' | 'lg'
 }>()
 
-const platformConfig: Record<string, { name: string; gradient: string; letter: string }> = {
-  wechat_mp: {
-    name: '微信公众号',
-    gradient: 'linear-gradient(135deg, #2DC100 0%, #07C160 100%)',
-    letter: '微',
-  },
-  xiaohongshu: {
-    name: '小红书',
-    gradient: 'linear-gradient(135deg, #FF5A6E 0%, #E6002D 100%)',
-    letter: '红',
-  },
-  douyin: {
-    name: '抖音',
-    gradient: 'linear-gradient(135deg, #3A465C 0%, #161823 100%)',
-    letter: '抖',
-  },
-  wechat_video: {
-    name: '视频号',
-    gradient: 'linear-gradient(135deg, #FA9D3B 0%, #FA5151 100%)',
-    letter: '视',
-  },
-}
+const platformConfig: Record<PlatformIconType, { name: string; gradient: string; letter: string }> =
+  {
+    wechat_mp: {
+      name: '微信公众号',
+      gradient: 'linear-gradient(135deg, #2DC100 0%, #07C160 100%)',
+      letter: '微',
+    },
+    xiaohongshu: {
+      name: '小红书',
+      gradient: 'linear-gradient(135deg, #FF5A6E 0%, #E6002D 100%)',
+      letter: '红',
+    },
+    douyin: {
+      name: '抖音',
+      gradient: 'linear-gradient(135deg, #3A465C 0%, #161823 100%)',
+      letter: '抖',
+    },
+    wechat_video: {
+      name: '视频号',
+      gradient: 'linear-gradient(135deg, #FA9D3B 0%, #FA5151 100%)',
+      letter: '视',
+    },
+  }
 
 const sizeMap = {
   sm: 24,

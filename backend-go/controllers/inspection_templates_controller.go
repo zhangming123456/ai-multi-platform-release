@@ -92,6 +92,140 @@ func (c *InspectionTemplatesController) ListAll() {
 	c.OK(items)
 }
 
+// aiGenerateTemplateItemRequest AI 智能添加检查项请求。
+type aiGenerateTemplateItemRequest struct {
+	PlanID      string `json:"plan_id"`
+	ModelID     string `json:"model_id"`
+	Description string `json:"description"`
+	Photos      []struct {
+		Data     string `json:"data"`
+		MimeType string `json:"mime_type"`
+	} `json:"photos"`
+	ExistingCategories []string `json:"existing_categories"`
+}
+
+// AIGenerateItems POST /api/inspection-templates/ai-generate-items
+func (c *InspectionTemplatesController) AIGenerateItems() {
+	if !c.CheckPermission("inspection:template:ai_create") {
+		return
+	}
+	var req aiGenerateTemplateItemRequest
+	if err := c.ParseBody(&req); err != nil {
+		c.WriteError(http.StatusBadRequest, "请求参数错误")
+		return
+	}
+	svcReq, errMsg := buildAIGenerateSvcReq(&req)
+	if errMsg != "" {
+		c.WriteError(http.StatusBadRequest, errMsg)
+		return
+	}
+	items, err := services.GenerateTemplateItemsByAI(svcReq)
+	if err != nil {
+		c.WriteError(http.StatusInternalServerError, err.Error())
+		return
+	}
+	c.OK(map[string]interface{}{"items": items})
+}
+
+// AIGenerateItemsStream POST /api/inspection-templates/ai-generate-items-stream
+func (c *InspectionTemplatesController) AIGenerateItemsStream() {
+	if !c.CheckPermission("inspection:template:ai_create") {
+		return
+	}
+	var req aiGenerateTemplateItemRequest
+	if err := c.ParseBody(&req); err != nil {
+		c.WriteError(http.StatusBadRequest, "请求参数错误")
+		return
+	}
+	svcReq, errMsg := buildAIGenerateSvcReq(&req)
+	if errMsg != "" {
+		c.WriteError(http.StatusBadRequest, errMsg)
+		return
+	}
+
+	w := c.Ctx.ResponseWriter
+	flusher, ok := w.ResponseWriter.(http.Flusher)
+	if !ok {
+		c.WriteError(http.StatusInternalServerError, "SSE 不受支持")
+		return
+	}
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+
+	write := func(event string, data interface{}) {
+		_, _ = w.Write([]byte(sseEvent(event, data)))
+		flusher.Flush()
+	}
+
+	write("log", map[string]interface{}{
+		"level":   "req",
+		"message": "开始 AI 智能添加检查项…",
+	})
+
+	events := make(chan services.AIStreamEvent, 32)
+	go func() {
+		defer close(events)
+		services.GenerateTemplateItemsByAIStream(svcReq, events)
+	}()
+
+	for evt := range events {
+		switch evt.Event {
+		case "log":
+			level := evt.Level
+			if level == "" {
+				level = "info"
+			}
+			write("log", map[string]interface{}{
+				"level":   level,
+				"message": evt.Message,
+			})
+		case "chunk":
+			write("chunk", map[string]interface{}{
+				"text": evt.Text,
+			})
+		case "result":
+			write("result", evt.Data)
+		case "error":
+			write("error", map[string]interface{}{
+				"message":         evt.Message,
+				"available_plans": evt.AvailablePlans,
+			})
+		}
+	}
+	write("complete", map[string]interface{}{"message": "AI 智能添加检查项完成"})
+}
+
+func buildAIGenerateSvcReq(req *aiGenerateTemplateItemRequest) (services.AIGenerateTemplateItemRequest, string) {
+	if strings.TrimSpace(req.PlanID) == "" || strings.TrimSpace(req.ModelID) == "" {
+		return services.AIGenerateTemplateItemRequest{}, "请选择 AI 模型"
+	}
+	if strings.TrimSpace(req.Description) == "" && len(req.Photos) == 0 {
+		return services.AIGenerateTemplateItemRequest{}, "请上传图片或填写文字描述"
+	}
+	svcReq := services.AIGenerateTemplateItemRequest{
+		PlanID:             req.PlanID,
+		ModelID:            req.ModelID,
+		Description:        req.Description,
+		ExistingCategories: req.ExistingCategories,
+	}
+	for _, p := range req.Photos {
+		if strings.TrimSpace(p.Data) == "" {
+			continue
+		}
+		mimeType := p.MimeType
+		if mimeType == "" {
+			mimeType = "image/jpeg"
+		}
+		svcReq.Photos = append(svcReq.Photos, services.UploadedFile{
+			Data:     p.Data,
+			MimeType: mimeType,
+		})
+	}
+	return svcReq, ""
+}
+
 // Create POST /api/inspection-templates/
 func (c *InspectionTemplatesController) Create() {
 	if !c.CheckPermission("inspection:template:create:write") {
