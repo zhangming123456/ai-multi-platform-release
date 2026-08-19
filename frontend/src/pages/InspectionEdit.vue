@@ -27,7 +27,7 @@
           <a-form-item label="模型">
             <ModelSelect
               :model-value="activeModelKey"
-              :auto-select="false"
+              :auto-select="true"
               :require-vision="selectedHasVision"
               :size="selectSize as any"
               @change="onModelChange"

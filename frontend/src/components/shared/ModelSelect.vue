@@ -29,7 +29,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted, unref } from 'vue'
 import { useTokenPlanStore, parseModelField } from '@/stores/tokenPlan'
 
 export interface ModelSelectValue {
@@ -85,23 +85,25 @@ watch(
   () => props.modelValue,
   (val) => {
     selectedKey.value = val
+    handlePropsChange()
   },
 )
 
-watch(
-  options,
-  (list) => {
-    if (!props.autoSelect) return
-    if (list.some((o) => o.key === selectedKey.value)) return
-    if (props.requireVision) {
-      const first = list.find((o) => o.hasVision)
-      if (first) select(first)
-    } else if (list.length > 0) {
-      select(list[0])
-    }
-  },
-  { immediate: true },
-)
+function handlePropsChange() {
+  const list = unref(options)
+  if (!props.autoSelect) return
+  if (props.requireVision) {
+    if (list.some((o) => o.hasVision && o.key === unref(selectedKey))) return
+    const first = list.find((o) => o.hasVision)
+    if (first) select(first)
+  } else if (list.length > 0) {
+    if (list.some((o) => o.key === unref(selectedKey))) return
+    select(list[0])
+  }
+}
+
+watch(options, handlePropsChange, { immediate: true })
+watch(() => props.requireVision, handlePropsChange, { immediate: true })
 
 function parseKey(key: string): { planId: string; modelId: string } {
   const idx = key.indexOf(':')
