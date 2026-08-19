@@ -18,7 +18,6 @@ type inspectionTemplateItemRequest struct {
 	Category                    string               `json:"category"`
 	Title                       string               `json:"title"`
 	Standard                    string               `json:"standard"`
-	StandardImage               string               `json:"standard_image"`
 	StandardImages              []string             `json:"standard_images"`
 	ScoreType                   string               `json:"score_type"`
 	MaxScore                    int                  `json:"max_score"`
@@ -227,9 +226,6 @@ func normalizeTemplateItems(requests []inspectionTemplateItemRequest) ([]*models
 			}
 		}
 		images := r.StandardImages
-		if len(images) == 0 && strings.TrimSpace(r.StandardImage) != "" {
-			images = []string{r.StandardImage}
-		}
 		item := &models.InspectionTemplateItem{
 			Category:                    r.Category,
 			Title:                       r.Title,
@@ -299,7 +295,6 @@ type inspectionTemplateItemView struct {
 	Category                    string               `json:"category"`
 	Title                       string               `json:"title"`
 	Standard                    string               `json:"standard"`
-	StandardImage               string               `json:"standard_image"`
 	StandardImages              []string             `json:"standard_images"`
 	ScoreType                   string               `json:"score_type"`
 	MaxScore                    int                  `json:"max_score"`
@@ -345,7 +340,6 @@ func templateWithItems(t *models.InspectionTemplate) map[string]interface{} {
 			Category:                    it.Category,
 			Title:                       it.Title,
 			Standard:                    it.Standard,
-			StandardImage:               firstImage(images),
 			StandardImages:              images,
 			ScoreType:                   it.ScoreType,
 			MaxScore:                    it.MaxScore,

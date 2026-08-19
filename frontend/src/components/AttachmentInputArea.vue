@@ -226,11 +226,11 @@ const MAX_SIZE_BY_TYPE: Record<AttachmentFileType, number> = {
 
 const props = withDefaults(
   defineProps<{
-    modelValue: string[]
+    modelValue: string
+    fileList?: string[]
     upload?: (file: File, onProgress?: (percent: number) => void) => Promise<string>
     uploadMode?: 'auto' | 'manual'
     fileTypes?: AttachmentFileType[]
-    text?: string
     maxCount?: number
     disabled?: boolean
     bordered?: boolean
@@ -249,9 +249,9 @@ const props = withDefaults(
     theme?: 'light' | 'dark'
   }>(),
   {
+    fileList: undefined,
     uploadMode: 'manual',
     fileTypes: () => ['image'],
-    text: '',
     maxCount: 0,
     disabled: false,
     bordered: true,
@@ -273,8 +273,8 @@ const props = withDefaults(
 )
 
 const emit = defineEmits<{
-  (e: 'update:modelValue', value: string[]): void
-  (e: 'update:text', value: string): void
+  (e: 'update:modelValue', value: string): void
+  (e: 'update:fileList', value: string[]): void
   (e: 'enter'): void
   (e: 'change', payload: { total: number; pending: number }): void
 }>()
@@ -303,16 +303,16 @@ const cardsRef = ref<HTMLDivElement>()
 const canScrollLeft = ref(false)
 const canScrollRight = ref(false)
 
-const images = computed<string[]>({
-  get: () => props.modelValue || [],
-  set: (value) => emit('update:modelValue', value),
+const fileList = computed<string[]>({
+  get: () => props.fileList ?? [],
+  set: (value) => emit('update:fileList', value),
 })
 
-const text = computed(() => props.text ?? '')
+const text = computed(() => props.modelValue ?? '')
 
 const displayItems = computed<DisplayItem[]>(() => {
   const result: DisplayItem[] = []
-  images.value.forEach((url, i) => {
+  fileList.value.forEach((url, i) => {
     result.push({
       key: `u-${i}`,
       type: typeFromUrl(url) || 'file',
@@ -525,7 +525,7 @@ async function addFiles(files: File[]) {
           const url = await props.upload(processed, (p) => progressMap.set(itemKey, p))
           if (url) {
             urlSizeMap.set(url, processed.size)
-            images.value = [...images.value, url]
+            fileList.value = [...fileList.value, url]
           }
         } finally {
           uploadingKeys.value.delete(itemKey)
@@ -564,7 +564,7 @@ async function flushPending(): Promise<boolean> {
           return false
         }
         urlSizeMap.set(url, processed.size)
-        images.value = [...images.value, url]
+        fileList.value = [...fileList.value, url]
       } finally {
         uploadingKeys.value.delete(item.key)
         progressMap.delete(item.key)
@@ -599,7 +599,7 @@ function removeItem(index: number) {
     pendingItems.value = pendingItems.value.filter((p) => p.key !== item.key)
   } else {
     if (item.url) urlSizeMap.delete(item.url)
-    images.value = images.value.filter((u) => u !== item.url)
+    fileList.value = fileList.value.filter((u) => u !== item.url)
   }
   emitChange()
 }
@@ -652,11 +652,11 @@ async function handleEditorConfirm(result: { blob: Blob; name: string }) {
   try {
     const url = await props.upload(file, (p) => progressMap.set(item.key, p))
     if (url) {
-      const i = images.value.indexOf(item.url || '')
+      const i = fileList.value.indexOf(item.url || '')
       if (i >= 0) {
-        const next = [...images.value]
+        const next = [...fileList.value]
         next[i] = url
-        images.value = next
+        fileList.value = next
       }
       urlSizeMap.set(url, file.size)
       Message.success('图片编辑已保存')
@@ -731,7 +731,7 @@ function handleTextInput(raw: unknown) {
   } else if (raw && typeof raw === 'object' && 'value' in raw) {
     value = String((raw as { value: unknown }).value ?? '')
   }
-  emit('update:text', value)
+  emit('update:modelValue', value)
   if (props.extractUrls) {
     nextTick(() => processText(value))
   }
@@ -740,18 +740,18 @@ function handleTextInput(raw: unknown) {
 function processText(raw: string) {
   if (!props.extractUrls) return
   const urls = extractUrlsFromText(raw, props.fileTypes)
-  const existing = new Set(images.value)
+  const existing = new Set(fileList.value)
   const added: string[] = []
   for (const url of urls) {
     if (existing.has(url)) continue
     if (props.maxCount > 0 && displayItems.value.length >= props.maxCount) break
-    images.value = [...images.value, url]
+    fileList.value = [...fileList.value, url]
     existing.add(url)
     added.push(url)
   }
   if (added.length === 0) return
   const cleaned = cleanUrlsFromText(raw, props.fileTypes)
-  if (cleaned !== raw) emit('update:text', cleaned)
+  if (cleaned !== raw) emit('update:modelValue', cleaned)
   Message.success(`已识别 ${added.length} 个${fileTypeLabel.value}链接并添加`)
   emitChange()
 }

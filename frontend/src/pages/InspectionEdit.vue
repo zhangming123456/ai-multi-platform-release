@@ -34,65 +34,79 @@
             />
           </a-form-item>
           <a-form-item label="巡店现场描述">
-            <div
-              class="feedback-input-area"
-              :class="{ 'feedback-input-area--dragging': isAIDragging }"
-              @dragenter="handleAIDragEnter"
-              @dragleave="handleAIDragLeave"
-              @dragover="handleAIDragOver"
-              @drop="handleAIDrop"
-            >
-              <!-- 已上传图片预览 -->
-              <div v-if="aiPhotos.length > 0" class="feedback-thumbs">
-                <div v-for="(photo, pIdx) in aiPhotos" :key="photo.uid" class="feedback-thumb-item">
-                  <img :src="photo.url" class="feedback-thumb-img" />
-                  <button type="button" class="feedback-thumb-remove" @click="removeAIPhoto(pIdx)">
-                    <IconClose :size="12" />
-                  </button>
-                  <span class="feedback-thumb-name">{{ photo.name }}</span>
-                </div>
-              </div>
+            <!--            <div-->
+            <!--              class="feedback-input-area"-->
+            <!--              :class="{ 'feedback-input-area&#45;&#45;dragging': isAIDragging }"-->
+            <!--              @dragenter="handleAIDragEnter"-->
+            <!--              @dragleave="handleAIDragLeave"-->
+            <!--              @dragover="handleAIDragOver"-->
+            <!--              @drop="handleAIDrop"-->
+            <!--            >-->
+            <!--              &lt;!&ndash; 已上传图片预览 &ndash;&gt;-->
+            <!--              <div v-if="aiPhotos.length > 0" class="feedback-thumbs">-->
+            <!--                <div v-for="(photo, pIdx) in aiPhotos" :key="photo.uid" class="feedback-thumb-item">-->
+            <!--                  <img :src="photo.url" class="feedback-thumb-img" />-->
+            <!--                  <button type="button" class="feedback-thumb-remove" @click="removeAIPhoto(pIdx)">-->
+            <!--                    <IconClose :size="12" />-->
+            <!--                  </button>-->
+            <!--                  <span class="feedback-thumb-name">{{ photo.name }}</span>-->
+            <!--                </div>-->
+            <!--              </div>-->
 
-              <!-- 文本输入区 -->
-              <a-textarea
-                v-model="aiKeywords"
-                placeholder="填写巡店现场发现，例如：门口地垫破损、消防通道被遮挡、收银台前有杂物堆放…&#10;支持拖拽/粘贴图片，或粘贴图片 URL 自动识别"
-                :auto-size="{ minRows: 3, maxRows: 6 }"
-                :max-length="500"
-                show-word-limit
-                class="feedback-textarea"
-                @paste="handleAIPaste"
-                @input="handleAIInput"
-                @keydown="handleAIKeydown"
-              />
+            <!--              &lt;!&ndash; 文本输入区 &ndash;&gt;-->
+            <!--              <a-textarea-->
+            <!--                v-model="aiKeywords"-->
+            <!--                placeholder="填写巡店现场发现，例如：门口地垫破损、消防通道被遮挡、收银台前有杂物堆放…"-->
+            <!--                :auto-size="{ minRows: 3, maxRows: 6 }"-->
+            <!--                :max-length="500"-->
+            <!--                show-word-limit-->
+            <!--                class="feedback-textarea"-->
+            <!--                @paste="handleAIPaste"-->
+            <!--                @input="handleAIInput"-->
+            <!--                @keydown="handleAIKeydown"-->
+            <!--              />-->
 
-              <!-- 工具栏 -->
-              <div class="feedback-toolbar">
-                <div class="feedback-toolbar-left">
-                  <button
-                    type="button"
-                    class="feedback-toolbar-btn"
-                    :disabled="aiPhotos.length >= 10"
-                    @click="triggerAIUpload(fromDrawer)"
-                  >
-                    <IconImage :size="16" />
-                  </button>
-                  <span class="text-[12px] text-[#86868b]">图片</span>
-                  <span class="text-[11px] text-[#86868b]">{{ aiPhotos.length }}/10</span>
-                  <span class="text-[11px] text-[#86868b]">单张≤10MB</span>
-                </div>
-              </div>
+            <!--              &lt;!&ndash; 工具栏 &ndash;&gt;-->
+            <!--              <div class="feedback-toolbar">-->
+            <!--                <div class="feedback-toolbar-left">-->
+            <!--                  <button-->
+            <!--                    type="button"-->
+            <!--                    class="feedback-toolbar-btn"-->
+            <!--                    :disabled="aiPhotos.length >= 10"-->
+            <!--                    @click="triggerAIUpload(fromDrawer)"-->
+            <!--                  >-->
+            <!--                    <IconImage :size="16" />-->
+            <!--                  </button>-->
+            <!--                  <span class="text-[12px] text-[#86868b]">图片</span>-->
+            <!--                  <span class="text-[11px] text-[#86868b]">{{ aiPhotos.length }}/10</span>-->
+            <!--                  <span class="text-[11px] text-[#86868b]">单张≤10MB</span>-->
+            <!--                </div>-->
+            <!--              </div>-->
 
-              <!-- 隐藏文件输入 -->
-              <input
-                :ref="(el: any) => (fromDrawer ? setAIDrawerFileInput(el) : setAIFileInput(el))"
-                type="file"
-                accept="image/*"
-                multiple
-                class="hidden"
-                @change="(e: Event) => onAIFileInputChange(e)"
-              />
-            </div>
+            <!--              &lt;!&ndash; 隐藏文件输入 &ndash;&gt;-->
+            <!--              <input-->
+            <!--                :ref="(el: any) => (fromDrawer ? setAIDrawerFileInput(el) : setAIFileInput(el))"-->
+            <!--                type="file"-->
+            <!--                accept="image/*"-->
+            <!--                multiple-->
+            <!--                class="hidden"-->
+            <!--                @change="(e: Event) => onAIFileInputChange(e)"-->
+            <!--              />-->
+            <!--            </div>-->
+            <AttachmentInputArea
+              ref="aiKeywordsRef"
+              v-model="aiKeywords"
+              v-model:file-list="aiPhotos"
+              :upload="uploadImageFile"
+              :max-count="10"
+              :max-length="500"
+              :min-rows="3"
+              :max-rows="6"
+              placeholder="填写巡店现场发现，例如：门口地垫破损、消防通道被遮挡、收银台前有杂物堆放…"
+            />
+            <template #extra>
+              <p>支持拖拽/粘贴图片，或粘贴图片 URL 自动识别</p>
+            </template>
           </a-form-item>
         </a-form>
         <a-button
@@ -500,13 +514,13 @@
                       </div>
 
                       <div
-                        v-if="row.standard || row.standard_image"
+                        v-if="row.standard || row.standard_images?.length"
                         class="flex items-start gap-3 rounded-lg bg-[#F5F5F7] p-2.5"
                       >
                         <a-image
-                          v-if="row.standard_image"
-                          :src="row.standard_image"
-                          :preview-src="row.standard_image"
+                          v-if="row.standard_images?.length"
+                          :src="row.standard_images?.[0]"
+                          :preview-src="row.standard_images?.[0]"
                           :width="56"
                           :height="56"
                           fit="cover"
@@ -546,8 +560,8 @@
                       <AttachmentInputArea
                         v-if="row.show_remark || row.show_photo"
                         :ref="(el: any) => setScoreAreaRef(row, el)"
-                        v-model="row.photos"
-                        v-model:text="row.comment"
+                        v-model="row.comment"
+                        v-model:file-list="row.photos"
                         :upload="uploadImageFile"
                         :max-count="MAX_ROW_PHOTOS"
                         :disabled="!isCategoryEditable(catGroup)"
@@ -802,7 +816,6 @@ import {
   IconCheck,
   IconClose,
   IconCaretRight,
-  IconImage,
   IconCode,
   IconCopy,
   IconDelete,
@@ -812,7 +825,6 @@ import PageHeader from '@/components/layout/PageHeader.vue'
 import AttachmentInputArea from '@/components/AttachmentInputArea.vue'
 import ModelSelect, { type ModelSelectValue } from '@/components/shared/ModelSelect.vue'
 import { uploadImageFile } from '@/composables/useFileUpload'
-import { extractImageUrlsFromText, cleanUrlsFromText } from '@/composables/useUrlExtractor'
 import { useTokenPlanStore, parseModelField } from '@/stores/tokenPlan'
 import { useUserStore } from '@/stores/user'
 import type {
@@ -841,14 +853,6 @@ const [DefineAIReportBlock, ReuseAIReportBlock] = createReusableTemplate<{
 const [DefineAiInspectPanel, ReuseAiInspectPanel] = createReusableTemplate<{
   wrapperClass?: string
 }>()
-
-interface PhotoItem {
-  uid: string
-  name: string
-  url: string
-  status: 'done' | 'init'
-  file?: File
-}
 
 type LogLevel = 'info' | 'req' | 'ok' | 'err' | 'warn'
 
@@ -884,7 +888,7 @@ interface ScoreRow {
   category_precondition_enabled: boolean
   category_precondition: string
   standard: string
-  standard_image: string
+  standard_images: string[]
   score_type: 'score' | 'pass_fail'
   max_score: number
   score_options: ScoreOption[] | null
@@ -901,6 +905,8 @@ interface ScoreRow {
   _aiScore?: number
   _aiComment?: string
 }
+
+const aiKeywordsRef = ref<InstanceType<typeof AttachmentInputArea>>()
 
 const route = useRoute()
 const router = useRouter()
@@ -1034,16 +1040,11 @@ function isCategoryEditable(cat: CategoryGroup): boolean {
 }
 
 // 汇总所有检查项的 photos，供 AI 分析使用
-const allRowPhotos = computed<PhotoItem[]>(() => {
-  const result: PhotoItem[] = []
+const allRowPhotos = computed<string[]>(() => {
+  const result: string[] = []
   for (const row of scoreRows.value) {
     for (const url of row.photos) {
-      result.push({
-        uid: `${row.item_id}-${url}`,
-        name: url.split('/').pop() || url,
-        url,
-        status: 'done' as const,
-      })
+      result.push(url)
     }
   }
   return result
@@ -1079,7 +1080,7 @@ interface AIReportSummary {
 }
 const aiReport = ref<AIReportSummary | null>(null)
 const aiKeywords = ref('')
-const aiPhotos = ref<PhotoItem[]>([])
+const aiPhotos = ref<string[]>([])
 
 // 本次 AI 巡店的依据描述（照片 / 检查项内反馈问题 / 巡店关键词）
 const aiBasisDescription = computed(() => {
@@ -1107,26 +1108,6 @@ const aiOriginalSuggestion = ref('')
 // AI 面板图片上传（大屏 / Drawer 各自持有隐藏 input）
 const aiFileInput = ref<HTMLInputElement | null>(null)
 const aiDrawerFileInput = ref<HTMLInputElement | null>(null)
-
-function setAIFileInput(el: any) {
-  aiFileInput.value = el as HTMLInputElement | null
-}
-
-function setAIDrawerFileInput(el: any) {
-  aiDrawerFileInput.value = el as HTMLInputElement | null
-}
-
-function triggerAIUpload(drawer = false) {
-  if (aiPhotos.value.length >= 10) {
-    Message.warning('最多上传 10 张图片')
-    return
-  }
-  const input = drawer ? aiDrawerFileInput.value : aiFileInput.value
-  if (input) {
-    input.value = ''
-    input.click()
-  }
-}
 
 function levelColor(level: string): string {
   switch (level) {
@@ -1173,140 +1154,6 @@ function copyAIReport() {
     () => Message.success('报告已复制到剪贴板'),
     () => Message.error('复制失败，请手动复制'),
   )
-}
-
-async function addAIPhotos(files: File[]) {
-  const imageFiles = files.filter((f) => f.type.startsWith('image/'))
-  if (imageFiles.length === 0) return
-  const remaining = 10 - aiPhotos.value.length
-  if (remaining <= 0) {
-    Message.warning('最多上传 10 张图片')
-    return
-  }
-  const accept = imageFiles.slice(0, remaining)
-  let hasOversize = false
-  for (const file of accept) {
-    if (file.size > MAX_IMAGE_SIZE) {
-      hasOversize = true
-      continue
-    }
-    const fileToUse = file.size > 500 * 1024 ? await compressImage(file) : file
-    aiPhotos.value.push({
-      uid: `ai-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      name: file.name,
-      url: URL.createObjectURL(fileToUse),
-      status: 'init',
-      file: fileToUse,
-    })
-  }
-  if (hasOversize) Message.warning('单张图片大小不能超过 10MB')
-}
-
-async function onAIFileInputChange(e: Event) {
-  const input = e.target as HTMLInputElement
-  if (!input.files || input.files.length === 0) return
-  await addAIPhotos(Array.from(input.files))
-  input.value = ''
-}
-
-function removeAIPhoto(index: number) {
-  aiPhotos.value.splice(index, 1)
-}
-
-const isAIDragging = ref(false)
-let aiDragDepth = 0
-
-function handleAIPaste(e: ClipboardEvent) {
-  const files = Array.from(e.clipboardData?.files || []).filter((f) => f.type.startsWith('image/'))
-  if (files.length > 0) {
-    e.preventDefault()
-    addAIPhotos(files)
-    return
-  }
-  nextTick(() => {
-    extractImageLinksFromAIKeywords()
-    normalizeAIKeywordsNewlines()
-  })
-}
-
-function handleAIInput(val: string | any) {
-  if (typeof val !== 'string') return
-  nextTick(() => {
-    normalizeAIKeywordsNewlines()
-    extractImageLinksFromAIKeywords()
-  })
-}
-
-function handleAIKeydown(e: KeyboardEvent) {
-  if (e.key === 'Enter' && !e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey) {
-    const target = e.target as HTMLTextAreaElement
-    const before = target.value.slice(0, target.selectionStart)
-    if (before.endsWith('\n\n')) {
-      e.preventDefault()
-    }
-  }
-}
-
-function extractImageLinksFromAIKeywords() {
-  const text = aiKeywords.value
-  const urls = extractImageUrlsFromText(text)
-  if (urls.length === 0) return
-  const existing = new Set(aiPhotos.value.map((p) => p.url))
-  const remaining = 10 - aiPhotos.value.length
-  let addedCount = 0
-  for (const url of urls) {
-    if (existing.has(url)) continue
-    if (addedCount >= remaining) break
-    const path = url.split(/[?#]/)[0]
-    let name = path.split('/').pop() || url
-    try {
-      name = decodeURIComponent(name)
-    } catch {
-      /* keep original */
-    }
-    aiPhotos.value.push({
-      uid: `ai-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      name,
-      url,
-      status: 'done',
-    })
-    existing.add(url)
-    addedCount++
-  }
-  const cleaned = cleanUrlsFromText(text)
-  if (cleaned !== text) aiKeywords.value = cleaned
-}
-
-function normalizeAIKeywordsNewlines() {
-  const text = aiKeywords.value
-  const normalized = text.replace(/\n{3,}/g, '\n\n')
-  if (normalized !== text) {
-    aiKeywords.value = normalized
-  }
-}
-
-function handleAIDragEnter(e: DragEvent) {
-  if (!e.dataTransfer?.types.includes('Files')) return
-  aiDragDepth++
-  isAIDragging.value = true
-}
-function handleAIDragLeave() {
-  aiDragDepth--
-  if (aiDragDepth <= 0) {
-    aiDragDepth = 0
-    isAIDragging.value = false
-  }
-}
-function handleAIDragOver(e: DragEvent) {
-  if (!e.dataTransfer?.types.includes('Files')) return
-  e.preventDefault()
-}
-function handleAIDrop(e: DragEvent) {
-  aiDragDepth = 0
-  isAIDragging.value = false
-  if (!e.dataTransfer?.types.includes('Files')) return
-  e.preventDefault()
-  addAIPhotos(Array.from(e.dataTransfer.files))
 }
 
 function pushAILog(level: LogLevel, message: string, detail?: string) {
@@ -1510,7 +1357,7 @@ async function fetchItems() {
       category_precondition_enabled: false,
       category_precondition: '',
       standard: '',
-      standard_image: '',
+      standard_images: [],
       score_type: 'score' as const,
       max_score: item.max_score,
       score_options: cloneOptions(DEFAULT_SCORE_OPTIONS),
@@ -1542,7 +1389,7 @@ function rowFromTemplateItem(item: InspectionTemplateItem): ScoreRow {
     category_precondition_enabled: item.category_precondition_enabled ?? false,
     category_precondition: item.category_precondition || '',
     standard: item.standard || '',
-    standard_image: item.standard_image || '',
+    standard_images: item.standard_images ?? [],
     score_type: scoreType,
     max_score: item.max_score || 5,
     score_options: options,
@@ -1617,7 +1464,7 @@ async function fetchDetail() {
           category_precondition_enabled: false,
           category_precondition: '',
           standard: s.standard || '',
-          standard_image: s.standard_image || '',
+          standard_images: s.standard_images ?? [],
           score_type: scoreType,
           max_score: s.max_score,
           score_options:
@@ -1680,67 +1527,6 @@ const MAX_ROW_PHOTOS = 10
 // 用户编辑文本后标记为非 AI 生成内容（图片提取 / 换行归一化由组件内置处理）
 function onRowCommentInput(row: ScoreRow, _val: string) {
   row.ai_generated = false
-}
-
-async function compressImage(file: File, maxSize = 1600, quality = 0.8): Promise<File> {
-  if (!file.type.startsWith('image/')) return file
-  return new Promise((resolve) => {
-    const img = new Image()
-    const url = URL.createObjectURL(file)
-    img.onload = () => {
-      URL.revokeObjectURL(url)
-      let { width, height } = img
-      if (width <= maxSize && height <= maxSize) {
-        resolve(file)
-        return
-      }
-      if (width > height) {
-        height = Math.round((height * maxSize) / width)
-        width = maxSize
-      } else {
-        width = Math.round((width * maxSize) / height)
-        height = maxSize
-      }
-      const canvas = document.createElement('canvas')
-      canvas.width = width
-      canvas.height = height
-      const ctx = canvas.getContext('2d')
-      if (!ctx) {
-        resolve(file)
-        return
-      }
-      ctx.drawImage(img, 0, 0, width, height)
-      canvas.toBlob(
-        (blob) => {
-          if (!blob) {
-            resolve(file)
-            return
-          }
-          const compressed = new File([blob], file.name, { type: 'image/jpeg' })
-          resolve(compressed)
-        },
-        'image/jpeg',
-        quality,
-      )
-    }
-    img.onerror = () => {
-      URL.revokeObjectURL(url)
-      resolve(file)
-    }
-    img.src = url
-  })
-}
-
-async function fileToBase64(file: File): Promise<{ data: string; mime_type: string }> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => {
-      const result = reader.result as string
-      resolve({ data: result.split(',')[1] || '', mime_type: file.type || 'image/jpeg' })
-    }
-    reader.onerror = reject
-    reader.readAsDataURL(file)
-  })
 }
 
 function applyAIResult(data: {
@@ -1816,15 +1602,10 @@ async function handleAnalyze() {
     Message.warning('当前模型不支持视觉理解，无法分析图片。请在模型配置中选用支持视觉理解的模型')
     return
   }
-  const photos: { data: string; mime_type: string; url?: string }[] = []
-  for (const item of [...allRowPhotos.value, ...aiPhotos.value]) {
-    if (item.file) {
-      const encoded = await fileToBase64(item.file)
-      photos.push(encoded)
-    } else if (item.url) {
-      photos.push({ data: '', mime_type: 'image/jpeg', url: item.url })
-    }
+  if (unref(aiKeywordsRef)?.flushPending) {
+    if (!(await unref(aiKeywordsRef)?.flushPending())) return
   }
+  const photos = [...allRowPhotos.value, ...aiPhotos.value]
 
   // 重新 AI 巡店前：先移除旧的 AI 生成标记，等待新的分析结果重新标记
   removeAIResult()
@@ -1839,7 +1620,7 @@ async function handleAnalyze() {
     name: row.item_name,
     category: row.category,
     standard: row.standard,
-    standard_image: row.standard_image,
+    standard_images: row.standard_images,
     score_type: row.score_type,
     max_score: row.max_score,
     score_options: (row.score_options || []).map((o) => ({ score: o.score, label: o.label })),
@@ -2134,7 +1915,7 @@ async function handleSingleItemAI(row: ScoreRow) {
     Message.warning('请先在 AI 设置中选择模型配置')
     return
   }
-  const hasImageInput = row.standard_image || row.photos.length > 0
+  const hasImageInput = row.standard_images?.length > 0 || row.photos.length > 0
   if (hasImageInput && !selectedModelSupportsVision.value) {
     Message.warning('当前模型不支持视觉理解，无法分析图片。请在模型配置中选用支持视觉理解的模型')
     return
@@ -2149,7 +1930,7 @@ async function handleSingleItemAI(row: ScoreRow) {
     item_name: row.item_name,
     item_id: row.item_id,
     standard: row.standard || '',
-    standard_image: row.standard_image || '',
+    standard_images: row.standard_images ?? [],
     score_type: row.score_type,
     max_score: row.max_score,
     score_options: row.score_options || [],
@@ -2595,17 +2376,6 @@ onMounted(async () => {
     await fetchTemplates()
     if (!tokenPlanStore.loaded) {
       await tokenPlanStore.loadPlans()
-    }
-    if (tokenPlanStore.enabledPlans.length > 0) {
-      selectedPlanId.value = tokenPlanStore.activePlanId || tokenPlanStore.enabledPlans[0].id
-      const plan = tokenPlanStore.enabledPlans.find((p) => p.id === selectedPlanId.value)
-      if (plan) {
-        const models = parseModelField(plan.model)
-        if (models.length > 0) {
-          selectedModelId.value = models[0].id
-          selectedHasVision.value = models[0].types.includes('vision')
-        }
-      }
     }
     if (isEdit.value) {
       await fetchDetail()

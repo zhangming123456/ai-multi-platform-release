@@ -260,8 +260,8 @@
                         <a-form-item label="检查标准与标准图" field-class="!mb-2">
                           <AttachmentInputArea
                             :ref="(el) => setStandardAreaRef(item, el)"
-                            v-model="item.standardImages"
-                            v-model:text="item.standard"
+                            v-model="item.standard"
+                            v-model:file-list="item.standardImages"
                             :upload="uploadImageFile"
                             :max-count="MAX_STANDARD_IMAGES"
                             :max-length="500"
@@ -663,9 +663,9 @@
           </template>
           <template #matImage="{ record }">
             <a-image
-              v-if="record.standard_image"
-              :src="record.standard_image"
-              :preview-src="record.standard_image"
+              v-if="record.standard_images?.length"
+              :src="record.standard_images?.[0]"
+              :preview-src="record.standard_images?.[0]"
               :width="40"
               :height="40"
               fit="cover"
@@ -736,7 +736,7 @@ interface ItemRow {
   category: string
   title: string
   standard: string
-  standard_image: string
+  standard_images: string[]
   standardImages: string[]
   score_type: 'score' | 'pass_fail'
   score_options: ScoreOptionRow[]
@@ -1370,7 +1370,7 @@ function createRow(): ItemRow {
     category: '',
     title: '',
     standard: '',
-    standard_image: '',
+    standard_images: [],
     score_type: 'score',
     score_options: cloneOptions(DEFAULT_SCORE_OPTIONS),
     require_remark: false,
@@ -1451,12 +1451,7 @@ async function fetchDetail() {
     }
     items.value = (data.items || []).map((it) => {
       itemKeySeed += 1
-      const standardImages: string[] =
-        it.standard_images && it.standard_images.length > 0
-          ? it.standard_images
-          : it.standard_image
-            ? [it.standard_image]
-            : []
+      const standardImages: string[] = it.standard_images ?? []
       const scoreType = it.score_type === 'pass_fail' ? 'pass_fail' : 'score'
       return {
         key: itemKeySeed,
@@ -1464,7 +1459,7 @@ async function fetchDetail() {
         category: it.category || '',
         title: it.title || '',
         standard: it.standard || '',
-        standard_image: it.standard_image || '',
+        standard_images: standardImages,
         standardImages,
         score_type: scoreType,
         score_options:
@@ -1621,7 +1616,6 @@ async function handleSave() {
         category: item.category.trim(),
         title: item.title.trim(),
         standard: item.standard,
-        standard_image: item.standardImages[0] || '',
         standard_images: item.standardImages,
         score_type: item.score_type,
         score_options: item.score_options.map((o) => ({
@@ -1687,7 +1681,7 @@ const materialColumns = [
     ellipsis: true,
     tooltip: true,
   },
-  { title: '标准图', dataIndex: 'standard_image', slotName: 'matImage', width: 80 },
+  { title: '标准图', dataIndex: 'standard_images', slotName: 'matImage', width: 80 },
   { title: '评分', dataIndex: 'score_type', slotName: 'matScore', width: 100 },
 ]
 
@@ -1756,19 +1750,14 @@ function createRowFromMaterial(m: InspectionMaterial, fallbackCategory: string):
     m.score_options && m.score_options.length > 0
       ? m.score_options.map((o) => ({ score: o.score, label: o.label || '' }))
       : cloneOptions(scoreType === 'pass_fail' ? DEFAULT_PASS_FAIL_OPTIONS : DEFAULT_SCORE_OPTIONS)
-  const standardImages: string[] =
-    m.standard_images && m.standard_images.length > 0
-      ? m.standard_images
-      : m.standard_image
-        ? [m.standard_image]
-        : []
+  const standardImages: string[] = m.standard_images ?? []
   return {
     key: itemKeySeed,
     id: '',
     category: (m.category || '').trim() || fallbackCategory,
     title: m.title || '',
     standard: m.standard || '',
-    standard_image: m.standard_image || '',
+    standard_images: standardImages,
     standardImages,
     score_type: scoreType,
     score_options: options,

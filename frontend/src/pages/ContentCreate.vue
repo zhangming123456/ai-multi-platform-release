@@ -196,8 +196,8 @@
 
             <AttachmentInputArea
               ref="createAreaRef"
-              v-model="fileUrls"
-              v-model:text="promptText"
+              v-model="promptText"
+              v-model:file-list="fileUrls"
               theme="dark"
               :file-types="['image', 'video']"
               :max-count="MAX_UPLOAD_FILES"
@@ -352,17 +352,7 @@ const fileUrls = ref<string[]>([])
 const MAX_UPLOAD_FILES = 10
 const hasFiles = ref(false)
 
-interface PendingFileItem {
-  file: File
-  type: string
-  name: string
-  size: number
-}
-
-const createAreaRef = ref<{
-  getPendingFiles: () => PendingFileItem[]
-  $el?: HTMLElement
-}>()
+const createAreaRef = ref<InstanceType<typeof AttachmentInputArea>>()
 
 function onAreaChange(payload: { total: number; pending: number }) {
   hasFiles.value = payload.total > 0

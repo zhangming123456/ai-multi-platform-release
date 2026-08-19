@@ -119,9 +119,9 @@
                   <template #standard="{ record }">
                     <div class="flex items-start gap-2">
                       <a-image
-                        v-if="record.standard_image"
-                        :src="record.standard_image"
-                        :preview-src="record.standard_image"
+                        v-if="record.standard_images?.length"
+                        :src="record.standard_images?.[0]"
+                        :preview-src="record.standard_images?.[0]"
                         :width="48"
                         :height="48"
                         fit="cover"

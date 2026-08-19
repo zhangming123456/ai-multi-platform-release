@@ -18,7 +18,6 @@ type inspectionMaterialRequest struct {
 	Category       string               `json:"category"`
 	Title          string               `json:"title"`
 	Standard       string               `json:"standard"`
-	StandardImage  string               `json:"standard_image"`
 	StandardImages []string             `json:"standard_images"`
 	ScoreType      string               `json:"score_type"`
 	MaxScore       int                  `json:"max_score"`
@@ -30,7 +29,6 @@ type inspectionMaterialView struct {
 	Category       string               `json:"category"`
 	Title          string               `json:"title"`
 	Standard       string               `json:"standard"`
-	StandardImage  string               `json:"standard_image"`
 	StandardImages []string             `json:"standard_images"`
 	ScoreType      string               `json:"score_type"`
 	MaxScore       int                  `json:"max_score"`
@@ -130,9 +128,6 @@ func (c *InspectionMaterialsController) Update() {
 	material.Title = strings.TrimSpace(req.Title)
 	material.Standard = req.Standard
 	images := req.StandardImages
-	if len(images) == 0 && strings.TrimSpace(req.StandardImage) != "" {
-		images = []string{req.StandardImage}
-	}
 	material.StandardImages = models.MarshalStringSlice(images)
 	material.StandardImage = firstImage(images)
 	material.ScoreType = normalizeScoreType(req.ScoreType)
@@ -172,9 +167,6 @@ func materialFromRequest(req *inspectionMaterialRequest) *models.InspectionMater
 		options = models.DefaultScoreOptions(scoreType, maxScore)
 	}
 	images := req.StandardImages
-	if len(images) == 0 && strings.TrimSpace(req.StandardImage) != "" {
-		images = []string{req.StandardImage}
-	}
 	material := &models.InspectionMaterial{
 		Category:       req.Category,
 		Title:          strings.TrimSpace(req.Title),
@@ -184,9 +176,7 @@ func materialFromRequest(req *inspectionMaterialRequest) *models.InspectionMater
 		MaxScore:       maxScore,
 		ScoreOptions:   models.MarshalScoreOptions(options),
 	}
-	if len(images) > 0 {
-		material.StandardImage = images[0]
-	}
+	material.StandardImage = firstImage(images)
 	return material
 }
 
@@ -218,7 +208,6 @@ func materialViewFromModel(m *models.InspectionMaterial) inspectionMaterialView 
 		Category:       m.Category,
 		Title:          m.Title,
 		Standard:       m.Standard,
-		StandardImage:  firstImage(images),
 		StandardImages: images,
 		ScoreType:      m.ScoreType,
 		MaxScore:       m.MaxScore,

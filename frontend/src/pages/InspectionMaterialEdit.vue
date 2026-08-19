@@ -30,8 +30,8 @@
             <a-form-item label="检查标准与标准图">
               <AttachmentInputArea
                 ref="standardAreaRef"
-                v-model="standardImages"
-                v-model:text="form.standard"
+                v-model="form.standard"
+                v-model:file-list="standardImages"
                 :upload="uploadImageFile"
                 :max-count="MAX_STANDARD_IMAGES"
                 :max-length="500"
@@ -138,7 +138,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch, unref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Message } from '@arco-design/web-vue'
 import { IconPlus, IconDelete } from '@arco-design/web-vue/es/icon'
@@ -173,14 +173,13 @@ const form = ref({
   category: '',
   title: '',
   standard: '',
-  standard_image: '',
   score_type: 'score' as 'score' | 'pass_fail',
   max_score: 5,
   score_options: cloneOptions(DEFAULT_SCORE_OPTIONS),
 })
 
 const standardImages = ref<string[]>([])
-const standardAreaRef = ref<{ flushPending: () => Promise<boolean> }>()
+const standardAreaRef = ref<InstanceType<typeof AttachmentInputArea>>()
 
 watch(
   () => form.value.score_type,
@@ -259,8 +258,8 @@ async function handleSave() {
     Message.warning(error)
     return
   }
-  if (standardAreaRef.value && !(await standardAreaRef.value.flushPending())) {
-    return
+  if (unref(standardAreaRef)?.flushPending) {
+    if (!(await unref(standardAreaRef)?.flushPending())) return
   }
   saving.value = true
   try {
@@ -268,7 +267,6 @@ async function handleSave() {
       category: form.value.category,
       title: form.value.title.trim(),
       standard: form.value.standard,
-      standard_image: standardImages.value[0] || '',
       standard_images: standardImages.value,
       score_type: form.value.score_type,
       max_score:
@@ -309,7 +307,6 @@ async function fetchDetail() {
       category: data.category || '',
       title: data.title,
       standard: data.standard || '',
-      standard_image: data.standard_image || '',
       score_type: data.score_type,
       max_score: data.max_score,
       score_options:
@@ -319,13 +316,7 @@ async function fetchDetail() {
               data.score_type === 'pass_fail' ? DEFAULT_PASS_FAIL_OPTIONS : DEFAULT_SCORE_OPTIONS,
             ),
     }
-    const images =
-      data.standard_images && data.standard_images.length > 0
-        ? data.standard_images
-        : data.standard_image
-          ? [data.standard_image]
-          : []
-    standardImages.value = images
+    standardImages.value = data.standard_images ?? []
   } catch (e: any) {
     Message.error(e?.response?.data?.detail || '加载素材失败')
   } finally {

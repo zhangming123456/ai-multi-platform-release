@@ -52,9 +52,9 @@
               </template>
               <template #standardImage="{ record }">
                 <a-image
-                  v-if="record.standard_image"
-                  :src="record.standard_image"
-                  :preview-src="record.standard_image"
+                  v-if="record.standard_images?.length"
+                  :src="record.standard_images?.[0]"
+                  :preview-src="record.standard_images?.[0]"
                   :width="48"
                   :height="48"
                   fit="cover"
@@ -242,7 +242,7 @@ const itemKeyword = ref('')
 const itemColumns = [
   { title: '素材标题', dataIndex: 'title', slotName: 'title', width: 260 },
   { title: '检查标准', dataIndex: 'standard', slotName: 'standard' },
-  { title: '标准图', dataIndex: 'standard_image', slotName: 'standardImage', width: 90 },
+  { title: '标准图', dataIndex: 'standard_images', slotName: 'standardImage', width: 90 },
   { title: '评分', dataIndex: 'score', slotName: 'score', width: 100 },
   { title: '创建时间', dataIndex: 'created_at', slotName: 'createdAt', width: 150 },
   { title: '操作', slotName: 'actions', align: 'right' as const, width: 110 },

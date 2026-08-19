@@ -12,7 +12,7 @@ import (
 type RecheckRectifyRequest struct {
 	ItemName        string         `json:"item_name"`
 	Standard        string         `json:"standard"`
-	StandardImage   string         `json:"standard_image"`
+	StandardImages  []string       `json:"standard_images"`
 	ScoreType       string         `json:"score_type"`
 	MaxScore        int            `json:"max_score"`
 	OriginalComment string         `json:"original_comment"`
@@ -77,8 +77,11 @@ func RecheckRectifyPhoto(req RecheckRectifyRequest) (*RecheckRectifyResult, erro
 	}}
 
 	standardImages := make([]UploadedFile, 0, 1)
-	if req.StandardImage != "" {
-		if f, err := loadImageAsUploadedFile(req.StandardImage); err == nil {
+	for _, img := range req.StandardImages {
+		if img == "" {
+			continue
+		}
+		if f, err := loadImageAsUploadedFile(img); err == nil {
 			standardImages = append(standardImages, *f)
 		}
 	}

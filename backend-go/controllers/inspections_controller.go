@@ -627,13 +627,13 @@ func loadAIItems(templateID string) ([]services.InspectionAIItem, error) {
 		aiItems := make([]services.InspectionAIItem, 0, len(items))
 		for _, it := range items {
 			aiItems = append(aiItems, services.InspectionAIItem{
-				ID:            it.ID,
-				Name:          it.Title,
-				Standard:      it.Standard,
-				StandardImage: it.StandardImage,
-				ScoreType:     it.ScoreType,
-				MaxScore:      it.MaxScore,
-				ScoreOptions:  services.EffectiveScoreOptions(&it),
+				ID:             it.ID,
+				Name:           it.Title,
+				Standard:       it.Standard,
+				StandardImages: effectiveStandardImages(it.StandardImages, it.StandardImage),
+				ScoreType:      it.ScoreType,
+				MaxScore:       it.MaxScore,
+				ScoreOptions:   services.EffectiveScoreOptions(&it),
 			})
 		}
 		return aiItems, nil
@@ -782,18 +782,18 @@ func updateInspectionWithScores(inspection *models.Inspection, scoreRows []*mode
 }
 
 type scoreItemSource struct {
-	ID            string
-	Name          string
-	Category      string
-	Standard      string
-	StandardImage string
-	ScoreType     string
-	MaxScore      int
-	ScoreOptions  []models.ScoreOption
-	RequireRemark bool
-	RequirePhoto  bool
-	ShowRemark    bool
-	ShowPhoto     bool
+	ID             string
+	Name           string
+	Category       string
+	Standard       string
+	StandardImages []string
+	ScoreType      string
+	MaxScore       int
+	ScoreOptions   []models.ScoreOption
+	RequireRemark  bool
+	RequirePhoto   bool
+	ShowRemark     bool
+	ShowPhoto      bool
 }
 
 func loadScoreItemSources(templateID string) ([]scoreItemSource, error) {
@@ -808,18 +808,18 @@ func loadScoreItemSources(templateID string) ([]scoreItemSource, error) {
 		sources := make([]scoreItemSource, 0, len(items))
 		for _, it := range items {
 			sources = append(sources, scoreItemSource{
-				ID:            it.ID,
-				Name:          it.Title,
-				Category:      it.Category,
-				Standard:      it.Standard,
-				StandardImage: it.StandardImage,
-				ScoreType:     it.ScoreType,
-				MaxScore:      it.MaxScore,
-				ScoreOptions:  services.EffectiveScoreOptions(&it),
-				RequireRemark: it.RequireRemark,
-				RequirePhoto:  it.RequirePhoto,
-				ShowRemark:    it.ShowRemark,
-				ShowPhoto:     it.ShowPhoto,
+				ID:             it.ID,
+				Name:           it.Title,
+				Category:       it.Category,
+				Standard:       it.Standard,
+				StandardImages: effectiveStandardImages(it.StandardImages, it.StandardImage),
+				ScoreType:      it.ScoreType,
+				MaxScore:       it.MaxScore,
+				ScoreOptions:   services.EffectiveScoreOptions(&it),
+				RequireRemark:  it.RequireRemark,
+				RequirePhoto:   it.RequirePhoto,
+				ShowRemark:     it.ShowRemark,
+				ShowPhoto:      it.ShowPhoto,
 			})
 		}
 		return sources, nil
@@ -903,26 +903,27 @@ func buildScoreRows(inspection *models.Inspection, reqScores []inspectionScoreRe
 			}
 		}
 		rows = append(rows, &models.InspectionScore{
-			ID:            newID(),
-			InspectionID:  inspection.ID,
-			ItemID:        item.ID,
-			ItemName:      item.Name,
-			Category:      item.Category,
-			Standard:      item.Standard,
-			StandardImage: item.StandardImage,
-			ScoreType:     item.ScoreType,
-			MaxScore:      item.MaxScore,
-			ScoreOptions:  models.MarshalScoreOptions(item.ScoreOptions),
-			Score:         score,
-			RequireRemark: item.RequireRemark,
-			RequirePhoto:  item.RequirePhoto,
-			ShowRemark:    item.ShowRemark,
-			ShowPhoto:     item.ShowPhoto,
-			Comment:       rs.Comment,
-			AIGenerated:   rs.AIGenerated,
-			AISuggestion:  rs.AISuggestion,
-			Photos:        marshalPhotos(rs.Photos),
-			CreatedAt:     now,
+			ID:             newID(),
+			InspectionID:   inspection.ID,
+			ItemID:         item.ID,
+			ItemName:       item.Name,
+			Category:       item.Category,
+			Standard:       item.Standard,
+			StandardImages: models.MarshalStringSlice(item.StandardImages),
+			StandardImage:  firstImage(item.StandardImages),
+			ScoreType:      item.ScoreType,
+			MaxScore:       item.MaxScore,
+			ScoreOptions:   models.MarshalScoreOptions(item.ScoreOptions),
+			Score:          score,
+			RequireRemark:  item.RequireRemark,
+			RequirePhoto:   item.RequirePhoto,
+			ShowRemark:     item.ShowRemark,
+			ShowPhoto:      item.ShowPhoto,
+			Comment:        rs.Comment,
+			AIGenerated:    rs.AIGenerated,
+			AISuggestion:   rs.AISuggestion,
+			Photos:         marshalPhotos(rs.Photos),
+			CreatedAt:      now,
 		})
 	}
 	if inspection.TemplateID != "" && len(rows) == 0 {
@@ -1058,23 +1059,23 @@ func inspectionWithScores(inspection *models.Inspection) map[string]interface{} 
 	scoreList := make([]map[string]interface{}, 0, len(scores))
 	for _, s := range scores {
 		scoreList = append(scoreList, map[string]interface{}{
-			"item_id":        s.ItemID,
-			"item_name":      s.ItemName,
-			"category":       s.Category,
-			"standard":       s.Standard,
-			"standard_image": s.StandardImage,
-			"score_type":     s.ScoreType,
-			"max_score":      s.MaxScore,
-			"score_options":  effectiveSnapshotScoreOptions(s.ScoreType, s.MaxScore, s.ScoreOptions),
-			"score":          s.Score,
-			"require_remark": s.RequireRemark,
-			"require_photo":  s.RequirePhoto,
-			"show_remark":    s.ShowRemark,
-			"show_photo":     s.ShowPhoto,
-			"comment":        s.Comment,
-			"ai_generated":   s.AIGenerated,
-			"ai_suggestion":  s.AISuggestion,
-			"photos":         unmarshalPhotos(s.Photos),
+			"item_id":         s.ItemID,
+			"item_name":       s.ItemName,
+			"category":        s.Category,
+			"standard":        s.Standard,
+			"standard_images": effectiveStandardImages(s.StandardImages, s.StandardImage),
+			"score_type":      s.ScoreType,
+			"max_score":       s.MaxScore,
+			"score_options":   effectiveSnapshotScoreOptions(s.ScoreType, s.MaxScore, s.ScoreOptions),
+			"score":           s.Score,
+			"require_remark":  s.RequireRemark,
+			"require_photo":   s.RequirePhoto,
+			"show_remark":     s.ShowRemark,
+			"show_photo":      s.ShowPhoto,
+			"comment":         s.Comment,
+			"ai_generated":    s.AIGenerated,
+			"ai_suggestion":   s.AISuggestion,
+			"photos":          unmarshalPhotos(s.Photos),
 		})
 	}
 	aiSummary := services.ParseInspectionAISummary(inspection.AISummary)

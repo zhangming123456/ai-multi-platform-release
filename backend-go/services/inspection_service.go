@@ -124,27 +124,27 @@ func MarshalInspectionAISummary(s InspectionAISummary) (string, error) {
 }
 
 type InspectionAIItem struct {
-	ID            string
-	Name          string
-	Standard      string
-	StandardImage string
-	ScoreType     string
-	MaxScore      int
-	ScoreOptions  []models.ScoreOption
+	ID             string
+	Name           string
+	Standard       string
+	StandardImages []string
+	ScoreType      string
+	MaxScore       int
+	ScoreOptions   []models.ScoreOption
 }
 
 // InspectionSkill 前端组装的检查项技能规范，用于向 AI 明确定义巡店标准与评分规则。
 type InspectionSkill struct {
-	ItemID        string               `json:"item_id"`
-	Name          string               `json:"name"`
-	Category      string               `json:"category"`
-	Standard      string               `json:"standard"`
-	StandardImage string               `json:"standard_image"`
-	ScoreType     string               `json:"score_type"`
-	MaxScore      int                  `json:"max_score"`
-	ScoreOptions  []models.ScoreOption `json:"score_options"`
-	RequireRemark bool                 `json:"require_remark"`
-	RequirePhoto  bool                 `json:"require_photo"`
+	ItemID         string               `json:"item_id"`
+	Name           string               `json:"name"`
+	Category       string               `json:"category"`
+	Standard       string               `json:"standard"`
+	StandardImages []string             `json:"standard_images"`
+	ScoreType      string               `json:"score_type"`
+	MaxScore       int                  `json:"max_score"`
+	ScoreOptions   []models.ScoreOption `json:"score_options"`
+	RequireRemark  bool                 `json:"require_remark"`
+	RequirePhoto   bool                 `json:"require_photo"`
 }
 
 // InspectionSkillSpec 巡店 AI 技能规范：检查项标准 + 返回格式 schema。
@@ -237,8 +237,8 @@ func buildInspectionSkillsPrompt(skills []InspectionSkill) string {
 		if s.Standard != "" {
 			b.WriteString(fmt.Sprintf("   检查标准：%s\n", s.Standard))
 		}
-		if s.StandardImage != "" {
-			b.WriteString(fmt.Sprintf("   标准图参考：%s\n", s.StandardImage))
+		if len(s.StandardImages) > 0 {
+			b.WriteString(fmt.Sprintf("   标准图参考：%s\n", strings.Join(s.StandardImages, ", ")))
 		}
 		if s.ScoreType == "pass_fail" {
 			labels := make([]string, 0, len(s.ScoreOptions))
@@ -360,12 +360,14 @@ func collectStandardImages(skills []InspectionSkill) []UploadedFile {
 	var images []UploadedFile
 	seen := make(map[string]bool)
 	for _, s := range skills {
-		if s.StandardImage == "" || seen[s.StandardImage] {
-			continue
-		}
-		seen[s.StandardImage] = true
-		if f, err := loadImageAsUploadedFile(s.StandardImage); err == nil {
-			images = append(images, *f)
+		for _, img := range s.StandardImages {
+			if img == "" || seen[img] {
+				continue
+			}
+			seen[img] = true
+			if f, err := loadImageAsUploadedFile(img); err == nil {
+				images = append(images, *f)
+			}
 		}
 	}
 	return images
@@ -582,11 +584,14 @@ func AnalyzeInspection(storeName string, items []InspectionAIItem, photos []Uplo
 		if it.Standard != "" {
 			line += fmt.Sprintf("；检查标准：%s", it.Standard)
 		}
-		if it.StandardImage != "" {
+		if len(it.StandardImages) > 0 {
 			line += "；已附带标准参照图"
-			if !seenStandard[it.StandardImage] {
-				seenStandard[it.StandardImage] = true
-				if f, err := loadImageAsUploadedFile(it.StandardImage); err == nil {
+			for _, img := range it.StandardImages {
+				if img == "" || seenStandard[img] {
+					continue
+				}
+				seenStandard[img] = true
+				if f, err := loadImageAsUploadedFile(img); err == nil {
 					standardImages = append(standardImages, *f)
 				}
 			}
@@ -916,11 +921,14 @@ func AnalyzeInspectionStream(storeName string, items []InspectionAIItem, photos 
 				if it.Standard != "" {
 					line += fmt.Sprintf("；检查标准：%s", it.Standard)
 				}
-				if it.StandardImage != "" {
+				if len(it.StandardImages) > 0 {
 					line += "；已附带标准参照图"
-					if !seenStandard[it.StandardImage] {
-						seenStandard[it.StandardImage] = true
-						if f, err := loadImageAsUploadedFile(it.StandardImage); err == nil {
+					for _, img := range it.StandardImages {
+						if img == "" || seenStandard[img] {
+							continue
+						}
+						seenStandard[img] = true
+						if f, err := loadImageAsUploadedFile(img); err == nil {
 							standardImages = append(standardImages, *f)
 						}
 					}
@@ -1168,19 +1176,19 @@ func stripCodeFence(s string) string {
 }
 
 type SingleItemAnalysisRequest struct {
-	ItemName      string               `json:"item_name"`
-	ItemID        string               `json:"item_id"`
-	Standard      string               `json:"standard"`
-	StandardImage string               `json:"standard_image"`
-	ScoreType     string               `json:"score_type"`
-	MaxScore      int                  `json:"max_score"`
-	ScoreOptions  []models.ScoreOption `json:"score_options"`
-	Comment       string               `json:"comment"`
-	CurrentScore  float64              `json:"current_score"`
-	Photos        []UploadedFile       `json:"photos"`
-	Keywords      string               `json:"keywords"`
-	PlanID        string               `json:"plan_id"`
-	ModelID       string               `json:"model_id"`
+	ItemName       string               `json:"item_name"`
+	ItemID         string               `json:"item_id"`
+	Standard       string               `json:"standard"`
+	StandardImages []string             `json:"standard_images"`
+	ScoreType      string               `json:"score_type"`
+	MaxScore       int                  `json:"max_score"`
+	ScoreOptions   []models.ScoreOption `json:"score_options"`
+	Comment        string               `json:"comment"`
+	CurrentScore   float64              `json:"current_score"`
+	Photos         []UploadedFile       `json:"photos"`
+	Keywords       string               `json:"keywords"`
+	PlanID         string               `json:"plan_id"`
+	ModelID        string               `json:"model_id"`
 }
 
 type SingleItemAnalysisResult struct {
@@ -1231,8 +1239,8 @@ func AnalyzeSingleInspectionItem(req SingleItemAnalysisRequest) (*SingleItemAnal
 	}
 
 	standardImageLine := ""
-	if req.StandardImage != "" {
-		standardImageLine = fmt.Sprintf("附带 1 张检查标准图（标准参照图），请对比标准图检查现场情况。")
+	if len(req.StandardImages) > 0 {
+		standardImageLine = fmt.Sprintf("附带 %d 张检查标准图（标准参照图），请对比标准图检查现场情况。", len(req.StandardImages))
 	}
 
 	photoDesc := ""
@@ -1266,8 +1274,11 @@ func AnalyzeSingleInspectionItem(req SingleItemAnalysisRequest) (*SingleItemAnal
 
 	// 加载标准图与现场图，vision 模型可直接看图片进行对比与相关性判断
 	standardImages := make([]UploadedFile, 0, 1)
-	if req.StandardImage != "" {
-		if f, err := loadImageAsUploadedFile(req.StandardImage); err == nil {
+	for _, img := range req.StandardImages {
+		if img == "" {
+			continue
+		}
+		if f, err := loadImageAsUploadedFile(img); err == nil {
 			standardImages = append(standardImages, *f)
 		}
 	}
@@ -1364,8 +1375,8 @@ func AnalyzeSingleInspectionItemStream(req SingleItemAnalysisRequest) (<-chan AI
 		}
 
 		standardImageLine := ""
-		if req.StandardImage != "" {
-			standardImageLine = fmt.Sprintf("附带 1 张检查标准图（标准参照图），请对比标准图检查现场情况。")
+		if len(req.StandardImages) > 0 {
+			standardImageLine = fmt.Sprintf("附带 %d 张检查标准图（标准参照图），请对比标准图检查现场情况。", len(req.StandardImages))
 		}
 
 		photoDesc := ""
@@ -1399,8 +1410,11 @@ func AnalyzeSingleInspectionItemStream(req SingleItemAnalysisRequest) (<-chan AI
 
 		// 加载标准图与现场图，vision 模型可直接看图片进行对比与相关性判断
 		standardImages := make([]UploadedFile, 0, 1)
-		if req.StandardImage != "" {
-			if f, err := loadImageAsUploadedFile(req.StandardImage); err == nil {
+		for _, img := range req.StandardImages {
+			if img == "" {
+				continue
+			}
+			if f, err := loadImageAsUploadedFile(img); err == nil {
 				standardImages = append(standardImages, *f)
 			}
 		}

@@ -30,7 +30,7 @@ def main():
             "name": t["title"],
             "category": t["category"] or "",
             "standard": t["standard"] or "",
-            "standard_image": t["standard_image"] or "",
+            "standard_images": t.get("standard_images") or [],
             "max_score": t["max_score"],
             "score_options": t["score_options"] or [],
             "require_remark": t["require_remark"],

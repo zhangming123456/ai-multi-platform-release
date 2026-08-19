@@ -281,8 +281,8 @@
           <div class="font-medium text-[14px] text-[#1D1D1F] mb-2">{{ item.item_name }}</div>
           <AttachmentInputArea
             :ref="(el) => setRectifyAreaRef(item, el)"
-            v-model="rectifyPhotos[item.id]"
-            v-model:text="rectifyComments[item.id]"
+            v-model="rectifyComments[item.id]"
+            v-model:file-list="rectifyPhotos[item.id]"
             :upload="uploadImageFile"
             :max-count="MAX_RECTIFY_PHOTOS"
             :min-rows="2"

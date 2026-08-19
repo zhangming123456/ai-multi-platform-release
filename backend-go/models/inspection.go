@@ -42,26 +42,27 @@ func (i *Inspection) TableName() string {
 }
 
 type InspectionScore struct {
-	ID            string    `orm:"column(id);pk;size(36)" json:"id"`
-	InspectionID  string    `orm:"column(inspection_id);size(36)" json:"inspection_id"`
-	ItemID        string    `orm:"column(item_id);size(36)" json:"item_id"`
-	ItemName      string    `orm:"column(item_name);size(200)" json:"item_name"`
-	Category      string    `orm:"column(category);size(50);null" json:"category"`
-	Standard      string    `orm:"column(standard);type(text);null" json:"standard"`
-	StandardImage string    `orm:"column(standard_image);size(500);null" json:"standard_image"`
-	ScoreType     string    `orm:"column(score_type);size(20);default(score)" json:"score_type"`
-	MaxScore      int       `orm:"column(max_score)" json:"max_score"`
-	ScoreOptions  string    `orm:"column(score_options);type(text);null" json:"-"`
-	Score         float64   `orm:"column(score);default(0)" json:"score"`
-	RequireRemark bool      `orm:"column(require_remark);default(false)" json:"require_remark"`
-	RequirePhoto  bool      `orm:"column(require_photo);default(false)" json:"require_photo"`
-	ShowRemark    bool      `orm:"column(show_remark);default(true)" json:"show_remark"`
-	ShowPhoto     bool      `orm:"column(show_photo);default(true)" json:"show_photo"`
-	Comment       string    `orm:"column(comment);type(text);null" json:"comment"`
-	AIGenerated   bool      `orm:"column(ai_generated);default(false)" json:"ai_generated"`
-	AISuggestion  string    `orm:"column(ai_suggestion);type(text);null" json:"ai_suggestion"`
-	Photos        string    `orm:"column(photos);type(text);null" json:"photos"`
-	CreatedAt     time.Time `orm:"column(created_at);auto_now_add;type(datetime)" json:"created_at"`
+	ID             string    `orm:"column(id);pk;size(36)" json:"id"`
+	InspectionID   string    `orm:"column(inspection_id);size(36)" json:"inspection_id"`
+	ItemID         string    `orm:"column(item_id);size(36)" json:"item_id"`
+	ItemName       string    `orm:"column(item_name);size(200)" json:"item_name"`
+	Category       string    `orm:"column(category);size(50);null" json:"category"`
+	Standard       string    `orm:"column(standard);type(text);null" json:"standard"`
+	StandardImage  string    `orm:"column(standard_image);size(500);null" json:"-"`
+	StandardImages string    `orm:"column(standard_images);type(text);null" json:"-"`
+	ScoreType      string    `orm:"column(score_type);size(20);default(score)" json:"score_type"`
+	MaxScore       int       `orm:"column(max_score)" json:"max_score"`
+	ScoreOptions   string    `orm:"column(score_options);type(text);null" json:"-"`
+	Score          float64   `orm:"column(score);default(0)" json:"score"`
+	RequireRemark  bool      `orm:"column(require_remark);default(false)" json:"require_remark"`
+	RequirePhoto   bool      `orm:"column(require_photo);default(false)" json:"require_photo"`
+	ShowRemark     bool      `orm:"column(show_remark);default(true)" json:"show_remark"`
+	ShowPhoto      bool      `orm:"column(show_photo);default(true)" json:"show_photo"`
+	Comment        string    `orm:"column(comment);type(text);null" json:"comment"`
+	AIGenerated    bool      `orm:"column(ai_generated);default(false)" json:"ai_generated"`
+	AISuggestion   string    `orm:"column(ai_suggestion);type(text);null" json:"ai_suggestion"`
+	Photos         string    `orm:"column(photos);type(text);null" json:"photos"`
+	CreatedAt      time.Time `orm:"column(created_at);auto_now_add;type(datetime)" json:"created_at"`
 }
 
 func (s *InspectionScore) TableName() string {

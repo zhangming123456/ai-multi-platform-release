@@ -1,15 +1,10 @@
 <template>
   <a-select
     v-model="selectedKey"
-    placeholder="选择模型"
+    :placeholder="options.length ? '选择模型' : '无可用模型'"
     class="w-full"
     :size="size"
     allow-clear
-    :trigger-props="{
-      popupStyle: {
-        width: '300px',
-      },
-    }"
     @change="handleChange"
   >
     <a-option
@@ -18,7 +13,7 @@
       :value="opt.key"
       :disabled="requireVision && !opt.hasVision"
     >
-      <span class="provider-opt">
+      <span class="model-select-provider-opt">
         <span>{{ opt.planName }} · {{ opt.modelId }}</span>
         <span v-if="requireVision && !opt.hasVision" class="text-[#FF3B30] text-[12px]">
           （不支持视觉）
@@ -141,7 +136,14 @@ onMounted(() => {
 })
 </script>
 <style scoped lang="scss">
-:global(.arco-select-dropdown:has(.provider-opt)) {
+.model-select-provider-opt {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  white-space: nowrap;
+  max-width: 100%;
+}
+:global(.arco-select-dropdown:has(.model-select-provider-opt)) {
   min-width: 300px;
   width: max-content !important;
   max-width: min(560px, 92vw);

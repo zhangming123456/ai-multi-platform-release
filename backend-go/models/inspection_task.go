@@ -76,7 +76,8 @@ type InspectionTaskItem struct {
 	ItemName       string    `orm:"column(item_name);size(200)" json:"item_name"`
 	Category       string    `orm:"column(category);size(100);null" json:"category"`
 	Standard       string    `orm:"column(standard);type(text);null" json:"standard"`
-	StandardImage  string    `orm:"column(standard_image);size(500);null" json:"standard_image"`
+	StandardImage  string    `orm:"column(standard_image);size(500);null" json:"-"`
+	StandardImages string    `orm:"column(standard_images);type(text);null" json:"-"`
 	ScoreType      string    `orm:"column(score_type);size(20);default(score)" json:"score_type"`
 	MaxScore       int       `orm:"column(max_score);default(0)" json:"max_score"`
 	Score          float64   `orm:"column(score);default(0)" json:"score"`

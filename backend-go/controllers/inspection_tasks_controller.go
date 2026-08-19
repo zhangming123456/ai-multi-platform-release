@@ -49,7 +49,7 @@ type inspectionTaskItemView struct {
 	ItemName       string                 `json:"item_name"`
 	Category       string                 `json:"category"`
 	Standard       string                 `json:"standard"`
-	StandardImage  string                 `json:"standard_image"`
+	StandardImages []string               `json:"standard_images"`
 	ScoreType      string                 `json:"score_type"`
 	MaxScore       int                    `json:"max_score"`
 	Score          float64                `json:"score"`
@@ -258,7 +258,7 @@ func (c *InspectionTasksController) Recheck() {
 		result, err := services.RecheckRectifyPhoto(services.RecheckRectifyRequest{
 			ItemName:        item.ItemName,
 			Standard:        item.Standard,
-			StandardImage:   item.StandardImage,
+			StandardImages:  effectiveStandardImages(item.StandardImages, item.StandardImage),
 			ScoreType:       item.ScoreType,
 			MaxScore:        item.MaxScore,
 			OriginalComment: item.Comment,
@@ -580,7 +580,7 @@ func buildInspectionTaskItemView(it *models.InspectionTaskItem) inspectionTaskIt
 		ItemName:       it.ItemName,
 		Category:       it.Category,
 		Standard:       it.Standard,
-		StandardImage:  it.StandardImage,
+		StandardImages: effectiveStandardImages(it.StandardImages, it.StandardImage),
 		ScoreType:      it.ScoreType,
 		MaxScore:       it.MaxScore,
 		Score:          it.Score,
@@ -876,6 +876,7 @@ func autoCreateInspectionTask(inspection *models.Inspection) {
 	}
 	for _, s := range problemScores {
 		aiProblemDesc := resolveAIProblemDesc(s.ItemID, s.ItemName, problemByID, problemByName)
+		images := effectiveStandardImages(s.StandardImages, s.StandardImage)
 		item := &models.InspectionTaskItem{
 			ID:             newID(),
 			TaskID:         task.ID,
@@ -885,7 +886,8 @@ func autoCreateInspectionTask(inspection *models.Inspection) {
 			ItemName:       s.ItemName,
 			Category:       s.Category,
 			Standard:       s.Standard,
-			StandardImage:  s.StandardImage,
+			StandardImages: models.MarshalStringSlice(images),
+			StandardImage:  firstImage(images),
 			ScoreType:      s.ScoreType,
 			MaxScore:       s.MaxScore,
 			Score:          s.Score,

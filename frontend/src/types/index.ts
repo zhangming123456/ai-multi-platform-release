@@ -84,7 +84,7 @@ export interface InspectionScore {
   item_name: string
   category: string | null
   standard: string | null
-  standard_image: string | null
+  standard_images: string[]
   score_type: 'score' | 'pass_fail'
   max_score: number
   score_options: ScoreOption[] | null
@@ -146,7 +146,6 @@ export interface InspectionTemplateItem {
   category: string | null
   title: string
   standard: string | null
-  standard_image: string | null
   standard_images: string[]
   score_type: 'score' | 'pass_fail'
   max_score: number
@@ -164,7 +163,6 @@ export interface InspectionMaterial {
   category: string | null
   title: string
   standard: string | null
-  standard_image: string | null
   standard_images: string[]
   score_type: 'score' | 'pass_fail'
   max_score: number
@@ -231,7 +229,7 @@ export interface InspectionTaskItem {
   item_name: string
   category: string | null
   standard: string | null
-  standard_image: string | null
+  standard_images: string[]
   score_type: 'score' | 'pass_fail'
   max_score: number
   score: number
