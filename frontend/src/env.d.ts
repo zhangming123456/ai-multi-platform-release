@@ -10,3 +10,13 @@ declare module 'swagger-ui-dist/swagger-ui-bundle.js' {
   const SwaggerUI: any
   export default SwaggerUI
 }
+
+declare module 'vite/client' {
+  interface ImportMetaEnv {
+    readonly VITE_EDITOR_ENGINE?: 'lightweight' | 'powerful'
+  }
+
+  interface ImportMeta {
+    readonly env: ImportMetaEnv
+  }
+}
