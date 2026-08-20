@@ -12,6 +12,7 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/beego/beego/v2/server/web"
 
@@ -34,6 +35,99 @@ type AIVariant struct {
 	Hashtags []string `json:"hashtags"`
 }
 
+// VariantScore 文案质量评分结果（启发式规则，0-100）。
+type VariantScore struct {
+	Total      int      `json:"total"`
+	TitleScore int      `json:"title_score"`
+	BodyScore  int      `json:"body_score"`
+	TagScore   int      `json:"tag_score"`
+	ExtraScore int      `json:"extra_score"`
+	Tags       []string `json:"tags"`
+	Comment    string   `json:"comment"`
+}
+
+// ScoreVariant 基于启发式规则对文案质量进行评分，用于多版本优选。
+// 评分维度：标题（30 分）、正文（40 分）、话题标签（20 分）、附加加分（10 分）。
+func ScoreVariant(v AIVariant, platform string) VariantScore {
+	sc := VariantScore{}
+
+	titleLen := utf8.RuneCountInString(v.Title)
+	switch {
+	case titleLen == 0:
+		sc.Tags = append(sc.Tags, "标题为空")
+	case titleLen <= 40:
+		sc.TitleScore = 30
+		sc.Tags = append(sc.Tags, "标题简洁有力")
+	default:
+		sc.TitleScore = 18
+		sc.Tags = append(sc.Tags, "标题偏长")
+	}
+
+	bodyLen := utf8.RuneCountInString(v.Body)
+	switch {
+	case bodyLen == 0:
+		sc.Tags = append(sc.Tags, "正文为空")
+	case bodyLen >= 80 && bodyLen <= 2000:
+		sc.BodyScore = 40
+		sc.Tags = append(sc.Tags, "正文内容充实")
+	case bodyLen > 2000:
+		sc.BodyScore = 28
+		sc.Tags = append(sc.Tags, "正文偏长")
+	default:
+		sc.BodyScore = 20
+		sc.Tags = append(sc.Tags, "正文偏短")
+	}
+
+	switch {
+	case len(v.Hashtags) >= 3 && len(v.Hashtags) <= 5:
+		sc.TagScore = 20
+		sc.Tags = append(sc.Tags, "话题标签数量适中")
+	case len(v.Hashtags) > 0:
+		sc.TagScore = 10
+		sc.Tags = append(sc.Tags, "话题标签偏少")
+	default:
+		sc.Tags = append(sc.Tags, "缺少话题标签")
+	}
+
+	emojis := 0
+	for _, r := range v.Body {
+		if r >= 0x1F000 && r <= 0x1FAFF {
+			emojis++
+		}
+	}
+	switch platform {
+	case "xiaohongshu", "weibo", "douyin":
+		if emojis >= 2 {
+			sc.ExtraScore = 10
+			sc.Tags = append(sc.Tags, "emoji 使用到位")
+		} else if emojis > 0 {
+			sc.ExtraScore = 5
+		} else {
+			sc.Tags = append(sc.Tags, "建议增加 emoji 提升氛围感")
+		}
+	default:
+		if emojis <= 1 {
+			sc.ExtraScore = 10
+			sc.Tags = append(sc.Tags, "风格克制，符合平台调性")
+		} else {
+			sc.ExtraScore = 5
+		}
+	}
+
+	sc.Total = sc.TitleScore + sc.BodyScore + sc.TagScore + sc.ExtraScore
+	switch {
+	case sc.Total >= 90:
+		sc.Comment = "优秀"
+	case sc.Total >= 75:
+		sc.Comment = "良好"
+	case sc.Total >= 60:
+		sc.Comment = "达标"
+	default:
+		sc.Comment = "待优化"
+	}
+	return sc
+}
+
 type UploadedFile struct {
 	Data     string `json:"data"`
 	MimeType string `json:"mime_type"`
@@ -41,10 +135,12 @@ type UploadedFile struct {
 }
 
 var platformStyleMap = map[string]string{
-	"xiaohongshu":  "小红书风格：活泼、种草、使用emoji、段落短小、口语化",
-	"douyin":       "抖音风格：吸引眼球、节奏快、有悬念感、适合短视频文案",
-	"wechat_mp":    "微信公众号风格：专业、深度、结构清晰、适合长文阅读",
-	"wechat_video": "视频号风格：简洁、正能量、适合中年受众、有温度",
+	"xiaohongshu":    "小红书风格：活泼、种草、使用emoji、段落短小、口语化",
+	"douyin":         "抖音风格：吸引眼球、节奏快、有悬念感、适合短视频文案",
+	"wechat_mp":      "微信公众号风格：专业、深度、结构清晰、适合长文阅读",
+	"wechat_video":   "视频号风格：简洁、正能量、适合中年受众、有温度",
+	"wechat_moments": "朋友圈风格：极简精炼、生活化、适合转发",
+	"weibo":          "微博风格：年轻活泼、高互动、强话题性、短平快",
 }
 
 func getAIBaseURL() string {
@@ -540,9 +636,19 @@ func buildContentVariantMessages(topic, platform, style string, keywords []strin
 	if style != "" {
 		platformStyle += "，额外要求：" + style
 	}
+	if st := loadStyleTemplate(platform); st != "" {
+		platformStyle = st
+	}
 	keywordsStr := ""
 	if len(keywords) > 0 {
 		keywordsStr = "，关键词：" + strings.Join(keywords, ", ")
+	}
+	if st := loadStyleTemplateKeywords(platform); st != "" {
+		if keywordsStr == "" {
+			keywordsStr = "，关键词：" + st
+		} else {
+			keywordsStr += "，" + st
+		}
 	}
 	subject := strings.TrimSpace(topic)
 	if subject == "" {
@@ -613,6 +719,9 @@ func buildContentVariantMessages(topic, platform, style string, keywords []strin
 	}
 
 	systemContent := "你是一个专业的社交媒体内容创作助手，擅长为不同平台生成适配的优质内容。使用中文回复。必须且只能调用" + toolName + "工具返回结构化结果，禁止输出工具调用以外的任何解释性文字、markdown 代码块或普通文本。"
+	if pt := loadPromptTemplate(platform); pt != "" {
+		systemContent = pt
+	}
 
 	messages := []chatMessage{{Role: "system", Content: systemContent}}
 	if len(files) > 0 {
@@ -636,6 +745,63 @@ func buildContentVariantMessages(topic, platform, style string, keywords []strin
 		},
 	}
 	return messages, tools, toolChoice
+}
+
+// loadPromptTemplate 从数据库读取目标平台启用的默认 Prompt 模板（system 内容），不存在则返回空。
+func loadPromptTemplate(platform string) string {
+	o := GetOrm()
+	var p models.PromptTemplate
+	err := o.QueryTable(new(models.PromptTemplate)).
+		Filter("platform", platform).
+		Filter("status", models.PromptTemplateStatusActive).
+		Filter("is_default", true).
+		One(&p)
+	if err != nil {
+		return ""
+	}
+	role := strings.TrimSpace(p.Role)
+	rules := strings.TrimSpace(p.Rules)
+	if role == "" {
+		role = "你是一个专业的社交媒体内容创作助手，擅长为不同平台生成适配的优质内容。使用中文回复。"
+	}
+	if rules != "" {
+		role += "\n强制规则：\n" + rules
+	}
+	return role
+}
+
+// loadStyleTemplate 从数据库读取目标平台启用的风格模板描述。
+func loadStyleTemplate(platform string) string {
+	o := GetOrm()
+	var s models.StyleTemplate
+	err := o.QueryTable(new(models.StyleTemplate)).
+		Filter("platform", platform).
+		Filter("status", models.StyleTemplateStatusActive).
+		OrderBy("-created_at").
+		One(&s)
+	if err != nil || strings.TrimSpace(s.Description) == "" {
+		return ""
+	}
+	return s.Description
+}
+
+// loadStyleTemplateKeywords 从数据库读取目标平台启用的风格模板关键词。
+func loadStyleTemplateKeywords(platform string) string {
+	o := GetOrm()
+	var s models.StyleTemplate
+	err := o.QueryTable(new(models.StyleTemplate)).
+		Filter("platform", platform).
+		Filter("status", models.StyleTemplateStatusActive).
+		OrderBy("-created_at").
+		One(&s)
+	if err != nil || strings.TrimSpace(s.Keywords) == "" {
+		return ""
+	}
+	keywords := []string{}
+	if err := json.Unmarshal([]byte(s.Keywords), &keywords); err != nil {
+		return ""
+	}
+	return strings.Join(keywords, ", ")
 }
 
 func extractHashtags(v interface{}) []string {
@@ -827,6 +993,8 @@ type AIStreamEvent struct {
 	Message        string                   `json:"message,omitempty"`
 	Text           string                   `json:"text,omitempty"`
 	Variant        *AIVariant               `json:"variant,omitempty"`
+	VariantIndex   int                      `json:"variant_index,omitempty"`
+	Score          *VariantScore            `json:"score,omitempty"`
 	Data           interface{}              `json:"data,omitempty"`
 	Detail         string                   `json:"detail,omitempty"`
 	Model          string                   `json:"model,omitempty"`
@@ -873,8 +1041,14 @@ func buildVisionContent(prompt string, files []UploadedFile) []interface{} {
 }
 
 // GenerateContentStream 流式生成内容，通过 channel 发送事件。
-func GenerateContentStream(topic, platform, style string, keywords []string, planID, modelID string, files []UploadedFile, campaignID string) (<-chan AIStreamEvent, error) {
+func GenerateContentStream(topic, platform, style string, keywords []string, planID, modelID string, files []UploadedFile, campaignID string, versionNum int) (<-chan AIStreamEvent, error) {
 	events := make(chan AIStreamEvent, 16)
+	if versionNum <= 0 {
+		versionNum = 1
+	}
+	if versionNum > 3 {
+		versionNum = 3
+	}
 
 	apiKey, baseURL, model, planName, supportsVision, err := ResolveModelConfig(planID, modelID)
 	if err != nil {
@@ -908,7 +1082,7 @@ func GenerateContentStream(topic, platform, style string, keywords []string, pla
 			events <- AIStreamEvent{Event: "log", Level: "info", Message: fmt.Sprintf("已注入活动「%s」创作背景", campaignName)}
 		}
 
-		messages, tools, toolChoice := buildContentVariantMessages(topic, platform, style, keywords, allFiles, 1, contextText)
+		messages, tools, toolChoice := buildContentVariantMessages(topic, platform, style, keywords, allFiles, versionNum, contextText)
 
 		if len(files) > 0 {
 			imgCount := 0
@@ -1007,36 +1181,51 @@ func GenerateContentStream(topic, platform, style string, keywords []string, pla
 			return
 		}
 
-		var variant *AIVariant
+		var variants []AIVariant
 		for idx, args := range accumulatedArgs {
-			if accumulatedName[idx] != "submit_content_variant" {
-				continue
-			}
+			name := accumulatedName[idx]
 			args = strings.TrimSpace(args)
 			if args == "" {
 				continue
 			}
-			if v, ok := parseContentVariantArgs(args); ok {
-				variant = &v
-				events <- AIStreamEvent{Event: "log", Level: "ok", Message: "已解析 submit_content_variant 工具调用结果"}
-				break
+			if name == "submit_content_variants" {
+				if list, ok := parseContentVariantsArgs(args); ok && len(list) > 0 {
+					variants = list
+					events <- AIStreamEvent{Event: "log", Level: "ok", Message: fmt.Sprintf("已解析 submit_content_variants 工具调用结果（%d 个版本）", len(list))}
+					break
+				}
+			} else if name == "submit_content_variant" {
+				if v, ok := parseContentVariantArgs(args); ok {
+					variants = []AIVariant{v}
+					events <- AIStreamEvent{Event: "log", Level: "ok", Message: "已解析 submit_content_variant 工具调用结果"}
+					break
+				}
 			}
 		}
-		if variant == nil {
-			if v, ok := parseContentVariantArgs(stripCodeFence(fullContent)); ok {
-				variant = &v
+		if len(variants) == 0 {
+			if list, ok := parseContentVariantsArgs(stripCodeFence(fullContent)); ok && len(list) > 0 {
+				variants = list
+				events <- AIStreamEvent{Event: "log", Level: "ok", Message: fmt.Sprintf("已从文本内容回退解析 %d 个 JSON 变体", len(list))}
+			} else if v, ok := parseContentVariantArgs(stripCodeFence(fullContent)); ok {
+				variants = []AIVariant{v}
 				events <- AIStreamEvent{Event: "log", Level: "ok", Message: "已从文本内容回退解析 JSON 结果"}
 			}
 		}
-		if variant == nil {
+		if len(variants) == 0 {
 			events <- AIStreamEvent{Event: "error", Message: fmt.Sprintf("模型「%s」返回的内容格式异常，无法解析。请尝试切换到其他模型配置后重试。", planName)}
 			return
 		}
-		events <- AIStreamEvent{
-			Event:    "done",
-			Variant:  variant,
-			Model:    model,
-			PlanName: planName,
+		for i := range variants {
+			v := variants[i]
+			score := ScoreVariant(v, platform)
+			events <- AIStreamEvent{
+				Event:        "done",
+				Variant:      &v,
+				VariantIndex: i,
+				Score:        &score,
+				Model:        model,
+				PlanName:     planName,
+			}
 		}
 	}()
 

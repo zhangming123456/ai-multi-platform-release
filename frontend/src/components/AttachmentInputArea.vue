@@ -135,8 +135,7 @@
     <input ref="fileInputRef" type="file" :accept="accept" multiple hidden @change="onFileChange" />
     <ImageEditorModal
       :visible="editorVisible"
-      :url="editorUrl"
-      :name="editorName"
+      :src="editorUrl"
       @close="editorVisible = false"
       @confirm="handleEditorConfirm"
     />
@@ -182,7 +181,9 @@ import {
   urlFileName,
 } from '@/composables/useUrlExtractor'
 
-const ImageEditorModal = defineAsyncComponent(() => import('@/components/ImageEditorModal.vue'))
+const ImageEditorModal = defineAsyncComponent(
+  () => import('@/components/ImageEditor/ImageEditorModal.vue'),
+)
 
 type AttachmentFileType = 'image' | 'video' | 'file'
 
@@ -281,7 +282,6 @@ let dragDepth = 0
 const editorVisible = ref(false)
 const editorIndex = ref(0)
 const editorUrl = ref('')
-const editorName = ref('')
 const videoVisible = ref(false)
 const videoUrl = ref('')
 
@@ -622,14 +622,13 @@ function openEditor(index: number) {
   if (!item.pending && !props.upload) return
   editorIndex.value = index
   editorUrl.value = item.pending ? previewUrl(item) : item.url || ''
-  editorName.value = item.name
   editorVisible.value = true
 }
 
-async function handleEditorConfirm(result: { blob: Blob; name: string }) {
+async function handleEditorConfirm(blob: Blob) {
   const item = displayItems.value[editorIndex.value]
   if (!item || item.type !== 'image') return
-  const file = new File([result.blob], result.name, { type: result.blob.type || 'image/jpeg' })
+  const file = new File([blob], item.name, { type: blob.type || 'image/jpeg' })
   if (item.pending && item.file) {
     const i = pendingItems.value.findIndex((p) => p.file === item.file)
     if (i >= 0) {

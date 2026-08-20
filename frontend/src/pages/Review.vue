@@ -183,6 +183,7 @@ const getPlatformName = (platform: string) => {
     douyin: '抖音',
     wechat_video: '微信视频号',
     wechat_mp: '微信公众号',
+    wechat_moments: '朋友圈',
     weibo: '微博',
     bilibili: 'B站',
   }

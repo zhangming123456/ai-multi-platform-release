@@ -39,5 +39,7 @@ func InitModels() {
 		new(InspectionTask),
 		new(InspectionTaskItem),
 		new(InspectionTaskLog),
+		new(StyleTemplate),
+		new(PromptTemplate),
 	)
 }

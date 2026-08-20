@@ -27,6 +27,7 @@ defineProps<{
     | 'ready'
     | 'pending_review'
     | 'rejected'
+    | 'archived'
 }>()
 
 const statusColorMap: Record<string, string> = {
@@ -41,6 +42,7 @@ const statusColorMap: Record<string, string> = {
   review: 'orange',
   approved: 'cyan',
   ready: 'orange',
+  archived: 'gray',
 }
 
 const statusLabelMap: Record<string, string> = {
@@ -57,5 +59,6 @@ const statusLabelMap: Record<string, string> = {
   ready: '待发布',
   pending_review: '待审核',
   rejected: '已驳回',
+  archived: '已归档',
 }
 </script>

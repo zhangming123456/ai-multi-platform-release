@@ -1,12 +1,13 @@
 import type { BaseEngine } from './base/BaseEngine'
-import { ENGINE_TYPE } from '../config/engine.config'
+import { ENGINE_TYPE, type EngineType } from '../config/engine.config'
 
 export async function createEngine(
   canvasEl: HTMLCanvasElement,
   width: number,
   height: number,
+  engineType: EngineType = ENGINE_TYPE,
 ): Promise<BaseEngine> {
-  if (ENGINE_TYPE === 'powerful') {
+  if (engineType === 'powerful') {
     const { FabricEngine } = await import('./powerful/FabricEngine')
     const engine = new FabricEngine(canvasEl, width, height)
     engine.init()
@@ -21,4 +22,3 @@ export async function createEngine(
 
 export type { BaseEngine } from './base/BaseEngine'
 export { AbstractEngine } from './base/BaseEngine'
-export { CanvasEngine } from './lightweight/CanvasEngine'

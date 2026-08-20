@@ -13,10 +13,12 @@ type DashboardController struct {
 }
 
 var platformNames = map[string]string{
-	"wechat_mp":    "微信公众号",
-	"xiaohongshu":  "小红书",
-	"douyin":       "抖音",
-	"wechat_video": "视频号",
+	"wechat_mp":      "微信公众号",
+	"xiaohongshu":    "小红书",
+	"douyin":         "抖音",
+	"wechat_video":   "视频号",
+	"wechat_moments": "朋友圈",
+	"weibo":          "微博",
 }
 
 // Stats GET /api/dashboard/stats

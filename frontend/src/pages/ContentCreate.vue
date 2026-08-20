@@ -52,7 +52,13 @@
             <div class="streaming-view__header">
               <PlatformIcon
                 :platform="
-                  streamingPlatform as 'wechat_mp' | 'xiaohongshu' | 'douyin' | 'wechat_video'
+                  streamingPlatform as
+                    | 'wechat_mp'
+                    | 'xiaohongshu'
+                    | 'douyin'
+                    | 'wechat_video'
+                    | 'wechat_moments'
+                    | 'weibo'
                 "
                 size="sm"
               />
@@ -73,18 +79,21 @@
             </div>
           </a-spin>
 
-          <div v-else-if="generatedVariants[activePreview]" class="space-y-4">
+          <div v-else-if="currentVariant" class="space-y-4">
+            <div v-if="currentVariants.length > 1" class="version-preview-bar">
+              <a-radio-group v-model="activeVersionIndex" size="small" type="button">
+                <a-radio v-for="(_, vi) in currentVariants" :key="vi" :value="vi">
+                  版本 {{ vi + 1 }}
+                </a-radio>
+              </a-radio-group>
+            </div>
             <div>
               <a-typography-text
                 type="secondary"
                 class="text-[11px] font-semibold uppercase tracking-[0.06em] block mb-1.5"
                 >标题</a-typography-text
               >
-              <a-input
-                :model-value="generatedVariants[activePreview].title"
-                read-only
-                class="font-semibold"
-              />
+              <a-input :model-value="currentVariant.title" read-only class="font-semibold" />
             </div>
             <div>
               <a-typography-text
@@ -93,7 +102,7 @@
                 >正文（底部含推荐话题标签）</a-typography-text
               >
               <a-textarea
-                :model-value="bodyWithTags(generatedVariants[activePreview])"
+                :model-value="bodyWithTags(currentVariant)"
                 read-only
                 :auto-size="{ minRows: 4, maxRows: 12 }"
               />
@@ -196,6 +205,46 @@
                   </button>
                 </a-tooltip>
               </template>
+            </div>
+
+            <div class="version-select-bar">
+              <span class="version-select-bar__label">版本数</span>
+              <a-radio-group
+                v-model="versionNum"
+                size="small"
+                type="button"
+                @change="onVersionChange"
+              >
+                <a-radio value="1">1</a-radio>
+                <a-radio value="2">2</a-radio>
+                <a-radio value="3">3</a-radio>
+              </a-radio-group>
+              <span class="version-select-bar__hint">单平台生成 1-3 版差异化文案</span>
+            </div>
+
+            <div v-if="hasFiles" class="compress-bar">
+              <span class="compress-bar__label">图片压缩</span>
+              <a-select
+                v-model="compressMaxWidth"
+                size="small"
+                class="compress-bar__select"
+                @change="onCompressChange"
+              >
+                <a-option :value="1280">最大宽度 1280</a-option>
+                <a-option :value="1920">最大宽度 1920</a-option>
+                <a-option :value="2560">最大宽度 2560</a-option>
+              </a-select>
+              <a-select
+                v-model="compressQuality"
+                size="small"
+                class="compress-bar__select"
+                @change="onCompressChange"
+              >
+                <a-option :value="0.6">质量 60%</a-option>
+                <a-option :value="0.8">质量 80%</a-option>
+                <a-option :value="0.9">质量 90%</a-option>
+              </a-select>
+              <span class="compress-bar__hint">压缩后单张 ≤ 500KB</span>
             </div>
 
             <a-form ref="createFormRef" layout="vertical" :model="createForm" class="create-form">
@@ -529,7 +578,17 @@ function onCampaignChange(id: unknown) {
 const isMac = /Mac|iPhone|iPad|iPod/i.test(navigator.userAgent)
 const shortcutHint = computed(() => (isMac ? '⌘+Enter 换行' : 'Ctrl+Enter 换行'))
 
-function compressImage(file: File, maxWidth = 1920, quality = 0.8): Promise<File> {
+const compressMaxWidth = ref(1920)
+const compressQuality = ref(0.8)
+
+function onCompressChange() {
+  pushLog(
+    'info',
+    `图片压缩参数已更新：最大宽度 ${compressMaxWidth.value}px · 质量 ${Math.round(compressQuality.value * 100)}%`,
+  )
+}
+
+function compressImage(file: File): Promise<File> {
   return new Promise((resolve, _reject) => {
     if (!file.type.startsWith('image/')) {
       resolve(file)
@@ -540,6 +599,7 @@ function compressImage(file: File, maxWidth = 1920, quality = 0.8): Promise<File
       const img = new Image()
       img.onload = () => {
         let { width, height } = img
+        const maxWidth = compressMaxWidth.value
         if (width > maxWidth) {
           height = (height * maxWidth) / width
           width = maxWidth
@@ -566,7 +626,7 @@ function compressImage(file: File, maxWidth = 1920, quality = 0.8): Promise<File
             }
           },
           file.type || 'image/jpeg',
-          quality,
+          compressQuality.value,
         )
       }
       img.onerror = () => resolve(file)
@@ -645,11 +705,26 @@ const platformChoices: { value: PlatformIconType; label: string }[] = [
   { value: 'xiaohongshu', label: '小红书' },
   { value: 'douyin', label: '抖音' },
   { value: 'wechat_video', label: '视频号' },
+  { value: 'wechat_moments', label: '朋友圈' },
+  { value: 'weibo', label: '微博' },
 ]
 
-const generatedVariants = ref<Record<string, { title: string; body: string; hashtags: string[] }>>(
-  {},
-)
+const generatedVariants = ref<
+  Record<string, { title: string; body: string; hashtags: string[] }[]>
+>({})
+const versionNum = ref('2')
+const activeVersionIndex = ref(0)
+
+const currentVariants = computed(() => generatedVariants.value[activePreview.value] || [])
+const currentVariant = computed(() => currentVariants.value[activeVersionIndex.value])
+
+function onVersionChange() {
+  activeVersionIndex.value = 0
+  hasGenerated.value = false
+  generatedVariants.value = {}
+  streamingText.value = ''
+  streamingPlatform.value = ''
+}
 
 function hashtagsText(tags: string[]): string {
   return tags
@@ -695,6 +770,8 @@ async function generate() {
   hasGenerated.value = false
   streamingText.value = ''
   streamingPlatform.value = ''
+  activeVersionIndex.value = 0
+  generatedVariants.value = {}
 
   const startedAt = performance.now()
   const plan = store.activePlan
@@ -707,7 +784,7 @@ async function generate() {
       : '上传素材'
   pushLog(
     'info',
-    `开始生成任务 · ${inputDesc} · 平台 ${selectedPlatforms.value.map(platformLabel).join(' / ')}`,
+    `开始生成任务 · ${inputDesc} · 平台 ${selectedPlatforms.value.map(platformLabel).join(' / ')} · ${versionNum.value} 版`,
   )
   pushLog('info', `使用模型配置 ${plan.name}（${modelId}）`)
 
@@ -730,6 +807,7 @@ async function generate() {
         platforms: selectedPlatforms.value,
         plan_id: plan.id,
         model_id: modelId,
+        generate_version: Number(versionNum.value),
         ...(keywordsArray && keywordsArray.length > 0 ? { keywords: keywordsArray } : {}),
         ...(filesPayload && filesPayload.length > 0 ? { files: filesPayload } : {}),
         ...(selectedCampaignId.value ? { campaign_id: selectedCampaignId.value } : {}),
@@ -769,7 +847,7 @@ async function generate() {
     const reader = response.body!.getReader()
     const decoder = new TextDecoder()
     let buffer = ''
-    const variants: Record<string, { title: string; body: string; hashtags: string[] }> = {}
+    const variants: Record<string, { title: string; body: string; hashtags: string[] }[]> = {}
 
     while (true) {
       const { done, value } = await reader.read()
@@ -805,11 +883,14 @@ async function generate() {
             break
           case 'done':
             if (payload.variant) {
-              variants[payload.platform] = {
+              const v = {
                 title: payload.variant.title || '',
                 body: payload.variant.body || '',
                 hashtags: Array.isArray(payload.variant.hashtags) ? payload.variant.hashtags : [],
               }
+              if (!variants[payload.platform]) variants[payload.platform] = []
+              const idx = typeof payload.variant_index === 'number' ? payload.variant_index : 0
+              variants[payload.platform][idx] = v
             }
             pushLog('ok', `${platformLabel(payload.platform)} 生成完成`)
             streamingText.value = ''
@@ -863,7 +944,7 @@ async function generate() {
 }
 
 async function saveContent() {
-  const variant = generatedVariants.value[activePreview.value]
+  const variant = currentVariant.value
   if (!variant) return
 
   isSaving.value = true
@@ -896,7 +977,7 @@ async function saveContent() {
 }
 
 async function copyContent() {
-  const variant = generatedVariants.value[activePreview.value]
+  const variant = currentVariant.value
   if (!variant) return
   const text = `${variant.title}\n\n${bodyWithTags(variant)}`
   try {
@@ -1457,6 +1538,56 @@ async function copyContent() {
   background: #007aff;
   color: #ffffff;
   border-color: #007aff;
+}
+
+.version-select-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.version-select-bar__label {
+  font-size: 12px;
+  color: #86909c;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.version-select-bar__hint {
+  font-size: 12px;
+  color: #7c7c84;
+}
+
+.version-preview-bar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.compress-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.compress-bar__label {
+  font-size: 12px;
+  color: #86909c;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.compress-bar__select {
+  width: 150px;
+  flex-shrink: 0;
+}
+
+.compress-bar__hint {
+  font-size: 12px;
+  color: #7c7c84;
+  white-space: nowrap;
 }
 
 .model-select-wrap {

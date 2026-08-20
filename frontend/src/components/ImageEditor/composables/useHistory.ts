@@ -1,12 +1,16 @@
-import { ref, type Ref } from 'vue'
+import { ref, toRaw, type Ref } from 'vue'
 import type { BaseLayer } from '../types'
+
+function cloneLayers(layers: BaseLayer[]): BaseLayer[] {
+  return JSON.parse(JSON.stringify(toRaw(layers)))
+}
 
 export function useHistory(max = 50) {
   const undoStack = ref<BaseLayer[][]>([])
   const redoStack = ref<BaseLayer[][]>([])
 
   function pushSnapshot(layers: BaseLayer[]) {
-    const snap = structuredClone(layers)
+    const snap = cloneLayers(layers)
     undoStack.value.push(snap)
     if (undoStack.value.length > max) undoStack.value.shift()
     redoStack.value = []
@@ -15,7 +19,7 @@ export function useHistory(max = 50) {
   function undo(layers: Ref<BaseLayer[]>) {
     const snap = undoStack.value.pop()
     if (!snap) return false
-    redoStack.value.push(structuredClone(layers.value))
+    redoStack.value.push(cloneLayers(layers.value))
     layers.value = snap
     return true
   }
@@ -23,7 +27,7 @@ export function useHistory(max = 50) {
   function redo(layers: Ref<BaseLayer[]>) {
     const snap = redoStack.value.pop()
     if (!snap) return false
-    undoStack.value.push(structuredClone(layers.value))
+    undoStack.value.push(cloneLayers(layers.value))
     layers.value = snap
     return true
   }

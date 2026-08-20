@@ -28,6 +28,8 @@
           <a-option value="xiaohongshu">小红书</a-option>
           <a-option value="douyin">抖音</a-option>
           <a-option value="wechat_video">视频号</a-option>
+          <a-option value="wechat_moments">朋友圈</a-option>
+          <a-option value="weibo">微博</a-option>
         </a-select>
         <a-select v-model="statusFilter" placeholder="全部状态" style="width: 120px">
           <a-option value="all">全部状态</a-option>
@@ -144,6 +146,8 @@
             <a-option value="xiaohongshu">小红书</a-option>
             <a-option value="douyin">抖音</a-option>
             <a-option value="wechat_video">视频号</a-option>
+            <a-option value="wechat_moments">朋友圈</a-option>
+            <a-option value="weibo">微博</a-option>
           </a-select>
         </a-form-item>
       </a-form>
@@ -225,7 +229,7 @@ interface Content {
   user_id: string
   title: string
   body: string
-  platform: 'wechat_mp' | 'xiaohongshu' | 'douyin' | 'wechat_video'
+  platform: 'wechat_mp' | 'xiaohongshu' | 'douyin' | 'wechat_video' | 'wechat_moments' | 'weibo'
   status: 'draft' | 'ready' | 'published' | 'pending_review' | 'rejected'
   media_urls: string[]
   campaign_id: string | null
@@ -278,7 +282,7 @@ onMounted(async () => {
     ])
     contents.value = contentsRes.data
     campaignOptions.value = Array.isArray(campaignsRes.data) ? campaignsRes.data : []
-  } catch (e) {
+  } catch {
     Message.error('加载内容失败')
   } finally {
     loading.value = false
@@ -317,7 +321,7 @@ async function saveEdit() {
     }
     Message.success('内容已更新')
     editVisible.value = false
-  } catch (e) {
+  } catch {
     Message.error('更新失败')
   } finally {
     editSaving.value = false
@@ -352,7 +356,7 @@ async function removeContent(id: string) {
         await api.delete(`/contents/${id}`)
         contents.value = contents.value.filter((c) => c.id !== id)
         Message.success('删除成功')
-      } catch (e) {
+      } catch {
         Message.error('删除失败')
       }
     },
@@ -367,7 +371,7 @@ async function submitForReview(id: string) {
       contents.value[idx].status = 'pending_review'
     }
     Message.success('已提交审核')
-  } catch (e) {
+  } catch {
     Message.error('提交审核失败')
   }
 }

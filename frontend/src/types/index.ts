@@ -21,7 +21,7 @@ export interface Account {
 export interface Content {
   id: string
   title: string
-  platform: 'wechat_mp' | 'xiaohongshu' | 'douyin' | 'wechat_video'
+  platform: 'wechat_mp' | 'xiaohongshu' | 'douyin' | 'wechat_video' | 'wechat_moments' | 'weibo'
   status: 'draft' | 'review' | 'approved' | 'published'
   content: string
   hashtags: string[]

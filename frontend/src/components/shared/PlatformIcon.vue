@@ -43,6 +43,16 @@ const platformConfig: Record<PlatformIconType, { name: string; gradient: string;
       gradient: 'linear-gradient(135deg, #FA9D3B 0%, #FA5151 100%)',
       letter: '视',
     },
+    wechat_moments: {
+      name: '朋友圈',
+      gradient: 'linear-gradient(135deg, #F5E0A9 0%, #E8B554 100%)',
+      letter: '圈',
+    },
+    weibo: {
+      name: '微博',
+      gradient: 'linear-gradient(135deg, #FF7A45 0%, #E6162D 100%)',
+      letter: '微',
+    },
   }
 
 const sizeMap = {

@@ -1,11 +1,13 @@
-export enum EditorMode {
-  Select = 'select',
-  Crop = 'crop',
-  Draw = 'draw',
-  Text = 'text',
-  Sticker = 'sticker',
-  Filter = 'filter',
-}
+export const EditorMode = {
+  Select: 'select',
+  Crop: 'crop',
+  Draw: 'draw',
+  Text: 'text',
+  Sticker: 'sticker',
+  Filter: 'filter',
+} as const
+
+export type EditorMode = (typeof EditorMode)[keyof typeof EditorMode]
 
 export type LayerType = 'image' | 'text' | 'draw' | 'sticker'
 
@@ -37,7 +39,7 @@ export interface BaseLayer {
     points: number[][]
     strokeColor: string
     strokeWidth: number
-    isEraser: boolean
+    isEraser?: boolean
   }
   sticker?: {
     url: string
@@ -51,11 +53,13 @@ export interface EditorState {
   activeLayerId: string | null
   layers: BaseLayer[]
   history: HistoryState
-  viewport: {
-    scale: number
-    offsetX: number
-    offsetY: number
-  }
+  viewport: Viewport
+}
+
+export interface Viewport {
+  scale: number
+  offsetX: number
+  offsetY: number
 }
 
 export interface HistoryState {

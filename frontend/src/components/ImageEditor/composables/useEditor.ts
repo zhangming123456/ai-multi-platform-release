@@ -3,6 +3,14 @@ import type { BaseEngine } from '../engine/base/BaseEngine'
 import type { BaseLayer, EditorState, EngineCapabilities, ExportOptions } from '../types'
 import { EditorMode } from '../types'
 import { useHistory } from './useHistory'
+import { cropImage, filterImage, rotateImage, type CropRect, type FilterType } from '../utils/image'
+
+export interface TextLayerOptions {
+  content: string
+  fontSize?: number
+  color?: string
+  bold?: boolean
+}
 
 export function useEditor() {
   const engine = ref<BaseEngine | null>(null)
@@ -25,6 +33,7 @@ export function useEditor() {
   })
 
   const layers = ref<BaseLayer[]>([]) as Ref<BaseLayer[]>
+  const originalImage = ref<{ src: string; width: number; height: number } | null>(null)
   const { pushSnapshot, undo, redo, canUndo, canRedo, clear: clearHistory } = useHistory()
 
   const capabilities = computed<EngineCapabilities>(() => {
@@ -60,13 +69,27 @@ export function useEditor() {
 
   function setMode(mode: EditorMode) {
     state.value.mode = mode
+    const eng = engine.value
+    if (!eng) return
+    eng.setMode?.(mode)
+    if (mode === EditorMode.Crop) {
+      eng.fitToViewport?.()
+      const viewport = eng.getViewport?.()
+      if (viewport) {
+        state.value.viewport = { ...viewport }
+      }
+    }
+  }
+
+  function setOriginalImage(src: string, width: number, height: number) {
+    originalImage.value = { src, width, height }
   }
 
   function addLayer(layer: BaseLayer) {
     if (!engine.value) return
     pushSnapshot(layers.value)
     layers.value.push(layer)
-    engine.value.addLayer(layer)
+    void engine.value.addLayer(layer)
   }
 
   function updateLayer(id: string, patch: Partial<BaseLayer>) {
@@ -93,23 +116,23 @@ export function useEditor() {
     state.value.activeLayerId = id
   }
 
+  async function syncLayersToEngine() {
+    if (!engine.value) return
+    engine.value.clear()
+    for (const layer of layers.value) {
+      await engine.value.addLayer(layer)
+    }
+  }
+
   function undoAction() {
     if (undo(layers)) {
-      syncLayersToEngine()
+      void syncLayersToEngine()
     }
   }
 
   function redoAction() {
     if (redo(layers)) {
-      syncLayersToEngine()
-    }
-  }
-
-  function syncLayersToEngine() {
-    if (!engine.value) return
-    engine.value.clear()
-    for (const layer of layers.value) {
-      engine.value.addLayer(layer)
+      void syncLayersToEngine()
     }
   }
 
@@ -133,7 +156,151 @@ export function useEditor() {
     state.value.canvasHeight = height
     if (engine.value) {
       engine.value.setSize(width, height)
+      engine.value.fitToViewport?.()
     }
+  }
+
+  async function rotate90() {
+    if (!engine.value) return
+    const bg = getBaseImageLayer()
+    if (!bg) return
+    const result = await rotateImage(bg.image!.src)
+    if (result.src === bg.image!.src) return
+
+    pushSnapshot(layers.value)
+    bg.image = {
+      src: result.src,
+      naturalWidth: result.width,
+      naturalHeight: result.height,
+    }
+    bg.width = result.width
+    bg.height = result.height
+    state.value.canvasWidth = result.width
+    state.value.canvasHeight = result.height
+    engine.value.setSize(result.width, result.height)
+    engine.value.fitToViewport?.()
+    engine.value.updateLayer(bg.id, { width: result.width, height: result.height, image: bg.image })
+  }
+
+  async function applyCrop(rect: CropRect) {
+    if (!engine.value) return
+    const bg = getBaseImageLayer()
+    if (!bg) return
+    const src = await cropImage(bg.image!.src, rect)
+    const width = Math.max(1, Math.round(rect.width))
+    const height = Math.max(1, Math.round(rect.height))
+
+    pushSnapshot(layers.value)
+    bg.image = {
+      src,
+      naturalWidth: width,
+      naturalHeight: height,
+    }
+    bg.width = width
+    bg.height = height
+    state.value.canvasWidth = width
+    state.value.canvasHeight = height
+    engine.value.setSize(width, height)
+    engine.value.fitToViewport?.()
+    engine.value.updateLayer(bg.id, { width, height, image: bg.image })
+  }
+
+  async function applyFilter(type: FilterType) {
+    if (!engine.value) return
+    const bg = getBaseImageLayer()
+    if (!bg) return
+    const src = await filterImage(bg.image!.src, type)
+    if (src === bg.image!.src) return
+
+    pushSnapshot(layers.value)
+    bg.image = { ...bg.image!, src }
+    engine.value.updateLayer(bg.id, { image: bg.image })
+  }
+
+  function addTextLayer(options: TextLayerOptions) {
+    if (!engine.value || !options.content) return
+    const layer: BaseLayer = {
+      id: `text-${Date.now()}`,
+      type: 'text',
+      visible: true,
+      zIndex: layers.value.length + 1,
+      locked: false,
+      x: state.value.canvasWidth / 2,
+      y: state.value.canvasHeight / 2,
+      width: 200,
+      height: 50,
+      rotate: 0,
+      scaleX: 1,
+      scaleY: 1,
+      text: {
+        content: options.content,
+        fontSize: options.fontSize ?? 32,
+        color: options.color ?? '#1d1d1f',
+        bold: options.bold ?? false,
+      },
+    }
+    addLayer(layer)
+  }
+
+  function addStickerLayer(url: string) {
+    if (!engine.value || !url) return
+    const size = 120
+    const layer: BaseLayer = {
+      id: `sticker-${Date.now()}`,
+      type: 'sticker',
+      visible: true,
+      zIndex: layers.value.length + 1,
+      locked: false,
+      x: state.value.canvasWidth / 2 - size / 2,
+      y: state.value.canvasHeight / 2 - size / 2,
+      width: size,
+      height: size,
+      rotate: 0,
+      scaleX: 1,
+      scaleY: 1,
+      sticker: { url },
+    }
+    addLayer(layer)
+  }
+
+  function resetEditor() {
+    if (!engine.value) return
+    const original = originalImage.value
+    if (!original) return
+
+    pushSnapshot(layers.value)
+    layers.value = [
+      {
+        id: 'bg-0',
+        type: 'image',
+        visible: true,
+        zIndex: 0,
+        locked: true,
+        x: 0,
+        y: 0,
+        width: original.width,
+        height: original.height,
+        rotate: 0,
+        scaleX: 1,
+        scaleY: 1,
+        image: {
+          src: original.src,
+          naturalWidth: original.width,
+          naturalHeight: original.height,
+        },
+      },
+    ]
+    state.value.canvasWidth = original.width
+    state.value.canvasHeight = original.height
+    state.value.activeLayerId = null
+    state.value.mode = EditorMode.Select
+    engine.value.setSize(original.width, original.height)
+    engine.value.fitToViewport?.()
+    void syncLayersToEngine()
+  }
+
+  function getBaseImageLayer(): BaseLayer | undefined {
+    return layers.value.find((l) => l.id === 'bg-0' && l.type === 'image')
   }
 
   return {
@@ -144,6 +311,7 @@ export function useEditor() {
     activeLayer,
     setEngine,
     setMode,
+    setOriginalImage,
     addLayer,
     updateLayer,
     removeLayer,
@@ -155,6 +323,13 @@ export function useEditor() {
     exportToBlob,
     clearAll,
     setCanvasSize,
+    rotate90,
+    applyCrop,
+    applyFilter,
+    addTextLayer,
+    addStickerLayer,
+    resetEditor,
     clearHistory,
+    syncLayersToEngine,
   }
 }

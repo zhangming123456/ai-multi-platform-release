@@ -2,26 +2,27 @@
   <a-modal
     :visible="visible"
     :footer="false"
-    :closable="true"
-    :width="880"
-    wrap-class-name="image-editor-modal"
+    :closable="false"
+    :mask-closable="false"
+    :fullscreen="true"
+    class="image-editor-container"
     @cancel="handleClose"
+    @before-open="handleBeforeOpen"
   >
-    <div class="editor-modal-wrap">
-      <ImageEditor
-        v-if="visible"
-        ref="editorRef"
-        :src="src"
-        :width="820"
-        :height="540"
-        @export="handleExport"
-      />
-    </div>
+    <ImageEditor
+      v-if="visible"
+      ref="editorRef"
+      :src="src"
+      width="100%"
+      height="100%"
+      @export="handleExport"
+      @cancel="handleClose"
+    />
   </a-modal>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, watch, onBeforeUnmount, unref } from 'vue'
 import ImageEditor from './ImageEditor.vue'
 
 const props = defineProps<{
@@ -34,10 +35,25 @@ const emit = defineEmits<{
   confirm: [blob: Blob]
 }>()
 
-const editorRef = ref<InstanceType<typeof ImageEditor> | null>(null)
+const editorRef = ref<InstanceType<typeof ImageEditor>>()
+
+watch(
+  () => props.visible,
+  (val) => {
+    document.body.style.overflow = val ? 'hidden' : ''
+  },
+)
+
+onBeforeUnmount(() => {
+  document.body.style.overflow = ''
+})
 
 function handleClose() {
   emit('close')
+}
+
+function handleBeforeOpen() {
+  unref(editorRef)?.reset()
 }
 
 async function handleExport(blob: Blob) {
@@ -50,23 +66,26 @@ defineExpose({
 })
 </script>
 
-<style scoped>
-.editor-modal-wrap {
-  padding: 0;
-}
-
-:deep(.image-editor-modal .arco-modal-content) {
-  padding: 0;
-  background: #ffffff;
-}
-
-:deep(.image-editor-modal .arco-modal-header) {
-  display: none;
-}
-
-:deep(.image-editor-modal .arco-modal-close-icon) {
-  top: 12px;
-  right: 12px;
-  z-index: 10;
+<style lang="scss">
+.image-editor-container {
+  .arco-modal-wrapper {
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+    .arco-modal.arco-modal-fullscreen {
+      display: block;
+      width: 100vw;
+      height: 100vh;
+      max-height: 100%;
+      max-width: 100%;
+      overflow: hidden;
+      .arco-modal-body {
+        max-height: 100%;
+        max-width: 100%;
+        width: 100%;
+        height: 100%;
+      }
+    }
+  }
 }
 </style>

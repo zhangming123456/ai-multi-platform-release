@@ -1,10 +1,13 @@
 package controllers
 
 import (
+	"bytes"
+	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"ai-multi-platform-release/backend-go/models"
 	"ai-multi-platform-release/backend-go/services"
@@ -43,21 +46,24 @@ type aiGenerateRequest struct {
 }
 
 type aiGenerateStreamRequest struct {
-	Topic      string                  `json:"topic"`
-	Platforms  []string                `json:"platforms"`
-	Style      string                  `json:"style"`
-	Keywords   []string                `json:"keywords"`
-	PlanID     string                  `json:"plan_id"`
-	ModelID    string                  `json:"model_id"`
-	Files      []services.UploadedFile `json:"files"`
-	CampaignID string                  `json:"campaign_id"`
+	Topic           string                  `json:"topic"`
+	Platforms       []string                `json:"platforms"`
+	Style           string                  `json:"style"`
+	Keywords        []string                `json:"keywords"`
+	PlanID          string                  `json:"plan_id"`
+	ModelID         string                  `json:"model_id"`
+	Files           []services.UploadedFile `json:"files"`
+	CampaignID      string                  `json:"campaign_id"`
+	GenerateVersion int                     `json:"generate_version"`
 }
 
 var platformLabels = map[string]string{
-	"wechat_mp":    "公众号",
-	"xiaohongshu":  "小红书",
-	"douyin":       "抖音",
-	"wechat_video": "视频号",
+	"wechat_mp":      "公众号",
+	"xiaohongshu":    "小红书",
+	"douyin":         "抖音",
+	"wechat_video":   "视频号",
+	"wechat_moments": "朋友圈",
+	"weibo":          "微博",
 }
 
 func sseEvent(event string, data interface{}) string {
@@ -82,6 +88,8 @@ func aiRecordMap(r *models.AIGenerationRecord) map[string]interface{} {
 	if r.Hashtags != "" {
 		_ = json.Unmarshal([]byte(r.Hashtags), &hashtags)
 	}
+	variant := services.AIVariant{Title: r.Title, Body: r.Body, Hashtags: hashtags}
+	score := services.ScoreVariant(variant, r.Platform)
 	return map[string]interface{}{
 		"id":          r.ID,
 		"user_id":     r.UserID,
@@ -94,6 +102,7 @@ func aiRecordMap(r *models.AIGenerationRecord) map[string]interface{} {
 		"hashtags":    hashtags,
 		"campaign_id": r.CampaignID,
 		"created_at":  r.CreatedAt,
+		"score":       score,
 	}
 }
 
@@ -278,7 +287,73 @@ func (c *ContentsController) ListGenerations() {
 	c.OK(result)
 }
 
-// AIGenerate POST /api/contents/ai-generate
+// ExportGenerations GET /api/contents/ai-generations/export?format=csv|json
+func (c *ContentsController) ExportGenerations() {
+	if !c.CheckPermission("content:read") {
+		return
+	}
+	user := c.CurrentUser()
+	if user == nil {
+		c.WriteError(http.StatusUnauthorized, "无法验证凭据")
+		return
+	}
+	format := c.GetQuery("format")
+	if format == "" {
+		format = "json"
+	}
+	qs := services.GetOrm().QueryTable(new(models.AIGenerationRecord)).
+		Filter("user_id", user.ID)
+	if platform := c.GetQuery("platform"); platform != "" {
+		qs = qs.Filter("platform", platform)
+	}
+	if topic := c.GetQuery("topic"); topic != "" {
+		qs = qs.Filter("topic__icontains", topic)
+	}
+	var records []models.AIGenerationRecord
+	if _, err := qs.OrderBy("-created_at").All(&records); err != nil {
+		c.WriteError(http.StatusInternalServerError, "导出 AI 生成记录失败")
+		return
+	}
+
+	if format == "csv" {
+		var buf bytes.Buffer
+		w := csv.NewWriter(&buf)
+		_ = w.Write([]string{"ID", "主题", "平台", "模型", "标题", "正文", "话题标签", "质量评分", "评分等级", "生成时间"})
+		for i := range records {
+			r := &records[i]
+			hashtags := []string{}
+			if r.Hashtags != "" {
+				_ = json.Unmarshal([]byte(r.Hashtags), &hashtags)
+			}
+			score := services.ScoreVariant(services.AIVariant{Title: r.Title, Body: r.Body, Hashtags: hashtags}, r.Platform)
+			_ = w.Write([]string{
+				r.ID,
+				r.Topic,
+				platformLabels[r.Platform],
+				r.Model,
+				r.Title,
+				r.Body,
+				strings.Join(hashtags, " "),
+				fmt.Sprintf("%d", score.Total),
+				score.Comment,
+				r.CreatedAt.Format("2006-01-02 15:04:05"),
+			})
+		}
+		w.Flush()
+		filename := fmt.Sprintf("ai-generations-%s.csv", time.Now().Format("20060102"))
+		c.Ctx.Output.Header("Content-Type", "text/csv; charset=utf-8")
+		c.Ctx.Output.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%s", filename))
+		_, _ = c.Ctx.ResponseWriter.Write(buf.Bytes())
+		return
+	}
+
+	rows := make([]map[string]interface{}, 0, len(records))
+	for i := range records {
+		rows = append(rows, aiRecordMap(&records[i]))
+	}
+	c.Ctx.Output.Header("Content-Type", "application/json; charset=utf-8")
+	c.OK(rows)
+}
 func (c *ContentsController) AIGenerate() {
 	if !c.CheckPermission("content:ai_generate:write") {
 		return
@@ -393,6 +468,13 @@ func (c *ContentsController) AIGenerateStream() {
 	}
 
 	o := services.GetOrm()
+	versionNum := req.GenerateVersion
+	if versionNum <= 0 {
+		versionNum = 1
+	}
+	if versionNum > 3 {
+		versionNum = 3
+	}
 	for _, platform := range req.Platforms {
 		label := platformLabels[platform]
 		if label == "" {
@@ -400,10 +482,10 @@ func (c *ContentsController) AIGenerateStream() {
 		}
 		write("log", map[string]interface{}{
 			"level":   "req",
-			"message": fmt.Sprintf("开始为「%s」生成内容…", label),
+			"message": fmt.Sprintf("开始为「%s」生成内容（%d 个版本）…", label, versionNum),
 		})
 
-		events, err := services.GenerateContentStream(req.Topic, platform, req.Style, req.Keywords, req.PlanID, req.ModelID, req.Files, req.CampaignID)
+		events, err := services.GenerateContentStream(req.Topic, platform, req.Style, req.Keywords, req.PlanID, req.ModelID, req.Files, req.CampaignID, versionNum)
 		if err != nil {
 			write("error", map[string]interface{}{
 				"platform":        platform,
@@ -435,8 +517,10 @@ func (c *ContentsController) AIGenerateStream() {
 					}
 					_, _ = o.Insert(record)
 					write("done", map[string]interface{}{
-						"platform": platform,
-						"variant":  evt.Variant,
+						"platform":      platform,
+						"variant":       evt.Variant,
+						"variant_index": evt.VariantIndex,
+						"score":         evt.Score,
 					})
 				}
 			case "error":

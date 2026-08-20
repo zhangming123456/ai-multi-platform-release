@@ -2,30 +2,42 @@ import {
   Image as FabricImage,
   Text as FabricText,
   Path as FabricPath,
-  Group as FabricGroup,
   type FabricObject,
 } from 'fabric'
 import type { BaseLayer } from '../../types'
 
-export function toFabricObject(layer: BaseLayer): FabricObject | null {
+type TaggedObject = FabricObject & { dataLayerType?: BaseLayer['type']; dataSrc?: string }
+
+function tag(obj: FabricObject, layer: BaseLayer): void {
+  const tagged = obj as TaggedObject
+  tagged.dataLayerType = layer.type
+  if (layer.type === 'image' && layer.image) {
+    tagged.dataSrc = layer.image.src
+  } else if (layer.type === 'sticker' && layer.sticker) {
+    tagged.dataSrc = layer.sticker.url
+  }
+}
+
+export async function toFabricObject(layer: BaseLayer): Promise<FabricObject | null> {
   switch (layer.type) {
-    case 'image':
+    case 'image': {
       if (!layer.image?.src) return null
-      return new FabricImage({
-        left: layer.x,
-        top: layer.y,
-        width: layer.width,
-        height: layer.height,
+      const image = await FabricImage.fromURL(layer.image.src)
+      tag(image, layer)
+      image.set({
+        left: layer.x + (layer.width * Math.abs(layer.scaleX)) / 2,
+        top: layer.y + (layer.height * Math.abs(layer.scaleY)) / 2,
+        originX: 'center',
+        originY: 'center',
         angle: layer.rotate,
         scaleX: layer.scaleX,
         scaleY: layer.scaleY,
-        src: layer.image.src,
       })
-    case 'text':
+      return image
+    }
+    case 'text': {
       if (!layer.text) return null
-      return new FabricText(layer.text.content, {
-        left: layer.x,
-        top: layer.y,
+      const text = new FabricText(layer.text.content, {
         fontSize: layer.text.fontSize,
         fill: layer.text.color,
         fontWeight: layer.text.bold ? 'bold' : 'normal',
@@ -33,10 +45,19 @@ export function toFabricObject(layer: BaseLayer): FabricObject | null {
         scaleX: layer.scaleX,
         scaleY: layer.scaleY,
       })
-    case 'draw':
+      tag(text, layer)
+      text.set({
+        left: layer.x + (text.width * Math.abs(layer.scaleX)) / 2,
+        top: layer.y + (text.height * Math.abs(layer.scaleY)) / 2,
+        originX: 'center',
+        originY: 'center',
+      })
+      return text
+    }
+    case 'draw': {
       if (!layer.draw || layer.draw.points.length < 2) return null
       const pathData = createPathData(layer.draw.points)
-      return new FabricPath(pathData, {
+      const path = new FabricPath(pathData, {
         left: layer.x,
         top: layer.y,
         stroke: layer.draw.strokeColor,
@@ -45,30 +66,47 @@ export function toFabricObject(layer: BaseLayer): FabricObject | null {
         angle: layer.rotate,
         scaleX: layer.scaleX,
         scaleY: layer.scaleY,
+        pathOffset: { x: 0, y: 0 },
       })
-    case 'sticker':
+      tag(path, layer)
+      return path
+    }
+    case 'sticker': {
       if (!layer.sticker?.url) return null
-      return new FabricImage({
-        left: layer.x,
-        top: layer.y,
-        width: layer.width,
-        height: layer.height,
+      const stickerImage = await FabricImage.fromURL(layer.sticker.url)
+      tag(stickerImage, layer)
+      stickerImage.set({
+        left: layer.x + (layer.width * Math.abs(layer.scaleX)) / 2,
+        top: layer.y + (layer.height * Math.abs(layer.scaleY)) / 2,
+        originX: 'center',
+        originY: 'center',
         angle: layer.rotate,
         scaleX: layer.scaleX,
         scaleY: layer.scaleY,
-        src: layer.sticker.url,
       })
+      return stickerImage
+    }
     default:
       return null
   }
 }
 
 export function fromFabricObject(obj: FabricObject): Partial<BaseLayer> {
+  const type = (obj as TaggedObject).dataLayerType
+
+  if (type === 'draw') {
+    return {
+      rotate: obj.angle || 0,
+      scaleX: obj.scaleX || 1,
+      scaleY: obj.scaleY || 1,
+    }
+  }
+
+  const halfW = ((obj.width || 0) * Math.abs(obj.scaleX || 1)) / 2
+  const halfH = ((obj.height || 0) * Math.abs(obj.scaleY || 1)) / 2
   return {
-    x: obj.left || 0,
-    y: obj.top || 0,
-    width: obj.width || 0,
-    height: obj.height || 0,
+    x: (obj.left || 0) - halfW,
+    y: (obj.top || 0) - halfH,
     rotate: obj.angle || 0,
     scaleX: obj.scaleX || 1,
     scaleY: obj.scaleY || 1,

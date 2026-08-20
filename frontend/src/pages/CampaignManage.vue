@@ -207,6 +207,8 @@ const platformChoices: { value: PlatformIconType; label: string }[] = [
   { value: 'xiaohongshu', label: '小红书' },
   { value: 'douyin', label: '抖音' },
   { value: 'wechat_video', label: '视频号' },
+  { value: 'wechat_moments', label: '朋友圈' },
+  { value: 'weibo', label: '微博' },
 ]
 
 const columns = [

@@ -41,6 +41,7 @@ func registerRoutes() {
 	contents := &controllers.ContentsController{}
 	web.Router("/api/contents/", contents, "get:List;post:Create")
 	web.Router("/api/contents/ai-generations", contents, "get:ListGenerations")
+	web.Router("/api/contents/ai-generations/export", contents, "get:ExportGenerations")
 	web.Router("/api/contents/ai-generate", contents, "post:AIGenerate")
 	web.Router("/api/contents/ai-generate-stream", contents, "post:AIGenerateStream")
 	web.Router("/api/contents/:id", contents, "get:Get;put:Update;delete:Delete")
@@ -178,6 +179,14 @@ func registerRoutes() {
 	rbacConstraints := &controllers.RBACConstraintsController{}
 	web.Router("/api/v2/constraints", rbacConstraints, "get:ListConstraints;post:CreateConstraint")
 	web.Router("/api/v2/constraints/:id", rbacConstraints, "get:GetConstraint;put:UpdateConstraint;delete:DeleteConstraint")
+
+	styleTemplates := &controllers.StyleTemplatesController{}
+	web.Router("/api/style-templates/", styleTemplates, "get:List;post:Create")
+	web.Router("/api/style-templates/:template_id", styleTemplates, "put:Update;delete:Delete")
+
+	promptTemplates := &controllers.PromptTemplatesController{}
+	web.Router("/api/prompt-templates/", promptTemplates, "get:List;post:Create")
+	web.Router("/api/prompt-templates/:template_id", promptTemplates, "put:Update;delete:Delete")
 }
 
 func main() {
