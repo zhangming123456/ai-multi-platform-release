@@ -15,38 +15,42 @@ type ContentsController struct {
 }
 
 type contentCreateRequest struct {
-	Title     string `json:"title"`
-	Body      string `json:"body"`
-	Platform  string `json:"platform"`
-	Status    string `json:"status"`
-	MediaURLs string `json:"media_urls"`
+	Title      string `json:"title"`
+	Body       string `json:"body"`
+	Platform   string `json:"platform"`
+	Status     string `json:"status"`
+	MediaURLs  string `json:"media_urls"`
+	CampaignID string `json:"campaign_id"`
 }
 
 type contentUpdateRequest struct {
-	Title     *string `json:"title"`
-	Body      *string `json:"body"`
-	Platform  *string `json:"platform"`
-	Status    *string `json:"status"`
-	MediaURLs *string `json:"media_urls"`
+	Title      *string `json:"title"`
+	Body       *string `json:"body"`
+	Platform   *string `json:"platform"`
+	Status     *string `json:"status"`
+	MediaURLs  *string `json:"media_urls"`
+	CampaignID *string `json:"campaign_id"`
 }
 
 type aiGenerateRequest struct {
-	Topic    string   `json:"topic"`
-	Platform string   `json:"platform"`
-	Style    string   `json:"style"`
-	Keywords []string `json:"keywords"`
-	Count    int      `json:"count"`
-	PlanID   string   `json:"plan_id"`
+	Topic      string   `json:"topic"`
+	Platform   string   `json:"platform"`
+	Style      string   `json:"style"`
+	Keywords   []string `json:"keywords"`
+	Count      int      `json:"count"`
+	PlanID     string   `json:"plan_id"`
+	CampaignID string   `json:"campaign_id"`
 }
 
 type aiGenerateStreamRequest struct {
-	Topic     string                  `json:"topic"`
-	Platforms []string                `json:"platforms"`
-	Style     string                  `json:"style"`
-	Keywords  []string                `json:"keywords"`
-	PlanID    string                  `json:"plan_id"`
-	ModelID   string                  `json:"model_id"`
-	Files     []services.UploadedFile `json:"files"`
+	Topic      string                  `json:"topic"`
+	Platforms  []string                `json:"platforms"`
+	Style      string                  `json:"style"`
+	Keywords   []string                `json:"keywords"`
+	PlanID     string                  `json:"plan_id"`
+	ModelID    string                  `json:"model_id"`
+	Files      []services.UploadedFile `json:"files"`
+	CampaignID string                  `json:"campaign_id"`
 }
 
 var platformLabels = map[string]string{
@@ -79,16 +83,17 @@ func aiRecordMap(r *models.AIGenerationRecord) map[string]interface{} {
 		_ = json.Unmarshal([]byte(r.Hashtags), &hashtags)
 	}
 	return map[string]interface{}{
-		"id":         r.ID,
-		"user_id":    r.UserID,
-		"topic":      r.Topic,
-		"platform":   r.Platform,
-		"plan_id":    r.PlanID,
-		"model":      r.Model,
-		"title":      r.Title,
-		"body":       r.Body,
-		"hashtags":   hashtags,
-		"created_at": r.CreatedAt,
+		"id":          r.ID,
+		"user_id":     r.UserID,
+		"topic":       r.Topic,
+		"platform":    r.Platform,
+		"plan_id":     r.PlanID,
+		"model":       r.Model,
+		"title":       r.Title,
+		"body":        r.Body,
+		"hashtags":    hashtags,
+		"campaign_id": r.CampaignID,
+		"created_at":  r.CreatedAt,
 	}
 }
 
@@ -110,6 +115,9 @@ func (c *ContentsController) List() {
 	}
 	if status := c.GetQuery("status"); status != "" {
 		qs = qs.Filter("status", status)
+	}
+	if campaignID := c.GetQuery("campaign_id"); campaignID != "" {
+		qs = qs.Filter("campaign_id", campaignID)
 	}
 	var contents []models.Content
 	_, err := qs.OrderBy("-created_at").Limit(pageSize).Offset((page - 1) * pageSize).All(&contents)
@@ -140,13 +148,14 @@ func (c *ContentsController) Create() {
 		status = models.ContentStatusDraft
 	}
 	content := &models.Content{
-		ID:        newID(),
-		UserID:    user.ID,
-		Title:     req.Title,
-		Body:      req.Body,
-		Platform:  req.Platform,
-		Status:    status,
-		MediaURLs: req.MediaURLs,
+		ID:         newID(),
+		UserID:     user.ID,
+		Title:      req.Title,
+		Body:       req.Body,
+		Platform:   req.Platform,
+		Status:     status,
+		MediaURLs:  req.MediaURLs,
+		CampaignID: req.CampaignID,
 	}
 	if _, err := services.GetOrm().Insert(content); err != nil {
 		c.WriteError(http.StatusInternalServerError, "创建内容失败")
@@ -207,6 +216,9 @@ func (c *ContentsController) Update() {
 	}
 	if req.MediaURLs != nil {
 		content.MediaURLs = *req.MediaURLs
+	}
+	if req.CampaignID != nil {
+		content.CampaignID = *req.CampaignID
 	}
 	if _, err := services.GetOrm().Update(content); err != nil {
 		c.WriteError(http.StatusInternalServerError, "更新内容失败")
@@ -289,7 +301,7 @@ func (c *ContentsController) AIGenerate() {
 	if count <= 0 {
 		count = 3
 	}
-	variants, err := services.GenerateContentVariants(req.Topic, req.Platform, req.Style, req.Keywords, count, req.PlanID, "")
+	variants, err := services.GenerateContentVariants(req.Topic, req.Platform, req.Style, req.Keywords, count, req.PlanID, "", req.CampaignID)
 	if err != nil {
 		if aiErr, ok := err.(*services.AIGenerationError); ok {
 			c.WriteJSON(http.StatusBadGateway, map[string]interface{}{
@@ -317,15 +329,16 @@ func (c *ContentsController) AIGenerate() {
 	for _, v := range variants {
 		hashtagsJSON, _ := json.Marshal(v.Hashtags)
 		record := &models.AIGenerationRecord{
-			ID:       newID(),
-			UserID:   user.ID,
-			Topic:    req.Topic,
-			Platform: req.Platform,
-			PlanID:   req.PlanID,
-			Model:    modelName,
-			Title:    v.Title,
-			Body:     v.Body,
-			Hashtags: string(hashtagsJSON),
+			ID:         newID(),
+			UserID:     user.ID,
+			Topic:      req.Topic,
+			Platform:   req.Platform,
+			PlanID:     req.PlanID,
+			Model:      modelName,
+			Title:      v.Title,
+			Body:       v.Body,
+			Hashtags:   string(hashtagsJSON),
+			CampaignID: req.CampaignID,
 		}
 		if _, err := o.Insert(record); err != nil {
 			c.WriteError(http.StatusInternalServerError, "保存 AI 生成记录失败")
@@ -390,7 +403,7 @@ func (c *ContentsController) AIGenerateStream() {
 			"message": fmt.Sprintf("开始为「%s」生成内容…", label),
 		})
 
-		events, err := services.GenerateContentStream(req.Topic, platform, req.Style, req.Keywords, req.PlanID, req.ModelID, req.Files)
+		events, err := services.GenerateContentStream(req.Topic, platform, req.Style, req.Keywords, req.PlanID, req.ModelID, req.Files, req.CampaignID)
 		if err != nil {
 			write("error", map[string]interface{}{
 				"platform":        platform,
@@ -409,15 +422,16 @@ func (c *ContentsController) AIGenerateStream() {
 			case "done":
 				if evt.Variant != nil {
 					record := &models.AIGenerationRecord{
-						ID:       newID(),
-						UserID:   user.ID,
-						Topic:    req.Topic,
-						Platform: platform,
-						PlanID:   req.PlanID,
-						Model:    evt.Model,
-						Title:    evt.Variant.Title,
-						Body:     evt.Variant.Body,
-						Hashtags: marshalHashtags(evt.Variant.Hashtags),
+						ID:         newID(),
+						UserID:     user.ID,
+						Topic:      req.Topic,
+						Platform:   platform,
+						PlanID:     req.PlanID,
+						Model:      evt.Model,
+						Title:      evt.Variant.Title,
+						Body:       evt.Variant.Body,
+						Hashtags:   marshalHashtags(evt.Variant.Hashtags),
+						CampaignID: req.CampaignID,
 					}
 					_, _ = o.Insert(record)
 					write("done", map[string]interface{}{

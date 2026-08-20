@@ -111,6 +111,8 @@ func migrateSchema() error {
 		{"inspection_materials", "standard_images", "ALTER TABLE inspection_materials ADD COLUMN standard_images text"},
 		{"inspection_task_items", "standard_images", "ALTER TABLE inspection_task_items ADD COLUMN standard_images text"},
 		{"inspection_scores", "standard_images", "ALTER TABLE inspection_scores ADD COLUMN standard_images text"},
+		{"contents", "campaign_id", "ALTER TABLE contents ADD COLUMN campaign_id varchar(36) DEFAULT ''"},
+		{"ai_generation_records", "campaign_id", "ALTER TABLE ai_generation_records ADD COLUMN campaign_id varchar(36) DEFAULT ''"},
 	}
 	for _, m := range migrations {
 		exists, err := columnExists(db, m.table, m.column)

@@ -114,6 +114,7 @@ import {
   IconCheckCircle,
   IconUser,
   IconEdit,
+  IconGift,
 } from '@arco-design/web-vue/es/icon'
 
 const iconRegistry: Record<string, Component> = {
@@ -121,6 +122,7 @@ const iconRegistry: Record<string, Component> = {
   file: IconFile,
   send: IconSend,
   apps: IconApps,
+  gift: IconGift,
   settings: IconSettings,
   code: IconCode,
   safe: IconSafe,

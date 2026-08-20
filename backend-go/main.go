@@ -45,6 +45,11 @@ func registerRoutes() {
 	web.Router("/api/contents/ai-generate-stream", contents, "post:AIGenerateStream")
 	web.Router("/api/contents/:id", contents, "get:Get;put:Update;delete:Delete")
 
+	campaigns := &controllers.CampaignsController{}
+	web.Router("/api/campaigns/options", campaigns, "get:Options")
+	web.Router("/api/campaigns/", campaigns, "get:List;post:Create")
+	web.Router("/api/campaigns/:campaign_id", campaigns, "get:Get;put:Update;delete:Delete")
+
 	dashboard := &controllers.DashboardController{}
 	web.Router("/api/dashboard/stats", dashboard, "get:Stats")
 

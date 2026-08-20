@@ -1,6 +1,13 @@
 # 文本域与图片上传结合技术文档
 
-> **版本**：v1.4 · **更新**：2026-08-17 · **核心文件**：`AttachmentInputArea.vue` / `ContentCreate.vue` / `InspectionEdit.vue` / `useFileUpload.ts` / `useUrlExtractor.ts` / `ai_service.py` / `ImageViewerModal.vue` / `ImageEditorModal.vue`
+> **版本**：v1.5 · **更新**：2026-08-20 · **核心文件**：`AttachmentInputArea.vue` / `ContentCreate.vue` / `InspectionEdit.vue` / `useFileUpload.ts` / `useUrlExtractor.ts` / `ai_service.go` / `ImageViewerModal.vue` / `ImageEditorModal.vue`
+>
+> **v1.5 变更**：
+>
+> 1. **后端章节修正为 Go 实现**：原 v1.4 的后端示例代码为 Python（`backend/app/...`），与项目实际后端（`backend-go`）不符，已整体重写为 Go（`services/ai_service.go` / `controllers/contents_controller.go`）。
+> 2. **组件 Props/Emits 对齐实际代码**：修正 `AttachmentInputArea` 的 Props（`modelValue` 为文本、`fileList` 为附件数组）与 Emits（`update:modelValue` / `update:fileList`）。
+> 3. **示例代码同步实际实现**：更新 ContentCreate 接入绑定（`v-model:file-list`）、ImageViewer 缩放参数、ImageEditor 画布尺寸与裁剪/压缩/导出逻辑。
+> 4. **上传接口补充**：`POST /api/uploads` 由 `UploadsController.Upload` 实现（v1.4 标注「未找到显式定义」，现已确认）。
 >
 > **v1.4 变更**：
 >
@@ -99,35 +106,35 @@
 
 #### Props
 
-| Prop                  | 类型                               | 默认值                              | 说明                                                                                                                |
-| --------------------- | ---------------------------------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| `modelValue`          | `string[]`                         | 必传                                | 附件 URL 数组（v-model 绑定）                                                                                       |
-| `upload`              | `(file: File) => Promise<string>`  | 可选（默认 undefined）              | 文件上传函数，由业务页面注入；**不传时组件仅收集文件**（供 `getPendingFiles()` 取 File 走 base64 直发），不执行上传 |
-| `uploadMode`          | `'auto' \| 'manual'`               | `'manual'`                          | 上传模式：`auto` 选中即上传；`manual` 暂存 pending，提交前父级调 `flushPending()` 批量上传                          |
-| `fileTypes`           | `('image' \| 'video' \| 'file')[]` | `['image']`                         | 允许的文件类型集合，驱动 accept、大小限制与工具栏图标                                                               |
-| `text`                | `string`                           | `''`                                | 文本内容（`v-model:text` 绑定）                                                                                     |
-| `maxCount`            | `number`                           | `0`（不限）                         | 最大附件数量                                                                                                        |
-| `disabled`            | `boolean`                          | `false`                             | 禁用态（隐藏操作按钮、上传按钮禁用）                                                                                |
-| `bordered`            | `boolean`                          | `true`                              | 是否显示卡片边框                                                                                                    |
-| `compact`             | `boolean`                          | `false`                             | 紧凑模式（缩略图 60px）                                                                                             |
-| `placeholder`         | `string`                           | 内置默认                            | textarea 占位符                                                                                                     |
-| `hint`                | `string`                           | `支持拖拽 / 粘贴图片，链接自动识别` | 工具栏提示文字                                                                                                      |
-| `maxLength`           | `number`                           | `0`（不限）                         | 文本最大字数（>0 时显示字数统计）                                                                                   |
-| `showWordLimit`       | `boolean`                          | `true`                              | 是否显示字数统计                                                                                                    |
-| `minRows` / `maxRows` | `number`                           | `2` / `5`                           | textarea 自动高度行数范围                                                                                           |
-| `showTextarea`        | `boolean`                          | `true`                              | 独立开关：是否显示文本输入区                                                                                        |
-| `showImages`          | `boolean`                          | `true`                              | 独立开关：是否显示附件预览区                                                                                        |
-| `extractUrls`         | `boolean`                          | `true`                              | 是否从文本中自动提取图片/视频/文件 URL 并转为缩略图（内置逻辑）                                                     |
-| `accept`              | `string`                           | 由 `fileTypes` 生成                 | 文件选择器 accept（可覆盖）                                                                                         |
-| `theme`               | `'light' \| 'dark'`                | `'light'`                           | 主题：`dark` 深色背景适配创作内容页                                                                                 |
-| `enterBehavior`       | `'newline' \| 'send'`              | `'newline'`                         | 回车行为：`send` 时 Enter 触发 `@enter`，Cmd/Ctrl+Enter 换行                                                        |
+| Prop                  | 类型                                           | 默认值                 | 说明                                                                                                                |
+| --------------------- | ---------------------------------------------- | ---------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `modelValue`          | `string`                                       | `''`                   | 文本内容（`v-model` 绑定）                                                                                          |
+| `fileList`            | `string[]`                                     | `undefined`            | 附件 URL 数组（`v-model:file-list` 绑定）                                                                           |
+| `upload`              | `(file: File, onProgress?) => Promise<string>` | 可选（默认 undefined） | 文件上传函数，由业务页面注入；**不传时组件仅收集文件**（供 `getPendingFiles()` 取 File 走 base64 直发），不执行上传 |
+| `uploadMode`          | `'auto' \| 'manual'`                           | `'manual'`             | 上传模式：`auto` 选中即上传；`manual` 暂存 pending，提交前父级调 `flushPending()` 批量上传                          |
+| `fileTypes`           | `('image' \| 'video' \| 'file')[]`             | `['image']`            | 允许的文件类型集合，驱动 accept、大小限制与工具栏图标                                                               |
+| `maxCount`            | `number`                                       | `0`（不限）            | 最大附件数量                                                                                                        |
+| `disabled`            | `boolean`                                      | `false`                | 禁用态（隐藏操作按钮、上传按钮禁用）                                                                                |
+| `bordered`            | `boolean`                                      | `true`                 | 是否显示卡片边框                                                                                                    |
+| `compact`             | `boolean`                                      | `false`                | 紧凑模式（缩略图 60px）                                                                                             |
+| `placeholder`         | `string`                                       | 内置默认               | textarea 占位符                                                                                                     |
+| `hint`                | `string`                                       | `''`                   | 工具栏提示文字（空时按 fileTypes 自动生成）                                                                         |
+| `maxLength`           | `number`                                       | `0`（不限）            | 文本最大字数（>0 时显示字数统计）                                                                                   |
+| `showWordLimit`       | `boolean`                                      | `true`                 | 是否显示字数统计                                                                                                    |
+| `minRows` / `maxRows` | `number`                                       | `2` / `5`              | textarea 自动高度行数范围                                                                                           |
+| `showTextarea`        | `boolean`                                      | `true`                 | 独立开关：是否显示文本输入区                                                                                        |
+| `showImages`          | `boolean`                                      | `true`                 | 独立开关：是否显示附件预览区                                                                                        |
+| `extractUrls`         | `boolean`                                      | `true`                 | 是否从文本中自动提取图片/视频/文件 URL 并转为缩略图（内置逻辑）                                                     |
+| `accept`              | `string`                                       | 由 `fileTypes` 生成    | 文件选择器 accept（可覆盖）                                                                                         |
+| `theme`               | `'light' \| 'dark'`                            | `'light'`              | 主题：`dark` 深色背景适配创作内容页                                                                                 |
+| `enterBehavior`       | `'newline' \| 'send'`                          | `'newline'`            | 回车行为：`send` 时 Enter 触发 `@enter`，Cmd/Ctrl+Enter 换行                                                        |
 
 #### Emits
 
 | Event               | 参数                                 | 说明                                        |
 | ------------------- | ------------------------------------ | ------------------------------------------- |
-| `update:modelValue` | `string[]`                           | 附件数组变化（添加/删除/编辑替换/URL 提取） |
-| `update:text`       | `string`                             | 文本内容变化（含 URL 提取后的文本清理）     |
+| `update:modelValue` | `string`                             | 文本内容变化（含 URL 提取后的文本清理）     |
+| `update:fileList`   | `string[]`                           | 附件数组变化（添加/删除/编辑替换/URL 提取） |
 | `enter`             | `无`                                 | `enterBehavior="send"` 时回车触发           |
 | `change`            | `{ total: number, pending: number }` | 附件数量变化（总数 / 待上传数）             |
 
@@ -162,21 +169,21 @@ import { ref } from 'vue'
 import AttachmentInputArea from '@/components/AttachmentInputArea.vue'
 import { uploadImageFile } from '@/composables/useFileUpload'
 
-const images = ref<string[]>([])
+const files = ref<string[]>([])
 const content = ref('')
 const areaRef = ref<{ flushPending: () => Promise<boolean> }>()
 
 async function handleSave() {
   if (areaRef.value && !(await areaRef.value.flushPending())) return
-  // 此时 pending 文件已上传，images 中为正式 URL，继续提交表单
+  // 此时 pending 文件已上传，files 中为正式 URL，继续提交表单
 }
 </script>
 
 <template>
   <AttachmentInputArea
     ref="areaRef"
-    v-model="images"
-    v-model:text="content"
+    v-model="content"
+    v-model:file-list="files"
     :upload="uploadImageFile"
     :max-count="10"
     :max-length="300"
@@ -191,7 +198,7 @@ async function handleSave() {
 </template>
 ```
 
-> **注意**：`v-model` 绑定附件数组，`v-model:text` 绑定文本内容，两者相互独立。URL 提取逻辑已内置（`extractUrls` 默认开启），父级无需再自行提取。
+> **注意**：`v-model` 绑定文本内容，`v-model:file-list` 绑定附件 URL 数组，两者相互独立。URL 提取逻辑已内置（`extractUrls` 默认开启），父级无需再自行提取。
 
 #### 组件暴露方法（defineExpose）
 
@@ -231,7 +238,7 @@ interface DisplayItem {
 }
 ```
 
-- `images`（`v-model` 绑定的 URL 数组）与 `pendingItems`（待上传项）合并为 `displayItems` 统一渲染
+- `fileList`（`v-model:file-list` 绑定的附件 URL 数组）与 `pendingItems`（待上传项）合并为 `displayItems` 统一渲染
 - 按类型分类的 computed：`imageItems` / `videoItems` / `fileItems`，驱动查看器、视频播放弹窗与文件项展示
 
 ### 2.3 文件上传触发
@@ -568,8 +575,8 @@ const FILE_TYPE_LIMITS: Record<AttachmentFileType, number> = {
 ```vue
 <AttachmentInputArea
   ref="createAreaRef"
-  v-model="fileUrls"
-  v-model:text="promptText"
+  v-model="promptText"
+  v-model:file-list="fileUrls"
   theme="dark"
   :file-types="['image', 'video']"
   :max-count="MAX_UPLOAD_FILES"
@@ -750,9 +757,9 @@ async function startAiGeneration() {
 #### 2.11.1 功能说明
 
 - **Fabric.js 集成**：利用 Canvas 技术实现前端图片裁剪框选、角度旋转，并根据调整后的预览图实时导出数据。
-- **裁剪（Crop）**：通过交互式 `Rect` 矩形框定义裁剪区域，支持拖拽调节框选范围。
-- **旋转（Rotate）**：支持 90° 步进旋转以及自定义角度旋转，并自动适配画布布局。
-- **压缩（Compress）**：提供质量滑块（Quality Slider），可在导出前通过 `toDataURL` 压缩 JPEG 质量。
+- **裁剪（Crop）**：通过交互式 `Rect` 矩形框定义裁剪区域，支持拖拽调节框选范围，裁剪结果按区域导出后重新加载到画布。
+- **旋转（Rotate）**：支持 90° 步进旋转（左转 / 右转），直接旋转画布中的图片对象。
+- **压缩（Compress）**：提供质量滑块（Quality Slider，0.3 ~ 1），导出前将画布背景置白，通过 `canvas.toBlob` 按质量压缩为 JPEG。
 
 #### 2.11.2 交互流程
 
@@ -773,10 +780,15 @@ async function startAiGeneration() {
 const scale = ref(1)
 const offset = ref({ x: 0, y: 0 })
 const isDragging = ref(false)
+let startPos = { x: 0, y: 0 }
 
 function onWheel(e: WheelEvent) {
-  const delta = e.deltaY > 0 ? -0.1 : 0.1
-  scale.value = Math.min(4, Math.max(0.5, scale.value + delta))
+  const delta = e.deltaY > 0 ? -0.12 : 0.12
+  scale.value = Math.min(4, Math.max(0.25, scale.value + delta))
+}
+
+function zoomBy(delta: number) {
+  scale.value = Math.min(4, Math.max(0.25, scale.value + delta))
 }
 
 function onDragStart(e: MouseEvent) {
@@ -792,21 +804,26 @@ function onDragMove(e: MouseEvent) {
   }
   startPos = { x: e.clientX, y: e.clientY }
 }
+
+function onDragEnd() {
+  isDragging.value = false
+}
 ```
 
-模板绑定：
+模板绑定（查看器支持多图 `items` + `index`，通过 `prev` / `next` 事件翻页）：
 
 ```vue
 <img
-  :src="url"
+  :src="currentItem.url"
   :style="{
     transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})`,
-    transition: isDragging ? 'none' : 'transform 0.2s',
+    transition: isDragging ? 'none' : 'transform 0.15s ease',
   }"
   @wheel.prevent="onWheel"
   @mousedown="onDragStart"
   @mousemove="onDragMove"
-  @mouseup="isDragging = false"
+  @mouseup="onDragEnd"
+  @mouseleave="onDragEnd"
 />
 ```
 
@@ -815,218 +832,301 @@ function onDragMove(e: MouseEvent) {
 ```typescript
 import { Canvas, Image as FabricImage, Rect } from 'fabric'
 
+const CANVAS_W = 820
+const CANVAS_H = 540
+
 const canvasRef = ref<HTMLCanvasElement | null>(null)
 let canvas: Canvas | null = null
-let fabricImage: FabricImage | null = null
+let image: FabricImage | null = null
 let cropRect: Rect | null = null
+const isCropMode = ref(false)
+const isExporting = ref(false)
+const quality = ref(0.85)
 
-function initCanvas(url: string) {
-  canvas = new Canvas(canvasRef.value!, {
-    width: 800,
-    height: 600,
-    backgroundColor: '#f5f5f7',
-    preserveObjectStacking: true,
-  })
+// 组件打开时懒初始化画布（仅创建一次），并加载图片
+watch(
+  () => props.visible,
+  (visible) => {
+    if (!visible) return
+    nextTick(async () => {
+      if (!canvasRef.value) return
+      if (!canvas) {
+        canvas = new Canvas(canvasRef.value, {
+          width: CANVAS_W,
+          height: CANVAS_H,
+          selection: false,
+          preserveObjectStacking: true,
+        })
+      }
+      await loadImage(props.url)
+    })
+  },
+)
 
-  FabricImage.fromURL(url, (img) => {
-    // 等比缩放到画布内
-    img.scaleToWidth(800)
-    canvas!.add(img)
-    canvas!.setActiveObject(img)
-    canvas!.renderAll()
-    fabricImage = img
-  })
+onBeforeUnmount(() => {
+  canvas?.dispose()
+  canvas = null
+})
+
+async function loadImage(url: string) {
+  if (!canvas) return
+  canvas.clear()
+  image = null
+  cropRect = null
+  isCropMode.value = false
+  try {
+    const img = await FabricImage.fromURL(url)
+    const width = img.width || 1
+    const height = img.height || 1
+    // 等比缩放到画布内（留 32px 边距，且不超过原图尺寸）
+    const scale = Math.min((CANVAS_W - 32) / width, (CANVAS_H - 32) / height, 1)
+    img.scale(scale)
+    img.set({
+      originX: 'center',
+      originY: 'center',
+      left: CANVAS_W / 2,
+      top: CANVAS_H / 2,
+    })
+    canvas.add(img)
+    canvas.setActiveObject(img)
+    image = img
+    canvas.renderAll()
+  } catch (err) {
+    Message.error('图片加载失败，无法进入编辑模式')
+  }
 }
 ```
 
+> **编辑器能力**：工具栏提供「裁剪 / 旋转（左 90°、右 90°）/ 重置 / 质量滑块（0.3 ~ 1）/ 确认导出」。组件由 `AttachmentInputArea` 以 `defineAsyncComponent` 异步加载，Fabric.js 仅在首次打开编辑弹窗时按需进入包体。
+>
+> 组件 Props：`visible` / `url` / `name`；Emits：`close` / `confirm({ blob, name })`。
+
 #### 2.11.5 裁剪
 
-Fabric.js v6 无内置裁剪工具，采用「`Rect` 框选 + `toDataURL` 区域导出」方案：
+Fabric.js v6 无内置裁剪工具，采用「`Rect` 框选 + `toDataURL` 区域导出」方案。裁剪进入独立模式（`isCropMode`，状态声明见 2.11.4），支持取消与应用：
 
 ```typescript
 function startCrop() {
-  if (!fabricImage) return
-  const bounds = fabricImage.getBoundingRect()
+  if (!canvas || !image || cropRect) return
+  const b = image.getBoundingRect()
   cropRect = new Rect({
-    left: bounds.left,
-    top: bounds.top,
-    width: bounds.width,
-    height: bounds.height,
-    fill: 'rgba(0, 122, 255, 0.08)',
+    left: b.left,
+    top: b.top,
+    width: b.width,
+    height: b.height,
+    fill: 'rgba(0, 122, 255, 0.06)',
     stroke: '#007AFF',
-    strokeWidth: 2,
+    strokeWidth: 1.5,
+    strokeUniform: true,
     strokeDashArray: [6, 4],
     cornerColor: '#007AFF',
     cornerSize: 12,
     transparentCorners: false,
     lockRotation: true,
+    borderColor: '#007AFF',
   })
-  canvas!.add(cropRect)
-  canvas!.setActiveObject(cropRect)
-  canvas!.renderAll()
+  canvas.add(cropRect)
+  canvas.setActiveObject(cropRect)
+  isCropMode.value = true
+  canvas.renderAll()
 }
 
-function applyCrop() {
-  if (!cropRect) return
-  const rect = cropRect.getBoundingRect()
-  // 按裁剪区域导出为图片
-  const dataUrl = canvas!.toDataURL({
-    format: 'jpeg',
-    quality: 0.9,
-    left: rect.left,
-    top: rect.top,
-    width: rect.width,
-    height: rect.height,
-  })
-  // 用裁剪结果替换画布内容
-  loadImageToCanvas(dataUrl)
-  canvas!.remove(cropRect)
+function cancelCrop() {
+  if (!canvas || !cropRect) return
+  canvas.remove(cropRect)
   cropRect = null
+  isCropMode.value = false
+  canvas.renderAll()
+}
+
+async function applyCrop() {
+  if (!canvas || !cropRect) return
+  const b = cropRect.getBoundingRect()
+  canvas.remove(cropRect)
+  cropRect = null
+  isCropMode.value = false
+  // 按裁剪区域导出并重新加载到画布
+  const dataUrl = exportDataUrl({ left: b.left, top: b.top, width: b.width, height: b.height })
+  if (dataUrl) await loadImage(dataUrl)
 }
 ```
+
+> **注意**：`cropRect` 仅在与 `image` 同坐标系下使用 `getBoundingRect()` 计算实际裁剪区域；若图片有旋转，需先应用旋转再裁剪（或重置裁剪框），避免区域错位。
 
 #### 2.11.6 旋转
 
-支持 90° 步进旋转与自定义角度：
+支持 90° 步进旋转（左转 / 右转），直接旋转画布中的图片对象：
 
 ```typescript
-function rotateImage(degrees: number) {
-  if (!fabricImage) return
-  const current = fabricImage.angle || 0
-  fabricImage.rotate(current + degrees)
-  canvas!.renderAll()
+function rotate(degrees: number) {
+  if (!image) return
+  image.rotate((image.angle || 0) + degrees)
+  canvas?.renderAll()
 }
 
 // 使用示例：左转 90° / 右转 90°
-rotateImage(-90)
-rotateImage(90)
-
-// 自由旋转（配合输入框或滑块）
-fabricImage.set('angle', customDegrees)
-canvas!.renderAll()
+rotate(-90)
+rotate(90)
 ```
 
-> **注意**：旋转后需重置裁剪框，避免裁剪区域与旋转后的图片错位。
+> **注意**：旋转后 `getBoundingRect()` 会随角度变化，因此旋转后建议先「重置」（重新加载原图）再进入裁剪，避免裁剪区域与旋转后的图片错位。
 
 #### 2.11.7 压缩
 
-通过 `toDataURL` 的 `quality` 参数控制压缩质量，并提供输出预览：
+通过 `canvas.toBlob` 的 `quality` 参数控制压缩质量（质量滑块范围 0.3 ~ 1，步进 0.05），导出前将画布背景切换为白色以得到干净的 JPEG：
 
 ```typescript
-const quality = ref(0.8)
+const quality = ref(0.85)
+const isExporting = ref(false)
 
-function exportImage(): Promise<Blob> {
-  return new Promise((resolve) => {
-    const dataUrl = canvas!.toDataURL({
+async function confirm() {
+  if (!canvas) return
+  isExporting.value = true
+  try {
+    const prevBg = canvas.backgroundColor
+    canvas.backgroundColor = '#ffffff'
+    canvas.renderAll()
+    const blob = await canvas.toBlob({
       format: 'jpeg',
-      quality: quality.value, // 0 ~ 1
+      quality: quality.value, // 0.3 ~ 1
+      multiplier: 1,
     })
-    const binary = atob(dataUrl.split(',')[1])
-    const bytes = new Uint8Array(binary.length)
-    for (let i = 0; i < binary.length; i++) {
-      bytes[i] = binary.charCodeAt(i)
-    }
-    resolve(new Blob([bytes], { type: 'image/jpeg' }))
-  })
+    canvas.backgroundColor = prevBg
+    canvas.renderAll()
+    if (!blob) return
+    const baseName = props.name.replace(/\.[^.]+$/, '') || 'image'
+    emit('confirm', { blob, name: `${baseName}_edited.jpg` })
+    close()
+  } finally {
+    isExporting.value = false
+  }
 }
 ```
+
+> 裁剪区域导出复用同一 `exportDataUrl()`：临时设置白色背景 → `canvas.toDataURL({ format: 'jpeg', quality, multiplier: 1, ...region })` → 恢复背景。
 
 #### 2.11.8 与上传流程集成
 
-> **v1.3 说明**：当前图片编辑入口与流程已内聚至 `AttachmentInputArea.vue`：已上传图片（非 pending）在 `upload` 配置后显示编辑按钮；编辑确认后，组件内替换对应附件项（pending 分支替换 `PendingItem.file`，上传分支替换 `images` URL 并重新上传），父级无需介入。旧版基于 `uploadedItems` 的实现如下：
+图片编辑入口与流程已内聚至 `AttachmentInputArea.vue`：编辑按钮仅在 `item.type === 'image'` 且（`pending` 或已配置 `upload`）时显示；编辑确认后由组件内部 `handleEditorConfirm` 处理替换，父级无需介入：
 
 ```typescript
-async function confirmEdit(index: number) {
-  const blob = await exportImage()
-  const compressedName = originalName.replace(/\.\w+$/, '') + '_edited.jpg'
-  const editedFile = new File([blob], compressedName, { type: 'image/jpeg' })
+async function handleEditorConfirm(result: { blob: Blob; name: string }) {
+  const item = displayItems.value[editorIndex.value]
+  if (!item || item.type !== 'image') return
+  const file = new File([result.blob], result.name, { type: result.blob.type || 'image/jpeg' })
 
-  // 替换原附件，触发预览刷新
-  const item = uploadedItems.value[index]
-  if (item.kind === 'file') {
-    item.file = editedFile
-    item.name = editedFile.name
-    item.url = URL.createObjectURL(editedFile)
+  // 分支一：待上传图片 —— 直接替换 PendingItem.file，随后 flushPending()/getPendingFiles() 使用编辑后文件
+  if (item.pending && item.file) {
+    const i = pendingItems.value.findIndex((p) => p.file === item.file)
+    if (i >= 0) {
+      const next = [...pendingItems.value]
+      next[i] = { ...next[i], file, name: file.name, size: file.size }
+      pendingItems.value = next
+    }
+    Message.success('图片编辑已保存')
+    emitChange()
+    return
   }
-  closeEditor()
+
+  // 分支二：已上传图片 —— 用编辑结果重新上传，替换 fileList 中的 URL
+  if (!props.upload) return
+  const url = await props.upload(file)
+  if (url) {
+    const i = fileList.value.indexOf(item.url || '')
+    if (i >= 0) {
+      const next = [...fileList.value]
+      next[i] = url
+      fileList.value = next
+    }
+    urlSizeMap.set(url, file.size)
+    Message.success('图片编辑已保存')
+  }
+  emitChange()
 }
 ```
 
-> 后续 `startAiGeneration()` 会读取更新后的 `item.file`，自动将编辑结果（裁剪/旋转/压缩后的 base64）发送给 AI 接口。
+> **默认不编辑场景**：用户从未点击「编辑」时，图片保持上传时的原始文件。创作页 `buildFilesPayload()` 直接对原始 File 执行上传前压缩与 base64 编码，完全绕过 Fabric.js 编辑器。
 >
-> **默认不编辑场景**：用户从未点击「编辑」时，`uploadedItems` 中的 `item.file` 保持为上传时的原始 `File`，`startAiGeneration()` 直接对其执行上传前压缩与 base64 编码，完全绕过 Fabric.js 编辑器。
->
-> **v1.3 对应**：组件内 `handleEditorConfirm` 的 pending 分支（`item.pending && item.file`）将编辑结果替换 `PendingItem.file`（随后 `flushPending()` / `getPendingFiles()` 使用编辑后文件）；上传分支重新执行 `props.upload` 替换 `images` URL。
+> **AI 内容生成路径**：`ContentCreate.vue` 未传 `upload`（仅收集文件），`getPendingFiles()` 返回的编辑后 File 随 SSE 请求发送给 AI 接口。
 
 ---
 
-## 3. 后端实现
+## 3. 后端实现（Go）
+
+> **说明**：项目后端为 **Go**（`backend-go`），非 Python。本节基于 `services/ai_service.go` 与 `controllers/contents_controller.go` 的实际实现整理。
 
 ### 3.1 类型定义
 
-```python
-# backend/app/schemas/content.py
+```go
+// backend-go/services/ai_service.go
 
-class UploadedFile(BaseModel):
-    data: str          # base64 编码的文件数据
-    mime_type: str     # MIME 类型（如 image/jpeg, video/mp4）
+type UploadedFile struct {
+	Data     string `json:"data"`      // base64 编码的文件数据
+	MimeType string `json:"mime_type"` // MIME 类型（如 image/jpeg, video/mp4）
+}
 
-class AIGenerateStreamRequest(BaseModel):
-    topic: str                              # 创作主题/需求
-    platforms: list[str]                    # 目标平台列表
-    style: Optional[str] = None             # 风格
-    keywords: Optional[list[str]] = None    # 关键词
-    plan_id: Optional[str] = None           # 模型配置 ID
-    model_id: Optional[str] = None          # 模型 ID
-    files: Optional[List[UploadedFile]] = None  # 可选的文件列表
+// backend-go/controllers/contents_controller.go
+
+type aiGenerateStreamRequest struct {
+	Topic     string                  `json:"topic"`      // 创作主题/需求
+	Platforms []string                `json:"platforms"`  // 目标平台列表
+	Style     string                  `json:"style"`      // 风格
+	Keywords  []string                `json:"keywords"`   // 关键词
+	PlanID    string                  `json:"plan_id"`    // 模型配置 ID
+	ModelID   string                  `json:"model_id"`   // 模型 ID
+	Files     []services.UploadedFile `json:"files"`      // 可选的文件列表
+}
 ```
 
-### 3.2 AI 服务处理
+### 3.2 AI 服务处理（GenerateContentStream）
 
-```python
-# backend/app/services/ai_service.py
+```go
+// backend-go/services/ai_service.go
 
-async def ai_generate_stream(..., files: Optional[List[UploadedFile]] = None, ...):
-    # 1. 统计文件类型
-    img_count = sum(1 for f in files if f.mime_type.startswith("image/"))
-    vid_count = sum(1 for f in files if f.mime_type.startswith("video/"))
-    if img_count or vid_count:
-        parts = []
-        if img_count: parts.append(f"{img_count} 张图片")
-        if vid_count: parts.append(f"{vid_count} 个视频")
-        yield {"event": "log", "level": "info", "message": f"附带 {'、'.join(parts)}（多模态分析）"}
+func GenerateContentStream(topic, platform, style string, keywords []string, planID, modelID string, files []UploadedFile) (<-chan AIStreamEvent, error) {
+	events := make(chan AIStreamEvent)
+	go func() {
+		defer close(events)
+		apiKey, baseURL, model, planName, _, err := ResolveModelConfig(planID, modelID)
+		if err != nil { events <- aiError(err); return }
 
-    # 2. 构建多模态消息
-    user_content: list[dict] = [{"type": "text", "text": prompt}]
-    for f in files or []:
-        if f.mime_type.startswith("video/"):
-            user_content.append({
-                "type": "video_url",
-                "video_url": {"url": f"data:{f.mime_type};base64,{f.data}"},
-            })
-        else:
-            user_content.append({
-                "type": "image_url",
-                "image_url": {"url": f"data:{f.mime_type};base64,{f.data}"},
-            })
+		// 1. 统计文件类型并记录日志
+		imgCount, vidCount := 0, 0
+		for _, f := range files {
+			if strings.HasPrefix(f.MimeType, "image/") { imgCount++ }
+			if strings.HasPrefix(f.MimeType, "video/") { vidCount++ }
+		}
+		if imgCount > 0 || vidCount > 0 {
+			parts := make([]string, 0, 2)
+			if imgCount > 0 { parts = append(parts, fmt.Sprintf("%d 张图片", imgCount)) }
+			if vidCount > 0 { parts = append(parts, fmt.Sprintf("%d 个视频", vidCount)) }
+			events <- AIStreamEvent{Event: "log", Level: "info",
+				Message: fmt.Sprintf("附带 %s（多模态分析）", strings.Join(parts, "、"))}
+		}
 
-    # 3. 调用 LLM API
-    stream = await client.chat.completions.create(
-        model=model,
-        messages=[
-            {"role": "system", "content": "你是一个专业的社交媒体内容创作助手..."},
-            {"role": "user", "content": user_content if files else prompt},
-        ],
-        temperature=0.8,
-        max_tokens=4000,
-        stream=True,
-    )
+		// 2. 构建消息：有文件时 user 为多模态数组（buildVisionContent），否则纯文本
+		messages, tools, toolChoice := buildContentMessages(topic, platform, style, keywords, files)
+		userContent := messages[len(messages)-1].Content
+		if len(files) > 0 {
+			// userContent 已为 [{type:"text"}, {type:"image_url"|"video_url"}...]
+		}
 
-    # 4. 流式返回
-    async for chunk in stream:
-        if chunk.choices and chunk.choices[0].delta.content:
-            yield {"event": "chunk", "text": chunk.choices[0].delta.content}
+		// 3. 调用 LLM（tool_choice 强制结构化输出）
+		resp, err := callChatCompletionsWithTools(apiKey, baseURL, model, messages, tools, toolChoice, 8000)
+		// 400 且包含 tool_choice 字样时降级为 auto 重试
+		if resp.StatusCode == http.StatusBadRequest && strings.Contains(strings.ToLower(body), "tool_choice") {
+			resp, err = callChatCompletionsWithTools(apiKey, baseURL, model, messages, tools, nil, 8000)
+		}
+
+		// 4. 流式解析 tool_calls delta，回退解析 parseContentVariantsArgs / parseContentVariantArgs
+		for ... { events <- AIStreamEvent{Event: "chunk", Text: delta.Content} }
+		events <- AIStreamEvent{Event: "done", Variant: v, Model: model}
+	}()
+	return events, nil
+}
 ```
+
+> 流式事件统一通过 `AIStreamEvent` channel 返回：`log` / `chunk` / `done` / `error` / `result` 等，控制器负责写入 `text/event-stream` 响应。多平台生成在控制器 `AIGenerateStream` 中循环调用，最后发送 `complete` 事件。
 
 ---
 
@@ -1047,7 +1147,7 @@ Content-Type: multipart/form-data
 }
 ```
 
-> **注意**：该接口在当前代码库中未找到显式定义，可能由外部服务（如 Nginx、对象存储网关）处理。
+> **说明**：该接口由 `backend-go/controllers/uploads_controller.go` 的 `UploadsController.Upload` 实现（路由 `main.go: web.Router("/api/uploads", uploads, "post:Upload")`）。上传目录为 `services.GetUploadDir()`，并通过 `web.SetStaticPath("/uploads", uploadDir)` 提供静态访问。
 
 ### 4.2 AI 生成流式接口
 
@@ -1091,17 +1191,32 @@ Authorization: Bearer <token>
 
 请求体：
 {
-  "inspection_id": "xxx",
+  "store_id": "门店ID",
+  "template_id": "检查表模板ID",
+  "plan_id": "模型配置ID",
+  "model_id": "模型ID",
   "photos": [
     {
       "data": "base64编码的图片数据",
       "mime_type": "image/jpeg"
     }
   ],
-  "skills": [...]
+  "keywords": "巡店关键词/现场描述",
+  "skills": [
+    {
+      "item_id": "检查项ID",
+      "name": "门头形象",
+      "standard": "检查标准",
+      "standard_images": ["/uploads/standard.jpg"],
+      "score_type": "score | pass_fail",
+      "max_score": 10,
+      "score_options": [{ "score": 0, "label": "0分" }]
+    }
+  ],
+  "response_schema": {}
 }
 
-响应：SSE 流（同上）
+响应：SSE 流（log / chunk / result / error / complete，result 事件携带 scores / issues / suggestion / summary 等）
 ```
 
 ---
@@ -1193,7 +1308,7 @@ Authorization: Bearer <token>
 - `useFileUpload`：文件上传逻辑（校验、压缩、上传函数、base64 编码）
 - `useUrlExtractor`：URL 自动提取逻辑（图片/视频/文件类型推断、文本清理）
 - `AttachmentInputArea`：**一体化输入区公共组件**（textarea + 工具栏 + 类型化预览 + 查看/编辑/删除），支持 `uploadMode`（auto/manual）、`fileTypes` 多文件类型、`theme`（light/dark）、`enterBehavior`（newline/send）；上传函数由业务页面注入，已应用于创作内容、素材编辑、模板编辑、巡店编辑、整改弹窗五个场景
-- `useImageEditor`：Fabric.js 编辑器逻辑（画布初始化、裁剪、旋转、压缩导出），供 `ImageEditorModal` 复用
+- `ImageEditorModal`：Fabric.js 编辑器（画布初始化、裁剪、旋转、压缩导出），由 `AttachmentInputArea` 以异步组件方式按需加载
 
 ### 7.2 功能增强
 
@@ -1220,6 +1335,7 @@ Authorization: Bearer <token>
 | `frontend/src/pages/InspectionTaskDetail.vue`     | 整改弹窗（提交前 flushPending）                                                             |
 | `frontend/src/components/ImageViewerModal.vue`    | 图片查看器（缩放/拖拽/翻页）                                                                |
 | `frontend/src/components/ImageEditorModal.vue`    | 图片编辑器（Fabric.js 裁剪/旋转/压缩）                                                      |
-| `backend/app/schemas/content.py`                  | 后端类型定义                                                                                |
-| `backend/app/services/ai_service.py`              | AI 服务处理                                                                                 |
+| `backend-go/services/ai_service.go`               | AI 服务处理（GenerateContentStream、buildVisionContent、模型配置解析）                      |
+| `backend-go/controllers/contents_controller.go`   | 内容 AI 生成接口（AIGenerateStream，SSE 输出）                                              |
+| `backend-go/controllers/uploads_controller.go`    | 文件上传接口（Upload）                                                                      |
 | `frontend/vite.config.ts`                         | Vite 代理配置                                                                               |

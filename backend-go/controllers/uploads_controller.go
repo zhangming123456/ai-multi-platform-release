@@ -28,6 +28,8 @@ func (c *UploadsController) Upload() {
 		"material:create:write",
 		"material:update:write",
 		"content:create:write",
+		"campaign:create:write",
+		"campaign:update:write",
 	}) {
 		return
 	}

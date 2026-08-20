@@ -386,7 +386,7 @@ Authorization: Bearer <token>
 - `buildVisionContent` 同时支持 `image_url` 与 `video_url`
 - 图片压缩：前端上传前压缩（>1600px 质量 0.8），编辑后按滑块质量导出
 - 输出解析：`ParseStreamedContent` 支持「【标题】【正文】【标签】」标记格式，并兼容 JSON / JSON 数组回退
-- 能力预检：`ModelSupportsFiles` 用于前端展示「该模型是否支持文件上传」
+- 能力预检：前端通过 `tokenPlan` store 的 `selectedModelSupportsFiles` 计算属性展示「该模型是否支持文件上传」，后端对应 `services.ModelSupportsFiles(planID, modelID)` 预检
 
 ---
 

@@ -35,6 +35,12 @@
           <a-option value="ready">待发布</a-option>
           <a-option value="published">已发布</a-option>
         </a-select>
+        <a-select v-model="campaignFilter" placeholder="全部活动" style="width: 160px">
+          <a-option value="all">全部活动</a-option>
+          <a-option v-for="c in campaignOptions" :key="c.id" :value="c.id">
+            {{ c.name }}
+          </a-option>
+        </a-select>
       </a-space>
 
       <a-spin :loading="loading" tip="加载中...">
@@ -59,6 +65,18 @@
           </template>
           <template #status="{ record }">
             <StatusBadge :status="record.status" />
+          </template>
+          <template #campaign="{ record }">
+            <a-tag
+              v-if="record.campaign_id && campaignName(record.campaign_id)"
+              color="arcoblue"
+              size="small"
+              class="cursor-pointer"
+              @click="campaignFilter = record.campaign_id"
+            >
+              {{ campaignName(record.campaign_id) }}
+            </a-tag>
+            <span v-else class="text-[#c9cdd4]">--</span>
           </template>
           <template #createdAt="{ record }">
             {{ formatDate(record.created_at) }}
@@ -199,6 +217,7 @@ const router = useRouter()
 const searchQuery = ref('')
 const platformFilter = ref('all')
 const statusFilter = ref('all')
+const campaignFilter = ref('all')
 const loading = ref(false)
 
 interface Content {
@@ -209,6 +228,7 @@ interface Content {
   platform: 'wechat_mp' | 'xiaohongshu' | 'douyin' | 'wechat_video'
   status: 'draft' | 'ready' | 'published' | 'pending_review' | 'rejected'
   media_urls: string[]
+  campaign_id: string | null
   ai_generated: boolean
   original_content_id: string | null
   created_at: string
@@ -217,12 +237,26 @@ interface Content {
 
 const contents = ref<Content[]>([])
 
+const campaignOptions = ref<{ id: string; name: string; location: string }[]>([])
+const campaignMap = computed(() => {
+  const map: Record<string, string> = {}
+  for (const c of campaignOptions.value) {
+    map[c.id] = c.name
+  }
+  return map
+})
+
+function campaignName(id: string) {
+  return campaignMap.value[id] || ''
+}
+
 const filteredContents = computed(() => {
   return contents.value.filter((c) => {
     const matchSearch = !searchQuery.value || c.title.includes(searchQuery.value)
     const matchPlatform = platformFilter.value === 'all' || c.platform === platformFilter.value
     const matchStatus = statusFilter.value === 'all' || c.status === statusFilter.value
-    return matchSearch && matchPlatform && matchStatus
+    const matchCampaign = campaignFilter.value === 'all' || c.campaign_id === campaignFilter.value
+    return matchSearch && matchPlatform && matchStatus && matchCampaign
   })
 })
 
@@ -230,6 +264,7 @@ const columns = [
   { title: '标题', dataIndex: 'title', slotName: 'title' },
   { title: '平台', dataIndex: 'platform', slotName: 'platform' },
   { title: '状态', dataIndex: 'status', slotName: 'status' },
+  { title: '所属活动', dataIndex: 'campaign_id', slotName: 'campaign' },
   { title: '创建时间', dataIndex: 'created_at', slotName: 'createdAt' },
   { title: '操作', slotName: 'actions', align: 'right' as const },
 ]
@@ -237,8 +272,12 @@ const columns = [
 onMounted(async () => {
   loading.value = true
   try {
-    const res = await api.get('/contents/')
-    contents.value = res.data
+    const [contentsRes, campaignsRes] = await Promise.all([
+      api.get('/contents/'),
+      api.get<{ id: string; name: string; location: string }[]>('/campaigns/options'),
+    ])
+    contents.value = contentsRes.data
+    campaignOptions.value = Array.isArray(campaignsRes.data) ? campaignsRes.data : []
   } catch (e) {
     Message.error('加载内容失败')
   } finally {

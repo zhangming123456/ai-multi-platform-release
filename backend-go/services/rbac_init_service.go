@@ -103,6 +103,10 @@ var RBACResources = []resourceDef{
 	{Key: "material:create:write", Name: "创建素材", Description: "创建新的素材"},
 	{Key: "material:update:write", Name: "编辑素材", Description: "编辑素材信息"},
 	{Key: "material:delete:write", Name: "删除素材", Description: "删除素材"},
+	{Key: "campaign:read", Name: "查看活动", Description: "查看活动列表、详情，读取候选活动"},
+	{Key: "campaign:create:write", Name: "创建活动", Description: "创建新的营销活动"},
+	{Key: "campaign:update:write", Name: "编辑活动", Description: "编辑活动信息"},
+	{Key: "campaign:delete:write", Name: "删除活动", Description: "删除或归档营销活动"},
 }
 
 func AllPermissionKeys() []string {
@@ -151,6 +155,8 @@ var defaultRolePermissions = map[string][]string{
 		"inspection:task:recheck:write", "inspection:task:confirm:write",
 		"material:read", "material:create:write",
 		"material:update:write", "material:delete:write",
+		"campaign:read", "campaign:create:write",
+		"campaign:update:write", "campaign:delete:write",
 	},
 	"operator": []string{
 		"dashboard:read", "platforms:read", "content:read", "publish:read",
@@ -172,6 +178,8 @@ var defaultRolePermissions = map[string][]string{
 		"inspection:task:read", "inspection:task:update:write",
 		"inspection:task:recheck:write", "inspection:task:confirm:write",
 		"material:read", "material:create:write", "material:update:write",
+		"campaign:read", "campaign:create:write",
+		"campaign:update:write", "campaign:delete:write",
 	},
 	"reviewer": []string{
 		"dashboard:read", "content:read", "review:read", "sql_review:read",
@@ -180,7 +188,7 @@ var defaultRolePermissions = map[string][]string{
 		"templates:create:write", "templates:update:write", "templates:delete:write",
 		"stores:read", "inspection:read", "inspection:template:read",
 		"inspection:material:read", "inspection:task:read", "inspection:task:confirm:write",
-		"material:read",
+		"material:read", "campaign:read",
 	},
 }
 

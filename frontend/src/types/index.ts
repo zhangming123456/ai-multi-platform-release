@@ -65,6 +65,18 @@ export interface Store {
   updated_at: string
 }
 
+export interface Campaign {
+  id: string
+  name: string
+  description: string | null
+  media_urls: string[] | null
+  location: string | null
+  platforms: string[] | null
+  status: 'active' | 'archived'
+  created_at: string
+  updated_at: string
+}
+
 export interface InspectionItem {
   id: string
   name: string

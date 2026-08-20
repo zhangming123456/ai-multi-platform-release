@@ -159,6 +159,29 @@
           </div>
 
           <div class="chat-input-section">
+            <div v-if="campaignOptions.length" class="campaign-select-bar">
+              <span class="campaign-select-bar__label">关联活动</span>
+              <a-select
+                v-model="selectedCampaignId"
+                placeholder="不关联活动（可选）"
+                size="small"
+                allow-clear
+                class="campaign-select"
+                @change="onCampaignChange"
+              >
+                <a-option v-for="c in campaignOptions" :key="c.id" :value="c.id">
+                  <span class="campaign-opt">
+                    <span>{{ c.name }}</span>
+                    <span v-if="c.location" class="campaign-opt__loc">{{ c.location }}</span>
+                  </span>
+                </a-option>
+              </a-select>
+              <a-tag v-if="selectedCampaignId" color="arcoblue" size="small" class="!m-0">
+                <template #icon><IconGift :size="12" /></template>
+                已关联活动
+              </a-tag>
+            </div>
+
             <div class="platform-select-bar">
               <template v-for="choice in platformChoices" :key="choice.value">
                 <a-tooltip :content="choice.label">
@@ -252,6 +275,7 @@ import {
   IconLoading,
   IconStar,
   IconRobot,
+  IconGift,
 } from '@arco-design/web-vue/es/icon'
 import PageHeader from '@/components/layout/PageHeader.vue'
 import PlatformIcon from '@/components/shared/PlatformIcon.vue'
@@ -268,6 +292,7 @@ onMounted(() => {
   if (!store.loaded) {
     store.loadPlans()
   }
+  fetchCampaignOptions()
 })
 
 type LogLevel = 'info' | 'req' | 'ok' | 'err'
@@ -332,6 +357,10 @@ function levelText(level: LogLevel) {
 }
 
 const selectedPlatforms = ref<string[]>(['xiaohongshu'])
+const campaignOptions = ref<{ id: string; name: string; location: string; platforms: string[] }[]>(
+  [],
+)
+const selectedCampaignId = ref('')
 const isGenerating = ref(false)
 const streamingText = ref('')
 const streamingPlatform = ref('')
@@ -467,6 +496,33 @@ function togglePlatform(value: string) {
     }
   } else {
     selectedPlatforms.value.push(value)
+  }
+}
+
+async function fetchCampaignOptions() {
+  try {
+    const res = await api.get<
+      {
+        id: string
+        name: string
+        location: string
+        platforms: string[]
+      }[]
+    >('/campaigns/options')
+    campaignOptions.value = Array.isArray(res.data) ? res.data : []
+  } catch {
+    campaignOptions.value = []
+  }
+}
+
+function onCampaignChange(id: unknown) {
+  if (typeof id !== 'string' || !id) return
+  const campaign = campaignOptions.value.find((c) => c.id === id)
+  if (campaign && Array.isArray(campaign.platforms) && campaign.platforms.length > 0) {
+    const valid = campaign.platforms.filter((p) => platformChoices.some((pc) => pc.value === p))
+    if (valid.length > 0) {
+      selectedPlatforms.value = valid
+    }
   }
 }
 
@@ -676,6 +732,7 @@ async function generate() {
         model_id: modelId,
         ...(keywordsArray && keywordsArray.length > 0 ? { keywords: keywordsArray } : {}),
         ...(filesPayload && filesPayload.length > 0 ? { files: filesPayload } : {}),
+        ...(selectedCampaignId.value ? { campaign_id: selectedCampaignId.value } : {}),
       }),
     })
 
@@ -816,6 +873,7 @@ async function saveContent() {
       body: bodyWithTags(variant),
       platform: activePreview.value,
       status: 'draft',
+      ...(selectedCampaignId.value ? { campaign_id: selectedCampaignId.value } : {}),
     })
     Message.success('内容已保存为草稿，即将跳转到内容工坊')
     setTimeout(() => {
@@ -1338,6 +1396,41 @@ async function copyContent() {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.campaign-select-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.campaign-select-bar__label {
+  font-size: 12px;
+  color: #86909c;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.campaign-select {
+  width: 220px;
+  flex-shrink: 0;
+}
+
+.campaign-opt {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.campaign-opt__loc {
+  font-size: 12px;
+  color: #86909c;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 120px;
 }
 
 .platform-chip {

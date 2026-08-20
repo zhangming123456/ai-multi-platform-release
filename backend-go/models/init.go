@@ -13,6 +13,7 @@ func InitModels() {
 		new(Template),
 		new(ModelConfig),
 		new(AIGenerationRecord),
+		new(Campaign),
 		new(Notification),
 		new(NotificationDict),
 		new(SqlHistory),

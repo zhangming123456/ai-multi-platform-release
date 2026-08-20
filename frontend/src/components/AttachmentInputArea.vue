@@ -29,10 +29,14 @@
             @click="openViewer(index)"
           >
             <div class="aia-card__thumb">
-              <img
+              <a-image
                 v-if="item.type === 'image'"
                 :src="item.pending ? previewUrl(item) : item.url"
                 :alt="item.name"
+                fit="cover"
+                :width="thumbSize"
+                :height="thumbSize"
+                :preview-props="{ srcList: imagePreviewSrcs, index: imageIndex(item.key) }"
               />
               <video
                 v-else-if="item.type === 'video'"
@@ -129,14 +133,6 @@
     </div>
 
     <input ref="fileInputRef" type="file" :accept="accept" multiple hidden @change="onFileChange" />
-    <ImageViewerModal
-      :visible="viewerVisible"
-      :items="viewerItems"
-      :index="viewerIndex"
-      @close="viewerVisible = false"
-      @prev="viewerIndex = Math.max(0, viewerIndex - 1)"
-      @next="viewerIndex = Math.min(viewerItems.length - 1, viewerIndex + 1)"
-    />
     <ImageEditorModal
       :visible="editorVisible"
       :url="editorUrl"
@@ -178,8 +174,6 @@ import {
   IconLeft,
   IconRight,
 } from '@arco-design/web-vue/es/icon'
-import ImageViewerModal from '@/components/ImageViewerModal.vue'
-import type { ViewerItem } from '@/components/ImageViewerModal.vue'
 import { compressImage, validateImageFile } from '@/composables/useFileUpload'
 import {
   typeFromUrl,
@@ -284,8 +278,6 @@ const uploading = ref(false)
 const dragging = ref(false)
 let dragDepth = 0
 
-const viewerVisible = ref(false)
-const viewerIndex = ref(0)
 const editorVisible = ref(false)
 const editorIndex = ref(0)
 const editorUrl = ref('')
@@ -349,12 +341,15 @@ const imageItems = computed<DisplayItem[]>(() =>
   displayItems.value.filter((i) => i.type === 'image'),
 )
 
-const viewerItems = computed<ViewerItem[]>(() =>
-  imageItems.value.map((i, idx) => ({
-    url: i.pending ? previewUrl(i) : i.url || '',
-    name: i.name || `图片 ${idx + 1}`,
-  })),
+const imagePreviewSrcs = computed<string[]>(() =>
+  imageItems.value.map((i) => (i.pending ? previewUrl(i) : i.url || '')),
 )
+
+function imageIndex(key: string): number {
+  return imageItems.value.findIndex((i) => i.key === key)
+}
+
+const thumbSize = computed(() => (props.compact ? 38 : 44))
 
 const toolbarIcon = computed(() => {
   if (props.fileTypes.length === 1 && props.fileTypes[0] === 'image') return IconImage
@@ -613,16 +608,10 @@ function removeItem(index: number) {
 function openViewer(index: number) {
   const item = displayItems.value[index]
   if (!item) return
-  if (item.type === 'image') {
-    const imgIdx = imageItems.value.findIndex((i) => i.key === item.key)
-    if (imgIdx >= 0) {
-      viewerIndex.value = imgIdx
-      viewerVisible.value = true
-    }
-  } else if (item.type === 'video') {
+  if (item.type === 'video') {
     videoUrl.value = item.pending ? previewUrl(item) : item.url || ''
     videoVisible.value = true
-  } else {
+  } else if (item.type === 'file') {
     if (item.url) window.open(item.url, '_blank')
   }
 }

@@ -484,9 +484,55 @@ func callChatCompletionsStreamWithTools(apiKey, baseURL, model string, messages 
 	return resp, nil
 }
 
+// loadCampaignContext 加载活动并构造注入内容。
+// 活动不存在或宣发图加载失败时返回空值，不阻断创作。
+func loadCampaignContext(campaignID string) (contextText string, files []UploadedFile, campaignName string) {
+	if strings.TrimSpace(campaignID) == "" {
+		return "", nil, ""
+	}
+	var campaign models.Campaign
+	if err := GetOrm().QueryTable(new(models.Campaign)).
+		Filter("id", campaignID).
+		Filter("status", models.CampaignStatusActive).
+		One(&campaign); err != nil {
+		return "", nil, ""
+	}
+	var b strings.Builder
+	b.WriteString("【活动背景】\n")
+	b.WriteString("活动名称：" + campaign.Name + "\n")
+	if campaign.Description != "" {
+		b.WriteString("活动介绍：" + campaign.Description + "\n")
+	}
+	if campaign.Location != "" {
+		b.WriteString("活动地点：" + campaign.Location + "\n")
+	}
+	var platforms []string
+	if campaign.Platforms != "" {
+		_ = json.Unmarshal([]byte(campaign.Platforms), &platforms)
+	}
+	if len(platforms) > 0 {
+		b.WriteString("面向平台：" + strings.Join(platforms, "、") + "\n")
+	}
+	b.WriteString("\n请围绕以上活动背景进行创作，内容需贴合活动调性与卖点。")
+	contextText = b.String()
+
+	var mediaURLs []string
+	if campaign.MediaURLs != "" {
+		_ = json.Unmarshal([]byte(campaign.MediaURLs), &mediaURLs)
+	}
+	for _, u := range mediaURLs {
+		uf, err := loadImageAsUploadedFile(u)
+		if err != nil || uf == nil {
+			continue
+		}
+		files = append(files, *uf)
+	}
+	return contextText, files, campaign.Name
+}
+
 // buildContentVariantMessages 构建内容创作 AI 调用的 messages / tools / toolChoice。
 // count > 1 时要求模型一次返回多个变体（submit_content_variants），否则返回单个（submit_content_variant）。
-func buildContentVariantMessages(topic, platform, style string, keywords []string, files []UploadedFile, count int) ([]chatMessage, []toolDefinition, interface{}) {
+func buildContentVariantMessages(topic, platform, style string, keywords []string, files []UploadedFile, count int, campaignContext string) ([]chatMessage, []toolDefinition, interface{}) {
 	platformStyle := platformStyleMap[platform]
 	if platformStyle == "" {
 		platformStyle = "通用社交媒体风格"
@@ -511,6 +557,10 @@ func buildContentVariantMessages(topic, platform, style string, keywords []strin
 	fileHint := ""
 	if len(files) > 0 {
 		fileHint = "\n\n请结合上传的图片/视频内容进行分析创作，将素材中的关键信息融入文案。"
+	}
+	campaignHint := ""
+	if campaignContext != "" {
+		campaignHint = "\n\n" + campaignContext
 	}
 
 	toolName := "submit_content_variant"
@@ -544,22 +594,22 @@ func buildContentVariantMessages(topic, platform, style string, keywords []strin
 		callDesc = fmt.Sprintf(`请为以下主题生成 %d 个不同风格的内容变体，目标平台：%s。
 风格要求：%s%s
 
-主题：%s%s
+主题：%s%s%s
 
 请直接调用 %s 工具提交结果，每个变体必须包含 title（标题）、body（正文）、hashtags（推荐话题标签列表，不含 # 前缀）。
-禁止输出工具调用以外的任何解释性文字、markdown 代码块或普通文本。`, count, platform, platformStyle, keywordsStr, subject, fileHint, toolName)
+禁止输出工具调用以外的任何解释性文字、markdown 代码块或普通文本。`, count, platform, platformStyle, keywordsStr, subject, fileHint, campaignHint, toolName)
 	} else {
 		schema = itemSchema
 		callDesc = fmt.Sprintf(`请为以下主题生成一篇适合%s发布的内容。
 风格要求：%s%s
 
-主题：%s%s
+主题：%s%s%s
 
 请直接调用 %s 工具提交结果，数据结构必须包含：
 - title（标题）
 - body（正文）
 - hashtags（推荐话题标签列表，3-5 个，不含 # 前缀）
-禁止输出工具调用以外的任何解释性文字、markdown 代码块或普通文本。`, platform, platformStyle, keywordsStr, subject, fileHint, toolName)
+禁止输出工具调用以外的任何解释性文字、markdown 代码块或普通文本。`, platform, platformStyle, keywordsStr, subject, fileHint, campaignHint, toolName)
 	}
 
 	systemContent := "你是一个专业的社交媒体内容创作助手，擅长为不同平台生成适配的优质内容。使用中文回复。必须且只能调用" + toolName + "工具返回结构化结果，禁止输出工具调用以外的任何解释性文字、markdown 代码块或普通文本。"
@@ -667,13 +717,22 @@ func hashtagsText(hashtags []string) string {
 }
 
 // GenerateContentVariants 生成多个内容变体。
-func GenerateContentVariants(topic, platform, style string, keywords []string, count int, planID, modelID string) ([]AIVariant, error) {
-	apiKey, baseURL, model, planName, _, err := ResolveModelConfig(planID, modelID)
+func GenerateContentVariants(topic, platform, style string, keywords []string, count int, planID, modelID, campaignID string) ([]AIVariant, error) {
+	apiKey, baseURL, model, planName, supportsVision, err := ResolveModelConfig(planID, modelID)
 	if err != nil {
 		return nil, err
 	}
 
-	messages, tools, toolChoice := buildContentVariantMessages(topic, platform, style, keywords, nil, count)
+	contextText, campaignFiles, _ := loadCampaignContext(campaignID)
+	files := make([]UploadedFile, 0, len(campaignFiles))
+	if supportsVision {
+		files = append(files, campaignFiles...)
+	}
+	if len(campaignFiles) > 0 && !supportsVision {
+		fmt.Printf("[ai_service] 活动宣发图已降级为仅文本注入（模型 %s 不支持视觉）\n", model)
+	}
+
+	messages, tools, toolChoice := buildContentVariantMessages(topic, platform, style, keywords, files, count, contextText)
 
 	resp, err := callChatCompletionsWithTools(apiKey, baseURL, model, messages, tools, toolChoice, 8000)
 	if err != nil {
@@ -814,10 +873,10 @@ func buildVisionContent(prompt string, files []UploadedFile) []interface{} {
 }
 
 // GenerateContentStream 流式生成内容，通过 channel 发送事件。
-func GenerateContentStream(topic, platform, style string, keywords []string, planID, modelID string, files []UploadedFile) (<-chan AIStreamEvent, error) {
+func GenerateContentStream(topic, platform, style string, keywords []string, planID, modelID string, files []UploadedFile, campaignID string) (<-chan AIStreamEvent, error) {
 	events := make(chan AIStreamEvent, 16)
 
-	apiKey, baseURL, model, planName, _, err := ResolveModelConfig(planID, modelID)
+	apiKey, baseURL, model, planName, supportsVision, err := ResolveModelConfig(planID, modelID)
 	if err != nil {
 		if aiErr, ok := err.(*AIGenerationError); ok {
 			go func() {
@@ -833,7 +892,23 @@ func GenerateContentStream(topic, platform, style string, keywords []string, pla
 		defer close(events)
 		events <- AIStreamEvent{Event: "log", Level: "info", Message: fmt.Sprintf("使用模型配置 %s（%s）", planName, model)}
 
-		messages, tools, toolChoice := buildContentVariantMessages(topic, platform, style, keywords, files, 1)
+		contextText, campaignFiles, campaignName := loadCampaignContext(campaignID)
+		allFiles := make([]UploadedFile, 0, len(files)+len(campaignFiles))
+		allFiles = append(allFiles, files...)
+		if supportsVision {
+			allFiles = append(allFiles, campaignFiles...)
+		}
+		if len(campaignFiles) > 0 {
+			if supportsVision {
+				events <- AIStreamEvent{Event: "log", Level: "info", Message: fmt.Sprintf("已注入活动「%s」创作背景（含 %d 张宣发图）", campaignName, len(campaignFiles))}
+			} else {
+				events <- AIStreamEvent{Event: "log", Level: "warn", Message: fmt.Sprintf("已注入活动「%s」创作背景（当前模型不支持视觉，宣发图已降级为仅文本注入）", campaignName)}
+			}
+		} else if contextText != "" {
+			events <- AIStreamEvent{Event: "log", Level: "info", Message: fmt.Sprintf("已注入活动「%s」创作背景", campaignName)}
+		}
+
+		messages, tools, toolChoice := buildContentVariantMessages(topic, platform, style, keywords, allFiles, 1, contextText)
 
 		if len(files) > 0 {
 			imgCount := 0
