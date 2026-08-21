@@ -27,6 +27,8 @@ export interface BaseEngine {
   zoomAt?(screenX: number, screenY: number, factor: number): void
   fitToViewport?(): void
   resizeBuffer?(width: number, height: number): void
+  onSelectionChange?(callback: (ids: string[]) => void): void
+  onDoubleClickEdit?(callback: (id: string) => void): void
 }
 
 export abstract class AbstractEngine implements BaseEngine {
@@ -81,6 +83,10 @@ export abstract class AbstractEngine implements BaseEngine {
   setDrawStyle(_color: string, _width: number): void {}
 
   onDrawComplete(_callback: (points: number[][], color: string, width: number) => void): void {}
+
+  onSelectionChange(_callback: (ids: string[]) => void): void {}
+
+  onDoubleClickEdit(_callback: (id: string) => void): void {}
 
   protected notifyLayerChange(id: string, patch: Partial<BaseLayer>): void {
     if (this.layerChangeCallback) {

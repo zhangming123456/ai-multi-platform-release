@@ -33,6 +33,8 @@ export class CanvasEngine extends AbstractEngine {
   private drawingPoints: number[][] = []
   private drawCompleteCallback:
     ((points: number[][], color: string, width: number) => void) | null = null
+  private selectionChangeCallback: ((ids: string[]) => void) | null = null
+  private doubleClickCallback: ((id: string) => void) | null = null
 
   constructor(canvas: HTMLCanvasElement, width: number, height: number) {
     super(canvas, { width, height })
@@ -109,6 +111,7 @@ export class CanvasEngine extends AbstractEngine {
     this.layerManager.removeLayer(id)
     if (this.selectedLayerId === id) {
       this.selectedLayerId = null
+      this.notifySelectionChange()
     }
     this.render()
   }
@@ -194,7 +197,10 @@ export class CanvasEngine extends AbstractEngine {
 
   clear(): void {
     this.layerManager.clear()
-    this.selectedLayerId = null
+    if (this.selectedLayerId) {
+      this.selectedLayerId = null
+      this.notifySelectionChange()
+    }
     this.ctx.setTransform(1, 0, 0, 1, 0, 0)
     this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height)
   }
@@ -260,12 +266,25 @@ export class CanvasEngine extends AbstractEngine {
     this.drawCompleteCallback = callback
   }
 
+  onSelectionChange(callback: (ids: string[]) => void): void {
+    this.selectionChangeCallback = callback
+  }
+
+  onDoubleClickEdit(callback: (id: string) => void): void {
+    this.doubleClickCallback = callback
+  }
+
+  private notifySelectionChange(): void {
+    this.selectionChangeCallback?.(this.selectedLayerId ? [this.selectedLayerId] : [])
+  }
+
   private bindEvents(): void {
     this.canvas.addEventListener('pointerdown', this.handlePointerDown)
     this.canvas.addEventListener('pointermove', this.handlePointerMove)
     this.canvas.addEventListener('pointerup', this.handlePointerUp)
     this.canvas.addEventListener('pointercancel', this.handlePointerUp)
     this.canvas.addEventListener('wheel', this.handleWheel, { passive: false })
+    this.canvas.addEventListener('dblclick', this.handleDoubleClick)
     this.canvas.style.touchAction = 'none'
   }
 
@@ -275,6 +294,7 @@ export class CanvasEngine extends AbstractEngine {
     this.canvas.removeEventListener('pointerup', this.handlePointerUp)
     this.canvas.removeEventListener('pointercancel', this.handlePointerUp)
     this.canvas.removeEventListener('wheel', this.handleWheel)
+    this.canvas.removeEventListener('dblclick', this.handleDoubleClick)
     this.canvas.style.touchAction = ''
   }
 
@@ -295,6 +315,7 @@ export class CanvasEngine extends AbstractEngine {
     const hitLayer = this.hitTest(point.x, point.y)
     if (hitLayer) {
       this.selectedLayerId = hitLayer.id
+      this.notifySelectionChange()
       this.dragState = {
         layerId: hitLayer.id,
         startPointerX: point.x,
@@ -304,7 +325,10 @@ export class CanvasEngine extends AbstractEngine {
       }
       this.canvas.style.cursor = 'grabbing'
     } else {
-      this.selectedLayerId = null
+      if (this.selectedLayerId !== null) {
+        this.selectedLayerId = null
+        this.notifySelectionChange()
+      }
       this.panStart = { x: e.clientX, y: e.clientY }
       this.canvas.style.cursor = 'grabbing'
     }
@@ -327,8 +351,16 @@ export class CanvasEngine extends AbstractEngine {
       if (layer) {
         const dx = point.x - this.dragState.startPointerX
         const dy = point.y - this.dragState.startPointerY
-        layer.x = this.dragState.startLayerX + dx
-        layer.y = this.dragState.startLayerY + dy
+        let nx = this.dragState.startLayerX + dx
+        let ny = this.dragState.startLayerY + dy
+        if (layer.type !== 'draw') {
+          const w = layer.width * Math.abs(layer.scaleX)
+          const h = layer.height * Math.abs(layer.scaleY)
+          nx = clamp(nx, 0, Math.max(0, this.options.width - w))
+          ny = clamp(ny, 0, Math.max(0, this.options.height - h))
+        }
+        layer.x = nx
+        layer.y = ny
         this.notifyLayerChange(layer.id, { x: layer.x, y: layer.y })
         this.render()
       }
@@ -368,7 +400,16 @@ export class CanvasEngine extends AbstractEngine {
     this.zoomAt(screenX, screenY, factor)
   }
 
-  private screenToWorld(e: PointerEvent): { x: number; y: number } {
+  private handleDoubleClick = (e: MouseEvent): void => {
+    if (this.mode === EditorMode.Draw || !this.doubleClickCallback) return
+    const point = this.screenToWorld(e)
+    const layer = this.hitTest(point.x, point.y)
+    if (layer && layer.type === 'text') {
+      this.doubleClickCallback(layer.id)
+    }
+  }
+
+  private screenToWorld(e: { clientX: number; clientY: number }): { x: number; y: number } {
     const rect = this.canvas.getBoundingClientRect()
     const sx = e.clientX - rect.left
     const sy = e.clientY - rect.top

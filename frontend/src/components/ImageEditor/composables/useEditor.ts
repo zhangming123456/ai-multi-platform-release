@@ -34,6 +34,7 @@ export function useEditor() {
 
   const layers = ref<BaseLayer[]>([]) as Ref<BaseLayer[]>
   const originalImage = ref<{ src: string; width: number; height: number } | null>(null)
+  let filterBaseSrc: string | null = null
   const { pushSnapshot, undo, redo, canUndo, canRedo, clear: clearHistory } = useHistory()
 
   const capabilities = computed<EngineCapabilities>(() => {
@@ -64,6 +65,9 @@ export function useEditor() {
         Object.assign(layer, patch)
         eng.updateLayer(id, patch)
       }
+    })
+    eng.onSelectionChange?.((ids) => {
+      state.value.activeLayerId = ids.length === 1 ? ids[0] : null
     })
   }
 
@@ -146,6 +150,7 @@ export function useEditor() {
   function clearAll() {
     if (!engine.value) return
     pushSnapshot(layers.value)
+    filterBaseSrc = null
     layers.value = []
     engine.value.clear()
     state.value.activeLayerId = null
@@ -168,6 +173,7 @@ export function useEditor() {
     if (result.src === bg.image!.src) return
 
     pushSnapshot(layers.value)
+    filterBaseSrc = null
     bg.image = {
       src: result.src,
       naturalWidth: result.width,
@@ -175,45 +181,88 @@ export function useEditor() {
     }
     bg.width = result.width
     bg.height = result.height
+    bg.x = 0
+    bg.y = 0
+    bg.scaleX = 1
+    bg.scaleY = 1
     state.value.canvasWidth = result.width
     state.value.canvasHeight = result.height
     engine.value.setSize(result.width, result.height)
     engine.value.fitToViewport?.()
-    engine.value.updateLayer(bg.id, { width: result.width, height: result.height, image: bg.image })
+    engine.value.updateLayer(bg.id, {
+      x: 0,
+      y: 0,
+      width: result.width,
+      height: result.height,
+      scaleX: 1,
+      scaleY: 1,
+      image: bg.image,
+    })
   }
 
   async function applyCrop(rect: CropRect) {
     if (!engine.value) return
     const bg = getBaseImageLayer()
     if (!bg) return
-    const src = await cropImage(bg.image!.src, rect)
+    const sx = (rect.x - bg.x) / bg.scaleX
+    const sy = (rect.y - bg.y) / bg.scaleY
+    const sw = rect.width / bg.scaleX
+    const sh = rect.height / bg.scaleY
+    const src = await cropImage(filterBaseSrc || bg.image!.src, {
+      x: sx,
+      y: sy,
+      width: sw,
+      height: sh,
+    })
     const width = Math.max(1, Math.round(rect.width))
     const height = Math.max(1, Math.round(rect.height))
 
     pushSnapshot(layers.value)
+    filterBaseSrc = null
     bg.image = {
       src,
       naturalWidth: width,
       naturalHeight: height,
     }
+    bg.x = 0
+    bg.y = 0
     bg.width = width
     bg.height = height
+    bg.scaleX = 1
+    bg.scaleY = 1
     state.value.canvasWidth = width
     state.value.canvasHeight = height
     engine.value.setSize(width, height)
     engine.value.fitToViewport?.()
-    engine.value.updateLayer(bg.id, { width, height, image: bg.image })
+    engine.value.updateLayer(bg.id, {
+      x: 0,
+      y: 0,
+      width,
+      height,
+      scaleX: 1,
+      scaleY: 1,
+      image: bg.image,
+    })
   }
 
   async function applyFilter(type: FilterType) {
     if (!engine.value) return
     const bg = getBaseImageLayer()
     if (!bg) return
-    const src = await filterImage(bg.image!.src, type)
-    if (src === bg.image!.src) return
+    const baseSrc = filterBaseSrc || bg.image!.src
+    const src = await filterImage(baseSrc, type)
 
-    pushSnapshot(layers.value)
-    bg.image = { ...bg.image!, src }
+    if (type === 'none') {
+      if (bg.image!.src === baseSrc) return
+      pushSnapshot(layers.value)
+      bg.image = { ...bg.image!, src: baseSrc }
+      filterBaseSrc = null
+    } else {
+      if (src === bg.image!.src) return
+      pushSnapshot(layers.value)
+      bg.image = { ...bg.image!, src }
+      filterBaseSrc = filterBaseSrc || baseSrc
+    }
     engine.value.updateLayer(bg.id, { image: bg.image })
   }
 
@@ -269,6 +318,7 @@ export function useEditor() {
     if (!original) return
 
     pushSnapshot(layers.value)
+    filterBaseSrc = null
     layers.value = [
       {
         id: 'bg-0',
@@ -303,6 +353,41 @@ export function useEditor() {
     return layers.value.find((l) => l.id === 'bg-0' && l.type === 'image')
   }
 
+  function moveBaseImage(dx: number, dy: number): void {
+    if (!engine.value) return
+    const bg = getBaseImageLayer()
+    if (!bg) return
+    const scaledW = bg.width * Math.abs(bg.scaleX)
+    const scaledH = bg.height * Math.abs(bg.scaleY)
+    const minX = Math.min(0, state.value.canvasWidth - scaledW)
+    const minY = Math.min(0, state.value.canvasHeight - scaledH)
+    const nx = clamp(bg.x + dx, minX, 0)
+    const ny = clamp(bg.y + dy, minY, 0)
+    if (nx === bg.x && ny === bg.y) return
+    bg.x = nx
+    bg.y = ny
+    engine.value.updateLayer(bg.id, { x: nx, y: ny })
+  }
+
+  function scaleBaseImage(factor: number): void {
+    if (!engine.value) return
+    const bg = getBaseImageLayer()
+    if (!bg) return
+    const next = clamp(bg.scaleX * factor, 1, 4)
+    if (next === bg.scaleX) return
+    const canvasW = state.value.canvasWidth
+    const canvasH = state.value.canvasHeight
+    const centerX = bg.x + (bg.width * bg.scaleX) / 2
+    const centerY = bg.y + (bg.height * bg.scaleY) / 2
+    bg.scaleX = next
+    bg.scaleY = next
+    const scaledW = bg.width * next
+    const scaledH = bg.height * next
+    bg.x = clamp(centerX - scaledW / 2, Math.min(0, canvasW - scaledW), 0)
+    bg.y = clamp(centerY - scaledH / 2, Math.min(0, canvasH - scaledH), 0)
+    engine.value.updateLayer(bg.id, { x: bg.x, y: bg.y, scaleX: next, scaleY: next })
+  }
+
   return {
     engine,
     state,
@@ -329,7 +414,13 @@ export function useEditor() {
     addTextLayer,
     addStickerLayer,
     resetEditor,
+    moveBaseImage,
+    scaleBaseImage,
     clearHistory,
     syncLayersToEngine,
   }
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(Math.max(value, min), max)
 }

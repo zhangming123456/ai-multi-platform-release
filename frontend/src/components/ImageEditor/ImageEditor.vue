@@ -96,6 +96,10 @@
           <IconRefresh :size="14" />
           <span>重置</span>
         </button>
+        <button class="editor-btn" :disabled="!canDeleteLayer" @click="handleDeleteLayer">
+          <IconDelete :size="14" />
+          <span>删除</span>
+        </button>
         <button class="editor-btn" @click="clearAll">
           <IconDelete :size="14" />
           <span>清空</span>
@@ -116,7 +120,12 @@
         @style-change="handleDrawStyle"
         @clear="clearDrawings"
       />
-      <PanelText v-else-if="state.mode === EditorMode.Text" @add="handleAddText" />
+      <PanelText
+        v-else-if="state.mode === EditorMode.Text"
+        :edit-layer="editingTextLayer"
+        @add="handleAddText"
+        @update="handleUpdateText"
+      />
       <PanelSticker v-else-if="state.mode === EditorMode.Sticker" @add="handleAddSticker" />
       <PanelFilter v-else-if="state.mode === EditorMode.Filter" @apply="handleApplyFilter" />
       <PanelCompress v-else-if="compressVisible" @export="handleCompressExport" />
@@ -130,6 +139,8 @@
       :viewport="state.viewport"
       @apply="handleCropApply"
       @cancel="handleCropCancel"
+      @pan-image="moveBaseImage"
+      @zoom-image="scaleBaseImage"
     />
 
     <div class="image-editor__footer">
@@ -226,6 +237,8 @@ const {
   setMode,
   addLayer,
   removeLayer,
+  updateLayer,
+  selectLayer,
   undoAction,
   redoAction,
   canUndo,
@@ -240,8 +253,25 @@ const {
   addTextLayer,
   addStickerLayer,
   resetEditor,
+  moveBaseImage,
+  scaleBaseImage,
   syncLayersToEngine,
 } = useEditor()
+
+const editingTextLayer = computed(() => {
+  const id = state.value.activeLayerId
+  if (!id) return null
+  const layer = layers.value.find((l) => l.id === id)
+  if (!layer || layer.type !== 'text') return null
+  return layer
+})
+
+const canDeleteLayer = computed(() => {
+  const id = state.value.activeLayerId
+  if (!id) return false
+  const layer = layers.value.find((l) => l.id === id)
+  return !!layer && layer.type !== 'image'
+})
 
 const showBottomPanel = computed(() => {
   return (
@@ -267,6 +297,7 @@ async function initEngine(type: EngineType) {
   setEngine(eng)
 
   bindDrawComplete(eng)
+  bindDoubleClick(eng)
   eng.setDrawStyle?.(drawColor.value, drawWidth.value)
   setMode(state.value.mode)
   if (oldEngine) {
@@ -328,6 +359,15 @@ function bindDrawComplete(eng: NonNullable<typeof engine.value>) {
   })
 }
 
+function bindDoubleClick(eng: NonNullable<typeof engine.value>) {
+  eng.onDoubleClickEdit?.((id) => {
+    const layer = layers.value.find((l) => l.id === id)
+    if (!layer || layer.type !== 'text') return
+    selectLayer(id)
+    setMode(EditorMode.Text)
+  })
+}
+
 async function handleEngineSwitch(type: EngineType) {
   if (type === engineType.value || !canvasRef.value) return
   handleCanvasRect()
@@ -336,6 +376,7 @@ async function handleEngineSwitch(type: EngineType) {
   engineType.value = type
   setEngine(eng)
   bindDrawComplete(eng)
+  bindDoubleClick(eng)
   eng.setDrawStyle?.(drawColor.value, drawWidth.value)
   eng.setSize(state.value.canvasWidth, state.value.canvasHeight)
   setMode(state.value.mode)
@@ -376,6 +417,36 @@ function handleAddText(options: {
   bold: boolean
 }) {
   addTextLayer(options)
+}
+
+function handleUpdateText(
+  id: string,
+  options: { content: string; fontSize: number; color: string; bold: boolean },
+) {
+  const layer = layers.value.find((l) => l.id === id)
+  if (!layer || layer.type !== 'text') return
+  layer.text = { ...layer.text!, ...options }
+  updateLayer(id, { text: layer.text })
+}
+
+function handleDeleteLayer() {
+  const id = state.value.activeLayerId
+  if (!id) return
+  const layer = layers.value.find((l) => l.id === id)
+  if (!layer || layer.type === 'image') return
+  removeLayer(id)
+}
+
+function handleKeydown(e: KeyboardEvent) {
+  if (e.key !== 'Delete' && e.key !== 'Backspace') return
+  const target = e.target as HTMLElement | null
+  if (
+    target &&
+    (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)
+  ) {
+    return
+  }
+  handleDeleteLayer()
 }
 
 function handleAddSticker(url: string) {
@@ -484,9 +555,13 @@ function handledDestroy() {
 onMounted(async () => {
   await handleInit()
   setupResizeObserver()
+  window.addEventListener('keydown', handleKeydown)
 })
 
-onBeforeUnmount(handledDestroy)
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', handleKeydown)
+  handledDestroy()
+})
 
 defineExpose({
   handleExport,

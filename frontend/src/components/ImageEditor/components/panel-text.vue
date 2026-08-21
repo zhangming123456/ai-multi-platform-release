@@ -2,7 +2,12 @@
   <div class="panel">
     <div class="panel__row">
       <span class="panel__label">内容</span>
-      <a-input v-model="content" placeholder="请输入文字" size="small" @press-enter="handleAdd" />
+      <a-input
+        v-model="content"
+        placeholder="请输入文字"
+        size="small"
+        @press-enter="handleSubmit"
+      />
     </div>
     <div class="panel__row">
       <span class="panel__label">字号</span>
@@ -27,18 +32,24 @@
       <a-switch v-model="bold" size="small" />
     </div>
     <div class="panel__actions">
-      <a-button type="primary" size="small" :disabled="!content.trim()" @click="handleAdd"
-        >添加</a-button
-      >
+      <a-button type="primary" size="small" :disabled="!content.trim()" @click="handleSubmit">{{
+        editingId ? '更新' : '添加'
+      }}</a-button>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
+import type { BaseLayer } from '../types'
+
+const props = defineProps<{
+  editLayer?: BaseLayer | null
+}>()
 
 const emit = defineEmits<{
   add: [options: { content: string; fontSize: number; color: string; bold: boolean }]
+  update: [id: string, options: { content: string; fontSize: number; color: string; bold: boolean }]
 }>()
 
 const swatches = [
@@ -56,17 +67,38 @@ const content = ref('')
 const fontSize = ref(36)
 const color = ref('#1d1d1f')
 const bold = ref(false)
+const editingId = ref<string | null>(null)
 
-function handleAdd() {
+watch(
+  () => props.editLayer,
+  (val) => {
+    if (val && val.type === 'text' && val.text) {
+      editingId.value = val.id
+      content.value = val.text.content
+      fontSize.value = val.text.fontSize
+      color.value = val.text.color
+      bold.value = val.text.bold
+    }
+  },
+  { immediate: true },
+)
+
+function handleSubmit() {
   const text = content.value.trim()
   if (!text) return
-  emit('add', {
+  const options = {
     content: text,
     fontSize: fontSize.value,
     color: color.value,
     bold: bold.value,
-  })
+  }
+  if (editingId.value) {
+    emit('update', editingId.value, options)
+  } else {
+    emit('add', options)
+  }
   content.value = ''
+  editingId.value = null
 }
 </script>
 

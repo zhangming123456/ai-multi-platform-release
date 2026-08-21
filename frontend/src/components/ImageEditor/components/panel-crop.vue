@@ -1,6 +1,6 @@
 <template>
-  <div class="crop-overlay">
-    <div class="crop-box" :style="boxStyle" @pointerdown="startMove">
+  <div class="crop-overlay" @pointerdown="startImagePan" @wheel.prevent="handleImageWheel">
+    <div class="crop-box" :style="boxStyle" @pointerdown.stop="startMove">
       <span
         v-for="h in handles"
         :key="h"
@@ -15,7 +15,7 @@
       <div class="crop-size">{{ Math.round(box.w) }} × {{ Math.round(box.h) }}</div>
     </div>
 
-    <div class="crop-controls">
+    <div class="crop-controls" @pointerdown.stop>
       <a-radio-group v-model="ratio" type="button" size="small">
         <a-radio value="free">自由</a-radio>
         <a-radio value="1:1">1:1</a-radio>
@@ -31,7 +31,7 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { reactive, ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import type { CropRect } from '../utils/image'
 import type { Viewport } from '../types'
 
@@ -45,9 +45,11 @@ const props = defineProps<{
 const emit = defineEmits<{
   apply: [rect: CropRect]
   cancel: []
+  panImage: [dx: number, dy: number]
+  zoomImage: [factor: number]
 }>()
 
-const handles = ['nw', 'ne', 'sw', 'se'] as const
+const handles = ['nw', 'n', 'ne', 'w', 'e', 'sw', 's', 'se'] as const
 const box = reactive({ x: 0, y: 0, w: 0, h: 0 })
 const ratio = ref('free')
 const canvasRect = reactive({ left: 0, top: 0, width: 0, height: 0 })
@@ -91,6 +93,8 @@ let dragState: {
   orig: { x: number; y: number; w: number; h: number }
 } | null = null
 
+let imagePanState: { startX: number; startY: number } | null = null
+
 onMounted(() => {
   updateCanvasRect()
   const rect = contentRect.value
@@ -98,6 +102,35 @@ onMounted(() => {
   box.y = rect.top + rect.height * 0.05
   box.w = rect.width * 0.9
   box.h = rect.height * 0.9
+})
+
+watch(ratio, () => {
+  const r = aspectRatio.value
+  if (r <= 0) return
+  const rect = contentRect.value
+  const cx = box.x + box.w / 2
+  const cy = box.y + box.h / 2
+  const maxW = rect.width
+  const maxH = rect.height
+  let w = box.w
+  let h = box.h
+  if (w / h > r) {
+    h = w / r
+  } else {
+    w = h * r
+  }
+  if (w > maxW) {
+    w = maxW
+    h = w / r
+  }
+  if (h > maxH) {
+    h = maxH
+    w = h * r
+  }
+  box.w = w
+  box.h = h
+  box.x = clamp(cx - w / 2, rect.left, rect.left + maxW - w)
+  box.y = clamp(cy - h / 2, rect.top, rect.top + maxH - h)
 })
 
 function updateCanvasRect() {
@@ -146,36 +179,84 @@ function handleDrag(e: PointerEvent) {
   }
 }
 
-function resizeBox(handle: string, _dx: number, dy: number) {
+function resizeBox(handle: string, dx: number, dy: number) {
   const orig = dragState!.orig
   const ratioVal = aspectRatio.value
   const rect = contentRect.value
-  let { x, y, w } = orig
-  let h: number
+  const minSize = 20
+  const maxW = rect.width
+  const maxH = rect.height
 
-  if (handle.startsWith('n')) {
-    h = clamp(orig.h - dy, 10, rect.height)
-    y = orig.y + (orig.h - h)
-  } else {
-    h = clamp(orig.h + dy, 10, rect.height)
-  }
+  let left = orig.x
+  let top = orig.y
+  let right = orig.x + orig.w
+  let bottom = orig.y + orig.h
+
+  if (handle.includes('w')) left = orig.x + dx
+  if (handle.includes('e')) right = orig.x + orig.w + dx
+  if (handle.includes('n')) top = orig.y + dy
+  if (handle.includes('s')) bottom = orig.y + orig.h + dy
+
+  let w = right - left
+  let h = bottom - top
 
   if (ratioVal > 0) {
-    w = h * ratioVal
+    const isWidthSide = handle.includes('w') || handle.includes('e')
+    if (isWidthSide) {
+      h = w / ratioVal
+      if (handle.includes('n')) top = bottom - h
+      else bottom = top + h
+    } else {
+      w = h * ratioVal
+      if (handle.includes('w')) left = right - w
+      else right = left + w
+    }
   }
 
-  if (handle.endsWith('w')) {
-    x = orig.x + (orig.w - w)
-    w = clamp(w, 10, rect.width)
-    if (x < rect.left) {
-      x = rect.left
+  if (w < minSize) {
+    if (handle.includes('w')) left = right - minSize
+    else right = left + minSize
+    w = right - left
+  }
+  if (h < minSize) {
+    if (handle.includes('n')) top = bottom - minSize
+    else bottom = top + minSize
+  }
+
+  const cl = rect.left
+  const ct = rect.top
+  const cr = rect.left + maxW
+  const cb = rect.top + maxH
+
+  if (ratioVal > 0) {
+    if (left < cl) left = cl
+    if (top < ct) top = ct
+    const rightBound = Math.min(right, cr)
+    const bottomBound = Math.min(bottom, cb)
+    const targetW = Math.min(w, rightBound - left, (bottomBound - top) * ratioVal)
+    w = targetW
+    h = targetW / ratioVal
+    if (w < minSize || h < minSize) {
+      left = cl + maxW * 0.05
+      top = ct + maxH * 0.05
+      w = maxW * 0.9
+      h = w / ratioVal
+      if (h > maxH * 0.9) {
+        h = maxH * 0.9
+        w = h * ratioVal
+      }
     }
   } else {
-    w = clamp(w, 10, rect.width)
+    if (left < cl) left = cl
+    if (top < ct) top = ct
+    if (right > cr) right = cr
+    if (bottom > cb) bottom = cb
+    w = right - left
+    h = bottom - top
   }
 
-  box.x = clamp(x, rect.left, rect.left + rect.width - w)
-  box.y = clamp(y, rect.top, rect.top + rect.height - h)
+  box.x = left
+  box.y = top
   box.w = w
   box.h = h
 }
@@ -184,6 +265,33 @@ function endDrag() {
   dragState = null
   window.removeEventListener('pointermove', handleDrag)
   window.removeEventListener('pointerup', endDrag)
+}
+
+function startImagePan(e: PointerEvent) {
+  if (e.target !== e.currentTarget) return
+  imagePanState = { startX: e.clientX, startY: e.clientY }
+  window.addEventListener('pointermove', handleImagePan)
+  window.addEventListener('pointerup', endImagePan)
+}
+
+function handleImagePan(e: PointerEvent) {
+  if (!imagePanState) return
+  const dx = e.clientX - imagePanState.startX
+  const dy = e.clientY - imagePanState.startY
+  imagePanState.startX = e.clientX
+  imagePanState.startY = e.clientY
+  emit('panImage', dx, dy)
+}
+
+function endImagePan() {
+  imagePanState = null
+  window.removeEventListener('pointermove', handleImagePan)
+  window.removeEventListener('pointerup', endImagePan)
+}
+
+function handleImageWheel(e: WheelEvent) {
+  const factor = e.deltaY < 0 ? 1.1 : 0.9
+  emit('zoomImage', factor)
 }
 
 function handleApply() {
@@ -205,6 +313,7 @@ function handleApply() {
 
 onBeforeUnmount(() => {
   endDrag()
+  endImagePan()
 })
 
 function clamp(value: number, min: number, max: number) {
@@ -234,10 +343,23 @@ function clamp(value: number, min: number, max: number) {
   background: #007aff;
 }
 
+.crop-handle::after {
+  content: '';
+  position: absolute;
+  inset: -8px;
+}
+
 .crop-handle--nw {
   top: -5px;
   left: -5px;
   cursor: nwse-resize;
+}
+
+.crop-handle--n {
+  top: -5px;
+  left: 50%;
+  transform: translateX(-50%);
+  cursor: ns-resize;
 }
 
 .crop-handle--ne {
@@ -246,10 +368,31 @@ function clamp(value: number, min: number, max: number) {
   cursor: nesw-resize;
 }
 
+.crop-handle--w {
+  top: 50%;
+  left: -5px;
+  transform: translateY(-50%);
+  cursor: ew-resize;
+}
+
+.crop-handle--e {
+  top: 50%;
+  right: -5px;
+  transform: translateY(-50%);
+  cursor: ew-resize;
+}
+
 .crop-handle--sw {
   bottom: -5px;
   left: -5px;
   cursor: nesw-resize;
+}
+
+.crop-handle--s {
+  bottom: -5px;
+  left: 50%;
+  transform: translateX(-50%);
+  cursor: ns-resize;
 }
 
 .crop-handle--se {
@@ -261,6 +404,7 @@ function clamp(value: number, min: number, max: number) {
 .crop-rule {
   position: absolute;
   background: rgba(255, 255, 255, 0.5);
+  pointer-events: none;
 }
 
 .crop-rule--v1 {
@@ -302,6 +446,7 @@ function clamp(value: number, min: number, max: number) {
   color: #ffffff;
   font-size: 11px;
   white-space: nowrap;
+  pointer-events: none;
 }
 
 .crop-controls {

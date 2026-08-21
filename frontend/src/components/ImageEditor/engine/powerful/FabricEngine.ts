@@ -15,6 +15,8 @@ export class FabricEngine extends AbstractEngine {
   private drawWidth = 4
   private drawCompleteCallback:
     ((points: number[][], color: string, width: number) => void) | null = null
+  private selectionChangeCallback: ((ids: string[]) => void) | null = null
+  private doubleClickCallback: ((id: string) => void) | null = null
   private generation = 0
 
   constructor(canvas: HTMLCanvasElement, width: number, height: number) {
@@ -28,11 +30,25 @@ export class FabricEngine extends AbstractEngine {
       preserveObjectStacking: true,
     })
 
-    bindFabricEvents(this.fabricCanvas, (id, patch) => {
-      const layer = this.layers.get(id)
-      if (layer) {
-        Object.assign(layer, patch)
-        this.notifyLayerChange(id, patch)
+    bindFabricEvents(
+      this.fabricCanvas,
+      (id, patch) => {
+        const layer = this.layers.get(id)
+        if (layer) {
+          Object.assign(layer, patch)
+          this.notifyLayerChange(id, patch)
+        }
+      },
+      (ids) => {
+        this.selectionChangeCallback?.(ids)
+      },
+      () => ({ width: this.options.width, height: this.options.height }),
+    )
+
+    this.fabricCanvas.on('mouse:dblclick', (e) => {
+      const obj = e.target as FabricObject & { id?: string; dataLayerType?: string }
+      if (obj && obj.id && obj.dataLayerType === 'text' && this.doubleClickCallback) {
+        this.doubleClickCallback(obj.id)
       }
     })
 
@@ -125,6 +141,7 @@ export class FabricEngine extends AbstractEngine {
     const gen = this.generation
     const fabricObj = await this.track(toFabricObject(layer))
     if (this.generation !== gen || !fabricObj) return
+    if (!this.layers.has(layer.id)) return
     ;(fabricObj as FabricObject & { id?: string }).id = layer.id
     this.addObjectWithZIndex(layer, fabricObj)
     this.normalizePathPosition(fabricObj)
@@ -156,6 +173,7 @@ export class FabricEngine extends AbstractEngine {
       this.fabricCanvas.requestRenderAll()
       const newObj = await this.track(toFabricObject(layer))
       if (newObj) {
+        if (!this.layers.has(layer.id)) return
         ;(newObj as FabricObject & { id?: string }).id = layer.id
         this.addObjectWithZIndex(layer, newObj)
         this.normalizePathPosition(newObj)
@@ -175,13 +193,20 @@ export class FabricEngine extends AbstractEngine {
           scaleY: layer.scaleY,
         })
       } else {
-        fabricObj.set({
+        const style: Record<string, unknown> = {
           left: layer.x + ((fabricObj.width || 0) * Math.abs(layer.scaleX || 1)) / 2,
           top: layer.y + ((fabricObj.height || 0) * Math.abs(layer.scaleY || 1)) / 2,
           angle: layer.rotate,
           scaleX: layer.scaleX,
           scaleY: layer.scaleY,
-        })
+        }
+        if (layer.type === 'text' && layer.text) {
+          style.text = layer.text.content
+          style.fontSize = layer.text.fontSize
+          style.fill = layer.text.color
+          style.fontWeight = layer.text.bold ? 'bold' : 'normal'
+        }
+        fabricObj.set(style)
       }
       this.fabricCanvas.requestRenderAll()
     }
@@ -311,6 +336,14 @@ export class FabricEngine extends AbstractEngine {
 
   onDrawComplete(callback: (points: number[][], color: string, width: number) => void): void {
     this.drawCompleteCallback = callback
+  }
+
+  onSelectionChange(callback: (ids: string[]) => void): void {
+    this.selectionChangeCallback = callback
+  }
+
+  onDoubleClickEdit(callback: (id: string) => void): void {
+    this.doubleClickCallback = callback
   }
 
   private extractPathPoints(path: FabricPath): number[][] {
