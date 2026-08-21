@@ -328,7 +328,7 @@ func writeAILog(timestamp, suffix, callType, baseURL, model string, stream bool,
 	if err := os.MkdirAll(logDir, 0755); err != nil {
 		return
 	}
-	filename := fmt.Sprintf("%s_%s.%s.log", timestamp, callType, suffix)
+	filename := fmt.Sprintf("%s_%s.%s.json", timestamp, callType, suffix)
 	path := filepath.Join(logDir, filename)
 	entry := map[string]interface{}{
 		"timestamp": time.Now().Format("2006-01-02T15:04:05.000Z07:00"),
