@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -132,6 +133,23 @@ type UploadedFile struct {
 	Data     string `json:"data"`
 	MimeType string `json:"mime_type"`
 	URL      string `json:"url,omitempty"`
+}
+
+// contentModelRequestQueue 串行执行内容创作模型请求，避免多平台或多用户同时触发模型限流。
+var (
+	contentModelRequestQueue = make(chan func(), 64)
+	contentModelQueueOnce    sync.Once
+)
+
+func enqueueContentModelRequest(job func()) {
+	contentModelQueueOnce.Do(func() {
+		go func() {
+			for queuedJob := range contentModelRequestQueue {
+				queuedJob()
+			}
+		}()
+	})
+	contentModelRequestQueue <- job
 }
 
 var platformStyleMap = map[string]string{
@@ -337,16 +355,46 @@ func writeAILog(timestamp, suffix, callType, baseURL, model string, stream bool,
 		"model":     model,
 		"stream":    stream,
 		"body_size": len(body),
-		"body":      string(abbreviateBase64InJSON(body)),
+		"body":      formatAILogBody(body),
 	}
 	if suffix == "response" {
 		entry["status_code"] = statusCode
 	}
-	data, err := json.Marshal(entry)
+	data, err := json.MarshalIndent(entry, "", "  ")
 	if err != nil {
 		return
 	}
 	_ = os.WriteFile(path, append(data, '\n'), 0644)
+}
+
+// formatAILogBody 将普通 JSON 和 SSE 响应解析为对象/数组，避免日志 body 变成转义字符串。
+func formatAILogBody(body []byte) interface{} {
+	abbreviated := abbreviateBase64InJSON(body)
+	var value interface{}
+	if json.Unmarshal(abbreviated, &value) == nil {
+		return value
+	}
+
+	lines := strings.Split(string(abbreviated), "\n")
+	chunks := make([]interface{}, 0)
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "data:") {
+			continue
+		}
+		data := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+		if data == "" || data == "[DONE]" {
+			continue
+		}
+		var chunk interface{}
+		if json.Unmarshal([]byte(data), &chunk) == nil {
+			chunks = append(chunks, chunk)
+		}
+	}
+	if len(chunks) > 0 {
+		return chunks
+	}
+	return string(abbreviated)
 }
 
 // abbreviateBase64InJSON 将 JSON body 中的长 base64 字符串（含 data URI）替换为 [base64:<长度>] 占位符，便于日志阅读。
@@ -702,8 +750,7 @@ func buildContentVariantMessages(topic, platform, style string, keywords []strin
 
 主题：%s%s%s
 
-请直接调用 %s 工具提交结果，每个变体必须包含 title（标题）、body（正文）、hashtags（推荐话题标签列表，不含 # 前缀）。
-禁止输出工具调用以外的任何解释性文字、markdown 代码块或普通文本。`, count, platform, platformStyle, keywordsStr, subject, fileHint, campaignHint, toolName)
+			请优先调用 %s 工具提交结果；如果当前模型不支持工具调用，则只输出符合上述结构的合法 JSON，不要输出解释文字。每个变体必须包含 title（标题）、body（正文）、hashtags（推荐话题标签列表，不含 # 前缀）。`, count, platform, platformStyle, keywordsStr, subject, fileHint, campaignHint, toolName)
 	} else {
 		schema = itemSchema
 		callDesc = fmt.Sprintf(`请为以下主题生成一篇适合%s发布的内容。
@@ -711,14 +758,14 @@ func buildContentVariantMessages(topic, platform, style string, keywords []strin
 
 主题：%s%s%s
 
-请直接调用 %s 工具提交结果，数据结构必须包含：
+			请优先调用 %s 工具提交结果；如果当前模型不支持工具调用，则只输出符合上述结构的合法 JSON，不要输出解释文字。数据结构必须包含：
 - title（标题）
 - body（正文）
 - hashtags（推荐话题标签列表，3-5 个，不含 # 前缀）
-禁止输出工具调用以外的任何解释性文字、markdown 代码块或普通文本。`, platform, platformStyle, keywordsStr, subject, fileHint, campaignHint, toolName)
+			`, platform, platformStyle, keywordsStr, subject, fileHint, campaignHint, toolName)
 	}
 
-	systemContent := "你是一个专业的社交媒体内容创作助手，擅长为不同平台生成适配的优质内容。使用中文回复。必须且只能调用" + toolName + "工具返回结构化结果，禁止输出工具调用以外的任何解释性文字、markdown 代码块或普通文本。"
+	systemContent := "你是一个专业的社交媒体内容创作助手，擅长为不同平台生成适配的优质内容。使用中文回复。优先调用" + toolName + "工具返回结构化结果；如果当前模型不支持工具调用，则只返回符合工具参数结构的合法 JSON，禁止输出解释性文字或 markdown。"
 	if pt := loadPromptTemplate(platform); pt != "" {
 		systemContent = pt
 	}
@@ -976,6 +1023,60 @@ func aiCallError(planName string, err error) error {
 	}
 }
 
+// generateContentVariantsFallback 在模型不支持 function calling 时使用纯 JSON 请求兜底。
+func generateContentVariantsFallback(apiKey, baseURL, model string, messages []chatMessage, count int) ([]AIVariant, error) {
+	fallbackMessages := append([]chatMessage(nil), messages...)
+	fallbackMessages = append(fallbackMessages, chatMessage{
+		Role: "user",
+		Content: fmt.Sprintf("当前接口不支持工具调用。请只返回合法 JSON，不要 markdown 或解释文字。%s",
+			contentVariantJSONFormat(count)),
+	})
+	resp, err := callChatCompletionsWithTools(apiKey, baseURL, model, fallbackMessages, nil, nil, 8000)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
+		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
+	}
+	var result struct {
+		Choices []struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+		} `json:"choices"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, err
+	}
+	if len(result.Choices) == 0 {
+		return nil, fmt.Errorf("模型无返回内容")
+	}
+	content := stripCodeFence(strings.TrimSpace(result.Choices[0].Message.Content))
+	if count > 1 {
+		if variants, ok := parseContentVariantsArgs(content); ok {
+			return variants, nil
+		}
+	} else if variant, ok := parseContentVariantArgs(content); ok {
+		return []AIVariant{variant}, nil
+	}
+	if variants, ok := parseContentVariantsArgs(content); ok {
+		return variants, nil
+	}
+	if variant, ok := parseContentVariantArgs(content); ok {
+		return []AIVariant{variant}, nil
+	}
+	return nil, fmt.Errorf("纯 JSON 兜底响应格式异常")
+}
+
+func contentVariantJSONFormat(count int) string {
+	if count > 1 {
+		return fmt.Sprintf("返回 {\"variants\":[...]}，数组中包含 %d 个对象，每个对象包含 title、body、hashtags。", count)
+	}
+	return "返回 {\"title\":\"标题\",\"body\":\"正文\",\"hashtags\":[\"话题\"]}。"
+}
+
 func toString(v interface{}) string {
 	if v == nil {
 		return ""
@@ -1040,6 +1141,31 @@ func buildVisionContent(prompt string, files []UploadedFile) []interface{} {
 	return parts
 }
 
+// normalizeContentFiles 将内容创作中的文件链接统一下载为 Base64，避免模型无法访问内网或本地链接。
+func normalizeContentFiles(files []UploadedFile) ([]UploadedFile, []error) {
+	normalized := make([]UploadedFile, 0, len(files))
+	errs := make([]error, 0)
+	for _, file := range files {
+		if file.Data != "" {
+			file.URL = ""
+			normalized = append(normalized, file)
+			continue
+		}
+		if file.URL == "" {
+			errs = append(errs, fmt.Errorf("文件缺少 data 和 url"))
+			continue
+		}
+		loaded, err := loadImageAsUploadedFile(file.URL)
+		if err != nil {
+			errs = append(errs, err)
+			continue
+		}
+		loaded.URL = ""
+		normalized = append(normalized, *loaded)
+	}
+	return normalized, errs
+}
+
 // GenerateContentStream 流式生成内容，通过 channel 发送事件。
 func GenerateContentStream(topic, platform, style string, keywords []string, planID, modelID string, files []UploadedFile, campaignID string, versionNum int) (<-chan AIStreamEvent, error) {
 	events := make(chan AIStreamEvent, 16)
@@ -1062,7 +1188,7 @@ func GenerateContentStream(topic, platform, style string, keywords []string, pla
 		return nil, err
 	}
 
-	go func() {
+	go enqueueContentModelRequest(func() {
 		defer close(events)
 		events <- AIStreamEvent{Event: "log", Level: "info", Message: fmt.Sprintf("使用模型配置 %s（%s）", planName, model)}
 
@@ -1071,6 +1197,13 @@ func GenerateContentStream(topic, platform, style string, keywords []string, pla
 		allFiles = append(allFiles, files...)
 		if supportsVision {
 			allFiles = append(allFiles, campaignFiles...)
+		}
+		if len(allFiles) > 0 {
+			normalizedFiles, fileErrors := normalizeContentFiles(allFiles)
+			allFiles = normalizedFiles
+			for _, fileErr := range fileErrors {
+				events <- AIStreamEvent{Event: "log", Level: "warn", Message: fmt.Sprintf("素材转 Base64 失败，已跳过：%s", fileErr)}
+			}
 		}
 		if len(campaignFiles) > 0 {
 			if supportsVision {
@@ -1212,6 +1345,16 @@ func GenerateContentStream(topic, platform, style string, keywords []string, pla
 			}
 		}
 		if len(variants) == 0 {
+			events <- AIStreamEvent{Event: "log", Level: "warn", Message: "模型未返回工具调用，正在切换为纯 JSON 兼容模式"}
+			fallbackVariants, fallbackErr := generateContentVariantsFallback(apiKey, baseURL, model, messages, versionNum)
+			if fallbackErr == nil {
+				variants = fallbackVariants
+				events <- AIStreamEvent{Event: "log", Level: "ok", Message: fmt.Sprintf("纯 JSON 兼容模式解析成功（%d 个版本）", len(variants))}
+			} else {
+				events <- AIStreamEvent{Event: "log", Level: "warn", Message: fmt.Sprintf("纯 JSON 兼容模式失败：%s", fallbackErr)}
+			}
+		}
+		if len(variants) == 0 {
 			events <- AIStreamEvent{Event: "error", Message: fmt.Sprintf("模型「%s」返回的内容格式异常，无法解析。请尝试切换到其他模型配置后重试。", planName)}
 			return
 		}
@@ -1227,7 +1370,7 @@ func GenerateContentStream(topic, platform, style string, keywords []string, pla
 				PlanName:     planName,
 			}
 		}
-	}()
+	})
 
 	return events, nil
 }
