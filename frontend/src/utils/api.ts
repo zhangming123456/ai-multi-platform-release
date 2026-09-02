@@ -28,4 +28,9 @@ api.interceptors.response.use(
   },
 )
 
+export function getApiErrorDetail(e: unknown): string | undefined {
+  const err = e as { response?: { data?: { detail?: unknown } } }
+  return typeof err.response?.data?.detail === 'string' ? err.response.data.detail : undefined
+}
+
 export default api

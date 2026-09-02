@@ -66,7 +66,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { Message } from '@arco-design/web-vue'
 import PageHeader from '@/components/layout/PageHeader.vue'
-import api from '@/utils/api'
+import api, { getApiErrorDetail } from '@/utils/api'
 import { formatDateTime as formatDate } from '@/utils/time'
 
 interface CreationRequest {
@@ -128,8 +128,8 @@ async function fetchRequests() {
   try {
     const res = await api.get<CreationRequest[]>('/user-creation-reviews/')
     requests.value = Array.isArray(res.data) ? res.data : []
-  } catch (e: any) {
-    Message.error(e.response?.data?.detail || '加载审核列表失败')
+  } catch (e) {
+    Message.error(getApiErrorDetail(e) || '加载审核列表失败')
     requests.value = []
   } finally {
     loading.value = false
@@ -141,8 +141,8 @@ async function approveRequest(id: string) {
     await api.post(`/user-creation-reviews/${id}/approve`)
     Message.success('账号创建申请已通过，用户已创建')
     await fetchRequests()
-  } catch (e: any) {
-    Message.error(e.response?.data?.detail || '审批失败')
+  } catch (e) {
+    Message.error(getApiErrorDetail(e) || '审批失败')
   }
 }
 
@@ -165,8 +165,8 @@ async function confirmReject() {
     Message.success('已驳回该申请')
     rejectVisible.value = false
     await fetchRequests()
-  } catch (e: any) {
-    Message.error(e.response?.data?.detail || '驳回失败')
+  } catch (e) {
+    Message.error(getApiErrorDetail(e) || '驳回失败')
   } finally {
     rejectSaving.value = false
   }
@@ -176,7 +176,9 @@ onMounted(async () => {
   try {
     const rolesRes = await api.get<RoleDef[]>('/v2/roles')
     roleDefs.value = Array.isArray(rolesRes.data) ? rolesRes.data : []
-  } catch {}
+  } catch {
+    // 加载角色定义失败不阻断页面
+  }
   await fetchRequests()
 })
 </script>

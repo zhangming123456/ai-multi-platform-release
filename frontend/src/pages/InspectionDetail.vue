@@ -310,8 +310,8 @@ import { Message } from '@arco-design/web-vue'
 import { IconRobot } from '@arco-design/web-vue/es/icon'
 import PageHeader from '@/components/layout/PageHeader.vue'
 import { formatDateTime } from '@/utils/time'
-import type { Inspection, InspectionTask } from '@/types'
-import api from '@/utils/api'
+import type { Inspection, InspectionScore, InspectionTask } from '@/types'
+import api, { getApiErrorDetail } from '@/utils/api'
 
 const route = useRoute()
 const router = useRouter()
@@ -322,9 +322,9 @@ const relatedTask = ref<InspectionTask | null>(null)
 const previewVisible = ref<string | null>(null)
 
 const scoringScores = computed(() =>
-  (inspection.value?.scores || []).filter((s: any) => s.score_type !== 'pass_fail'),
+  (inspection.value?.scores || []).filter((s) => s.score_type !== 'pass_fail'),
 )
-const maxTotal = computed(() => scoringScores.value.reduce((sum, s: any) => sum + s.max_score, 0))
+const maxTotal = computed(() => scoringScores.value.reduce((sum, s) => sum + s.max_score, 0))
 
 const progressPercent = computed(() => {
   if (!inspection.value || maxTotal.value === 0) return 0
@@ -338,18 +338,18 @@ const scoreColumns = computed(() => {
     { title: '得分', dataIndex: 'score', slotName: 'score', width: 110 },
   ]
   const scores = inspection.value?.scores || []
-  if (scores.some((s: any) => s.show_remark !== false)) {
+  if (scores.some((s) => s.show_remark !== false)) {
     cols.push({ title: '问题描述', dataIndex: 'comment', slotName: 'comment', width: 160 })
   }
-  if (scores.some((s: any) => s.show_photo !== false)) {
+  if (scores.some((s) => s.show_photo !== false)) {
     cols.push({ title: '巡店图片', dataIndex: 'photos', slotName: 'photos', width: 120 })
   }
   return cols
 })
 
-function scoreOptionLabel(record: any): string {
+function scoreOptionLabel(record: InspectionScore): string {
   if (Array.isArray(record.score_options) && record.score_options.length > 0) {
-    const opt = record.score_options.find((o: any) => Number(o.score) === Number(record.score))
+    const opt = record.score_options.find((o) => Number(o.score) === Number(record.score))
     if (opt) return opt.label
     return record.score_options[0].label
   }
@@ -454,8 +454,8 @@ async function fetchDetail() {
     const res = await api.get<Inspection>(`/inspections/${route.params.id}`)
     inspection.value = res.data
     await fetchRelatedTask()
-  } catch (e: any) {
-    Message.error(e?.response?.data?.detail || '加载巡店详情失败')
+  } catch (e) {
+    Message.error(getApiErrorDetail(e) || '加载巡店详情失败')
   } finally {
     loading.value = false
   }

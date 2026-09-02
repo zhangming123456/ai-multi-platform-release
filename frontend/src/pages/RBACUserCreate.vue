@@ -78,7 +78,7 @@ import { IconLeft, IconPlus } from '@arco-design/web-vue/es/icon'
 import { Message } from '@arco-design/web-vue'
 import PageHeader from '@/components/layout/PageHeader.vue'
 import { usePermissionStore } from '@/stores/permission'
-import api from '@/utils/api'
+import api, { getApiErrorDetail } from '@/utils/api'
 
 interface Role {
   id: string
@@ -165,12 +165,12 @@ async function submit() {
     await api.post<UserListItem>('/v2/users', form.value)
     Message.success('用户创建成功')
     router.push({ name: 'RBACUserManage' })
-  } catch (e: any) {
-    if (e.response?.status === 202) {
-      Message.success(e.response?.data?.detail || '账号创建申请已提交审核')
+  } catch (e) {
+    if ((e as { response?: { status?: number } }).response?.status === 202) {
+      Message.success(getApiErrorDetail(e) || '账号创建申请已提交审核')
       router.push({ name: 'RBACUserManage' })
     } else {
-      Message.error(e.response?.data?.detail || '创建失败')
+      Message.error(getApiErrorDetail(e) || '创建失败')
     }
   } finally {
     saving.value = false

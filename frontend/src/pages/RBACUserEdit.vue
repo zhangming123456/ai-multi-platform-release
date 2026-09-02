@@ -92,7 +92,7 @@ import { Message } from '@arco-design/web-vue'
 import PageHeader from '@/components/layout/PageHeader.vue'
 import { usePermissionStore } from '@/stores/permission'
 import { useUserStore } from '@/stores/user'
-import api from '@/utils/api'
+import api, { getApiErrorDetail } from '@/utils/api'
 
 interface Role {
   id: string
@@ -187,8 +187,8 @@ async function fetchUser() {
       avatar_url: user.value.avatar_url || '',
       role_ids: user.value.roles.map((r) => r.id),
     }
-  } catch (e: any) {
-    Message.error(e.response?.data?.detail || '加载用户信息失败')
+  } catch (e) {
+    Message.error(getApiErrorDetail(e) || '加载用户信息失败')
     router.push({ name: 'RBACUserManage' })
   } finally {
     loading.value = false
@@ -201,7 +201,7 @@ async function saveEdit() {
   if (!canWrite.value) return
   saving.value = true
   try {
-    const body: any = {
+    const body: Record<string, string | string[] | null> = {
       nickname: form.value.nickname,
       email: form.value.email || null,
       avatar_url: form.value.avatar_url || null,
@@ -216,8 +216,8 @@ async function saveEdit() {
     }
     Message.success('用户信息已更新')
     router.push({ name: 'RBACUserManage' })
-  } catch (e: any) {
-    Message.error(e.response?.data?.detail || '更新失败')
+  } catch (e) {
+    Message.error(getApiErrorDetail(e) || '更新失败')
   } finally {
     saving.value = false
   }

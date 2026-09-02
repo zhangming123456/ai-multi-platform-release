@@ -434,7 +434,7 @@ func visionPartFromFile(f UploadedFile) interface{} {
 // keywords 为巡店关键词/现场描述补充信息（可为空）；photos 为巡店图片（可选，可为空）。
 // 当 skillSpec 非空时，使用前端组装的检查项技能规范，并通过 function calling 规范返回格式。
 func AnalyzeInspection(storeName string, items []InspectionAIItem, photos []UploadedFile, keywords, planID, modelID string, skillSpec *InspectionSkillSpec) (*InspectionAIResult, error) {
-	apiKey, baseURL, model, planName, supportsVision, err := ResolveModelConfig(planID, modelID)
+	apiKey, baseURL, model, planName, supportsVision, apiFormat, err := ResolveModelConfig(planID, modelID)
 	if err != nil {
 		return nil, err
 	}
@@ -504,7 +504,12 @@ func AnalyzeInspection(storeName string, items []InspectionAIItem, photos []Uplo
 		}
 		const inspectionMaxTokens = 12000
 
-		resp, err := callChatCompletionsWithTools(apiKey, baseURL, model, messages, tools, toolChoice, inspectionMaxTokens)
+		var resp *http.Response
+		if apiFormat == "openai_responses" {
+			resp, err = callResponsesWithTools(apiKey, baseURL, model, messages, tools, toolChoice, inspectionMaxTokens)
+		} else {
+			resp, err = callChatCompletionsWithTools(apiKey, baseURL, model, messages, tools, toolChoice, inspectionMaxTokens)
+		}
 		if err != nil {
 			return nil, aiCallError(planName, err)
 		}
@@ -514,31 +519,49 @@ func AnalyzeInspection(storeName string, items []InspectionAIItem, photos []Uplo
 			return nil, aiCallError(planName, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(bodyBytes)))
 		}
 
-		var raw struct {
-			Choices []struct {
-				Message struct {
-					Content   string           `json:"content"`
-					ToolCalls []toolCallResult `json:"tool_calls"`
-				} `json:"message"`
-			} `json:"choices"`
-		}
-		if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
-			return nil, aiCallError(planName, err)
-		}
-		if len(raw.Choices) == 0 {
-			return nil, aiCallError(planName, fmt.Errorf("模型无返回内容"))
+		var toolArgs string
+		var content string
+		if apiFormat == "openai_responses" {
+			respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 10*1024*1024))
+			respContent, toolName, args := extractResponsesResult(respBody)
+			if toolName != "" {
+				toolArgs = args
+				content = ""
+			} else {
+				content = respContent
+			}
+		} else {
+			var raw struct {
+				Choices []struct {
+					Message struct {
+						Content   string           `json:"content"`
+						ToolCalls []toolCallResult `json:"tool_calls"`
+					} `json:"message"`
+				} `json:"choices"`
+			}
+			if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
+				return nil, aiCallError(planName, err)
+			}
+			if len(raw.Choices) == 0 {
+				return nil, aiCallError(planName, fmt.Errorf("模型无返回内容"))
+			}
+			choice := raw.Choices[0]
+			if len(choice.Message.ToolCalls) > 0 {
+				toolArgs = choice.Message.ToolCalls[0].Function.Arguments
+			} else {
+				content = choice.Message.Content
+			}
 		}
 
-		// 优先解析 tool_calls
-		choice := raw.Choices[0]
-		if len(choice.Message.ToolCalls) > 0 {
-			args := strings.TrimSpace(choice.Message.ToolCalls[0].Function.Arguments)
+		// 优先解析工具调用参数
+		if strings.TrimSpace(toolArgs) != "" {
+			args := strings.TrimSpace(toolArgs)
 			if parsed, perr := parseInspectionToolArgs(args); perr == nil {
 				return parsed, nil
 			}
 		}
 		// 回退：解析 content 为 JSON
-		content := strings.TrimSpace(choice.Message.Content)
+		content = strings.TrimSpace(content)
 		if strings.HasPrefix(content, "```") {
 			parts := strings.Split(content, "```")
 			if len(parts) > 1 {
@@ -644,7 +667,12 @@ func AnalyzeInspection(storeName string, items []InspectionAIItem, photos []Uplo
 		messages = append(messages, chatMessage{Role: "user", Content: prompt})
 	}
 
-	resp, err := callChatCompletions(apiKey, baseURL, model, messages, false)
+	var resp *http.Response
+	if apiFormat == "openai_responses" {
+		resp, err = callResponses(apiKey, baseURL, model, messages, false)
+	} else {
+		resp, err = callChatCompletions(apiKey, baseURL, model, messages, false)
+	}
 	if err != nil {
 		return nil, aiCallError(planName, err)
 	}
@@ -653,21 +681,27 @@ func AnalyzeInspection(storeName string, items []InspectionAIItem, photos []Uplo
 		return nil, aiCallError(planName, fmt.Errorf("HTTP %d", resp.StatusCode))
 	}
 
-	var result struct {
-		Choices []struct {
-			Message struct {
-				Content string `json:"content"`
-			} `json:"message"`
-		} `json:"choices"`
+	var content string
+	if apiFormat == "openai_responses" {
+		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 10*1024*1024))
+		content, _, _ = extractResponsesResult(respBody)
+	} else {
+		var result struct {
+			Choices []struct {
+				Message struct {
+					Content string `json:"content"`
+				} `json:"message"`
+			} `json:"choices"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+			return nil, aiCallError(planName, err)
+		}
+		if len(result.Choices) == 0 {
+			return nil, aiCallError(planName, fmt.Errorf("模型无返回内容"))
+		}
+		content = result.Choices[0].Message.Content
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, aiCallError(planName, err)
-	}
-	if len(result.Choices) == 0 {
-		return nil, aiCallError(planName, fmt.Errorf("模型无返回内容"))
-	}
-
-	content := strings.TrimSpace(result.Choices[0].Message.Content)
+	content = strings.TrimSpace(content)
 	if strings.HasPrefix(content, "```") {
 		parts := strings.Split(content, "```")
 		if len(parts) > 1 {
@@ -833,7 +867,7 @@ func parseInspectionContentJSON(content string) (*InspectionAIResult, error) {
 // keywords 为巡店关键词/现场描述补充信息（可为空）；photos 为巡店图片（可选，可为空）。
 // 事件类型：log / chunk / result / error。
 func AnalyzeInspectionStream(storeName string, items []InspectionAIItem, photos []UploadedFile, keywords, planID, modelID string, skillSpec *InspectionSkillSpec) (<-chan AIStreamEvent, error) {
-	apiKey, baseURL, model, planName, supportsVision, err := ResolveModelConfig(planID, modelID)
+	apiKey, baseURL, model, planName, supportsVision, apiFormat, err := ResolveModelConfig(planID, modelID)
 	if err != nil {
 		return nil, err
 	}
@@ -1022,9 +1056,17 @@ func AnalyzeInspectionStream(storeName string, items []InspectionAIItem, photos 
 					"name": "submit_inspection_result",
 				},
 			}
-			resp, err = callChatCompletionsStreamWithTools(apiKey, baseURL, model, messages, tools, toolChoice, 12000)
+			if apiFormat == "openai_responses" {
+				resp, err = callResponsesStreamWithTools(apiKey, baseURL, model, messages, tools, toolChoice, 12000)
+			} else {
+				resp, err = callChatCompletionsStreamWithTools(apiKey, baseURL, model, messages, tools, toolChoice, 12000)
+			}
 		} else {
-			resp, err = callChatCompletions(apiKey, baseURL, model, messages, true)
+			if apiFormat == "openai_responses" {
+				resp, err = callResponses(apiKey, baseURL, model, messages, true)
+			} else {
+				resp, err = callChatCompletions(apiKey, baseURL, model, messages, true)
+			}
 		}
 		if err != nil {
 			events <- AIStreamEvent{Event: "error", Message: fmt.Sprintf("模型「%s」调用失败：%s", planName, err)}
@@ -1045,7 +1087,11 @@ func AnalyzeInspectionStream(storeName string, items []InspectionAIItem, photos 
 		respDetailBytes, _ := json.MarshalIndent(respSummary, "", "  ")
 		events <- AIStreamEvent{Event: "response_data", Message: "收到模型响应", Detail: string(respDetailBytes)}
 
-		events <- AIStreamEvent{Event: "log", Level: "req", Message: "POST /chat/completions → SSE 连接已建立"}
+		if apiFormat == "openai_responses" {
+			events <- AIStreamEvent{Event: "log", Level: "req", Message: "POST /responses → SSE 连接已建立"}
+		} else {
+			events <- AIStreamEvent{Event: "log", Level: "req", Message: "POST /chat/completions → SSE 连接已建立"}
+		}
 
 		scanner := bufio.NewScanner(resp.Body)
 		fullContent := ""
@@ -1053,49 +1099,94 @@ func AnalyzeInspectionStream(storeName string, items []InspectionAIItem, photos 
 		accumulatedArgs := make(map[int]string)
 		accumulatedName := make(map[int]string)
 		accumulatedID := make(map[int]string)
-		for scanner.Scan() {
-			line := strings.TrimSpace(scanner.Text())
-			if !strings.HasPrefix(line, "data:") {
-				continue
-			}
-			data := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
-			if data == "[DONE]" {
-				break
-			}
-			var chunk struct {
-				Choices []struct {
-					Delta struct {
-						Content   string           `json:"content"`
-						ToolCalls []toolCallResult `json:"tool_calls"`
-					} `json:"delta"`
-				} `json:"choices"`
-			}
-			if err := json.Unmarshal([]byte(data), &chunk); err != nil {
-				continue
-			}
-			if len(chunk.Choices) == 0 {
-				continue
-			}
-			delta := chunk.Choices[0].Delta
-
-			// 处理普通 content 增量
-			if delta.Content != "" {
-				fullContent += delta.Content
-				events <- AIStreamEvent{Event: "chunk", Text: delta.Content}
-			}
-
-			// 处理流式 tool_calls 增量
-			for _, tc := range delta.ToolCalls {
-				idx := 0
-				// toolCalls 数组通常按顺序出现；若不存在 index，则按 0 累加
-				if tc.ID != "" {
-					accumulatedID[idx] = tc.ID
+		if apiFormat == "openai_responses" {
+			respAccumulatedName := ""
+			respAccumulatedArgs := ""
+			for scanner.Scan() {
+				line := strings.TrimSpace(scanner.Text())
+				if !strings.HasPrefix(line, "data:") {
+					continue
 				}
-				if tc.Function.Name != "" {
-					accumulatedName[idx] = tc.Function.Name
+				data := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+				if data == "[DONE]" {
+					break
 				}
-				if tc.Function.Arguments != "" {
-					accumulatedArgs[idx] += tc.Function.Arguments
+				var evt struct {
+					Type  string `json:"type"`
+					Delta string `json:"delta"`
+					Item  struct {
+						Type string `json:"type"`
+						Name string `json:"name"`
+					} `json:"item"`
+				}
+				if err := json.Unmarshal([]byte(data), &evt); err != nil {
+					continue
+				}
+				switch evt.Type {
+				case "response.output_item.added":
+					if evt.Item.Type == "function_call" {
+						respAccumulatedName = evt.Item.Name
+					}
+				case "response.function_call_arguments.delta":
+					respAccumulatedArgs += evt.Delta
+				case "response.output_text.delta":
+					if evt.Delta != "" {
+						fullContent += evt.Delta
+						events <- AIStreamEvent{Event: "chunk", Text: evt.Delta}
+					}
+				}
+			}
+			if respAccumulatedName != "" {
+				accumulatedName[0] = respAccumulatedName
+			}
+			if respAccumulatedArgs != "" {
+				accumulatedArgs[0] = respAccumulatedArgs
+			}
+		} else {
+			for scanner.Scan() {
+				line := strings.TrimSpace(scanner.Text())
+				if !strings.HasPrefix(line, "data:") {
+					continue
+				}
+				data := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+				if data == "[DONE]" {
+					break
+				}
+				var chunk struct {
+					Choices []struct {
+						Delta struct {
+							Content   string           `json:"content"`
+							ToolCalls []toolCallResult `json:"tool_calls"`
+						} `json:"delta"`
+					} `json:"choices"`
+				}
+				if err := json.Unmarshal([]byte(data), &chunk); err != nil {
+					continue
+				}
+				if len(chunk.Choices) == 0 {
+					continue
+				}
+				delta := chunk.Choices[0].Delta
+
+				// 处理普通 content 增量
+				if delta.Content != "" {
+					fullContent += delta.Content
+					events <- AIStreamEvent{Event: "chunk", Text: delta.Content}
+				}
+
+				// 处理流式 tool_calls 增量
+				for _, tc := range delta.ToolCalls {
+					idx := 0
+					// toolCalls 数组通常按顺序出现；若不存在 index，则按 0 累加
+					if tc.ID != "" {
+						accumulatedID[idx] = tc.ID
+					}
+					if tc.Function.Name != "" {
+						accumulatedName[idx] = tc.Function.Name
+					}
+					if tc.Function.Arguments != "" {
+						accumulatedArgs[idx] += tc.Function.Arguments
+					}
 				}
 			}
 		}
@@ -1199,7 +1290,7 @@ type SingleItemAnalysisResult struct {
 }
 
 func AnalyzeSingleInspectionItem(req SingleItemAnalysisRequest) (*SingleItemAnalysisResult, error) {
-	apiKey, baseURL, model, planName, supportsVision, err := ResolveModelConfig(req.PlanID, req.ModelID)
+	apiKey, baseURL, model, planName, supportsVision, apiFormat, err := ResolveModelConfig(req.PlanID, req.ModelID)
 	if err != nil {
 		return nil, err
 	}
@@ -1288,7 +1379,12 @@ func AnalyzeSingleInspectionItem(req SingleItemAnalysisRequest) (*SingleItemAnal
 		messages = append(messages, chatMessage{Role: "user", Content: prompt})
 	}
 
-	resp, err := callChatCompletions(apiKey, baseURL, model, messages, false)
+	var resp *http.Response
+	if apiFormat == "openai_responses" {
+		resp, err = callResponses(apiKey, baseURL, model, messages, false)
+	} else {
+		resp, err = callChatCompletions(apiKey, baseURL, model, messages, false)
+	}
 	if err != nil {
 		return nil, aiCallError(planName, err)
 	}
@@ -1298,21 +1394,27 @@ func AnalyzeSingleInspectionItem(req SingleItemAnalysisRequest) (*SingleItemAnal
 		return nil, aiCallError(planName, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(bodyBytes)))
 	}
 
-	var raw struct {
-		Choices []struct {
-			Message struct {
-				Content string `json:"content"`
-			} `json:"message"`
-		} `json:"choices"`
+	var content string
+	if apiFormat == "openai_responses" {
+		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 10*1024*1024))
+		content, _, _ = extractResponsesResult(respBody)
+	} else {
+		var raw struct {
+			Choices []struct {
+				Message struct {
+					Content string `json:"content"`
+				} `json:"message"`
+			} `json:"choices"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
+			return nil, aiCallError(planName, err)
+		}
+		if len(raw.Choices) == 0 {
+			return nil, aiCallError(planName, fmt.Errorf("模型无返回内容"))
+		}
+		content = raw.Choices[0].Message.Content
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
-		return nil, aiCallError(planName, err)
-	}
-	if len(raw.Choices) == 0 {
-		return nil, aiCallError(planName, fmt.Errorf("模型无返回内容"))
-	}
-
-	content := strings.TrimSpace(raw.Choices[0].Message.Content)
+	content = strings.TrimSpace(content)
 	if strings.HasPrefix(content, "```") {
 		parts := strings.Split(content, "```")
 		if len(parts) > 1 {
@@ -1331,7 +1433,7 @@ func AnalyzeSingleInspectionItem(req SingleItemAnalysisRequest) (*SingleItemAnal
 }
 
 func AnalyzeSingleInspectionItemStream(req SingleItemAnalysisRequest) (<-chan AIStreamEvent, error) {
-	apiKey, baseURL, model, planName, supportsVision, err := ResolveModelConfig(req.PlanID, req.ModelID)
+	apiKey, baseURL, model, planName, supportsVision, apiFormat, err := ResolveModelConfig(req.PlanID, req.ModelID)
 	if err != nil {
 		return nil, err
 	}
@@ -1453,7 +1555,12 @@ func AnalyzeSingleInspectionItemStream(req SingleItemAnalysisRequest) (<-chan AI
 		reqDetailBytes, _ := json.MarshalIndent(reqSummary, "", "  ")
 		events <- AIStreamEvent{Event: "request_data", Message: fmt.Sprintf("向模型 %s 发送请求", model), Detail: string(reqDetailBytes)}
 
-		resp, err := callChatCompletions(apiKey, baseURL, model, messages, true)
+		var resp *http.Response
+		if apiFormat == "openai_responses" {
+			resp, err = callResponses(apiKey, baseURL, model, messages, true)
+		} else {
+			resp, err = callChatCompletions(apiKey, baseURL, model, messages, true)
+		}
 		if err != nil {
 			events <- AIStreamEvent{Event: "error", Message: fmt.Sprintf("模型「%s」调用失败：%s", planName, err)}
 			return
@@ -1475,32 +1582,56 @@ func AnalyzeSingleInspectionItemStream(req SingleItemAnalysisRequest) (<-chan AI
 
 		scanner := bufio.NewScanner(resp.Body)
 		fullContent := ""
-		for scanner.Scan() {
-			line := strings.TrimSpace(scanner.Text())
-			if !strings.HasPrefix(line, "data:") {
-				continue
+		if apiFormat == "openai_responses" {
+			for scanner.Scan() {
+				line := strings.TrimSpace(scanner.Text())
+				if !strings.HasPrefix(line, "data:") {
+					continue
+				}
+				data := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+				if data == "[DONE]" {
+					break
+				}
+				var evt struct {
+					Type  string `json:"type"`
+					Delta string `json:"delta"`
+				}
+				if err := json.Unmarshal([]byte(data), &evt); err != nil {
+					continue
+				}
+				if evt.Type == "response.output_text.delta" && evt.Delta != "" {
+					fullContent += evt.Delta
+					events <- AIStreamEvent{Event: "chunk", Text: evt.Delta}
+				}
 			}
-			data := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
-			if data == "[DONE]" {
-				break
-			}
-			var chunk struct {
-				Choices []struct {
-					Delta struct {
-						Content string `json:"content"`
-					} `json:"delta"`
-				} `json:"choices"`
-			}
-			if err := json.Unmarshal([]byte(data), &chunk); err != nil {
-				continue
-			}
-			if len(chunk.Choices) == 0 {
-				continue
-			}
-			delta := chunk.Choices[0].Delta
-			if delta.Content != "" {
-				fullContent += delta.Content
-				events <- AIStreamEvent{Event: "chunk", Text: delta.Content}
+		} else {
+			for scanner.Scan() {
+				line := strings.TrimSpace(scanner.Text())
+				if !strings.HasPrefix(line, "data:") {
+					continue
+				}
+				data := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+				if data == "[DONE]" {
+					break
+				}
+				var chunk struct {
+					Choices []struct {
+						Delta struct {
+							Content string `json:"content"`
+						} `json:"delta"`
+					} `json:"choices"`
+				}
+				if err := json.Unmarshal([]byte(data), &chunk); err != nil {
+					continue
+				}
+				if len(chunk.Choices) == 0 {
+					continue
+				}
+				delta := chunk.Choices[0].Delta
+				if delta.Content != "" {
+					fullContent += delta.Content
+					events <- AIStreamEvent{Event: "chunk", Text: delta.Content}
+				}
 			}
 		}
 

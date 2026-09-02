@@ -103,7 +103,7 @@ import { IconCheck } from '@arco-design/web-vue/es/icon'
 import PageHeader from '@/components/layout/PageHeader.vue'
 import { formatDateTime } from '@/utils/time'
 import type { InspectionTask, Paginated, Store } from '@/types'
-import api from '@/utils/api'
+import api, { getApiErrorDetail } from '@/utils/api'
 
 const router = useRouter()
 
@@ -171,14 +171,14 @@ async function fetchStores() {
 async function fetchTasks() {
   loading.value = true
   try {
-    const params: Record<string, any> = { page: page.value, page_size: pageSize.value }
+    const params: Record<string, unknown> = { page: page.value, page_size: pageSize.value }
     if (storeFilter.value) params.store_id = storeFilter.value
     if (statusFilter.value) params.status = statusFilter.value
     const res = await api.get<Paginated<InspectionTask>>('/inspection-tasks/', { params })
     tasks.value = res.data.items || []
     total.value = res.data.total || 0
-  } catch (e: any) {
-    Message.error(e?.response?.data?.detail || '加载整改任务失败')
+  } catch (e) {
+    Message.error(getApiErrorDetail(e) || '加载整改任务失败')
   } finally {
     loading.value = false
   }

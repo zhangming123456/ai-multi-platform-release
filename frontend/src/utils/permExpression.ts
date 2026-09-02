@@ -6,7 +6,7 @@ export interface PermContext {
   target_user?: { id: string; role: string }
   current_role_ids?: string[]
   target_role_ids?: string[]
-  [key: string]: any
+  [key: string]: unknown
 }
 
 type TokenType = 'PERM' | 'FUNC' | 'IDENT' | 'OR' | 'AND' | 'NOT' | 'LPAREN' | 'RPAREN' | 'EOF'
@@ -146,44 +146,44 @@ type BuiltinFunc = (args: string[], ctx: PermContext) => boolean
 const BUILTIN_FUNCTIONS: Record<string, BuiltinFunc> = {
   isSelf(args, ctx) {
     const keyName = args[0] ?? 'user_id'
-    const targetId = (ctx as any)[keyName] ?? ctx.user_id
+    const targetId = (ctx as Record<string, string | undefined>)[keyName] ?? ctx.user_id
     if (!targetId) return false
-    return ctx.currentUser.id === targetId
+    return ctx.currentUser?.id === targetId
   },
 
   isAdmin(_args, ctx) {
-    const role = ctx.currentUser.role
+    const role = ctx.currentUser?.role
     return role === 'admin' || role === 'manager'
   },
 
   isSuperAdmin(_args, ctx) {
     const u = ctx.currentUser
-    return u.role === 'admin' && u.id === '1'
+    return u?.role === 'admin' && u?.id === '1'
   },
 
   isBuiltInAdmin(args, ctx) {
     const keyName = args[0] ?? 'user_id'
-    const targetId = (ctx as any)[keyName] ?? ctx.user_id
+    const targetId = (ctx as Record<string, string | undefined>)[keyName] ?? ctx.user_id
     if (!targetId) return false
     return targetId === '1'
   },
 
-  isOwnAccount(args, ctx) {
+  isOwnAccount(_args, ctx) {
     const account = ctx.account
     if (!account) return false
-    return ctx.currentUser.id === account.user_id
+    return ctx.currentUser?.id === account.user_id
   },
 
-  isOwnContent(args, ctx) {
+  isOwnContent(_args, ctx) {
     const content = ctx.content
     if (!content) return false
-    return ctx.currentUser.id === content.user_id
+    return ctx.currentUser?.id === content.user_id
   },
 
-  hasSameRole(args, ctx) {
+  hasSameRole(_args, ctx) {
     const targetUser = ctx.target_user
     if (!targetUser) return false
-    if (targetUser.id === ctx.currentUser.id) return true
+    if (targetUser.id === ctx.currentUser?.id) return true
     const currentRoles = new Set(ctx.current_role_ids || [])
     const targetRoles = new Set(ctx.target_role_ids || [])
     if (currentRoles.size === 0 || targetRoles.size === 0) return false
@@ -291,7 +291,8 @@ class Parser {
     if (this.current.type === 'LPAREN') {
       this.eat('LPAREN')
       const args: string[] = []
-      if (this.current.type === 'IDENT' || this.current.type === 'PERM') {
+      const curType = this.current.type as TokenType
+      if (curType === 'IDENT' || curType === 'PERM') {
         args.push(this.current.value)
         this.eat(this.current.type)
       }

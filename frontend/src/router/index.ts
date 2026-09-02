@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory, type RouteMeta } from 'vue-router'
 import type { RouteLocationNormalized } from 'vue-router'
+import { watch } from 'vue'
 import { useUserStore } from '@/stores/user'
 import { usePermissionStore } from '@/stores/permission'
 
@@ -535,5 +536,27 @@ router.afterEach((to) => {
   const title = to.meta.title as string | undefined
   document.title = title ? `${title} - 多平台矩阵管理` : '多平台矩阵管理系统'
 })
+
+let _permWatchStarted = false
+
+export function startRoutePermWatcher() {
+  if (_permWatchStarted) return
+  const permStore = usePermissionStore()
+  watch(
+    () => permStore.permissions,
+    () => {
+      const token = localStorage.getItem('token')
+      if (!token) return
+      if (Object.keys(permStore.permissions).length === 0) return
+      const current = router.currentRoute.value
+      if (current.meta.public || current.meta.skipPermCheck) return
+      if (current.name === 'Login' || current.name === 'Forbidden') return
+      if (!hasPerm(current)) {
+        router.replace({ name: 'Forbidden', query: { from: current.fullPath } })
+      }
+    },
+  )
+  _permWatchStarted = true
+}
 
 export default router

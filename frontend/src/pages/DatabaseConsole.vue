@@ -83,7 +83,16 @@
                   <code class="db-history-item__sql">{{ item.sql_text }}</code>
                 </div>
                 <div v-if="historyTotal > historyPageSize" class="db-history-pagination">
-                  <a-pagination v-bind="historyPaginationConfig" />
+                  <a-pagination
+                    :current="historyPage"
+                    :page-size="historyPageSize"
+                    :total="historyTotal"
+                    :show-total="true"
+                    :show-page-size="false"
+                    simple
+                    size="mini"
+                    @change="handleHistoryPageChange"
+                  />
                 </div>
               </div>
             </div>
@@ -264,7 +273,7 @@ import {
   IconThunderbolt,
 } from '@arco-design/web-vue/es/icon'
 import PageHeader from '@/components/layout/PageHeader.vue'
-import api from '@/utils/api'
+import api, { getApiErrorDetail } from '@/utils/api'
 import { formatDateTimeSec as formatHistoryTime } from '@/utils/time'
 
 interface SqlResult {
@@ -427,22 +436,10 @@ const paginationConfig = computed(() => {
   }
 })
 
-const historyPaginationConfig = computed<false | any>(() => {
-  if (historyTotal.value === 0) return false
-  return {
-    current: historyPage.value,
-    pageSize: historyPageSize.value,
-    total: historyTotal.value,
-    showTotal: true,
-    showPageSize: false,
-    simple: true,
-    size: 'mini' as const,
-    onChange: (page: number) => {
-      historyPage.value = page
-      fetchHistory()
-    },
-  }
-})
+function handleHistoryPageChange(page: number) {
+  historyPage.value = page
+  fetchHistory()
+}
 
 const activeTableName = ref('')
 
@@ -565,7 +562,7 @@ function getCaretCoordinates(el: HTMLTextAreaElement, position: number) {
   div.style.left = '0'
 
   properties.forEach((prop) => {
-    ;(div.style as any)[prop] = style.getPropertyValue(prop)
+    ;(div.style as unknown as Record<string, string>)[prop] = style.getPropertyValue(prop)
   })
 
   const textBefore = el.value.substring(0, position)
@@ -728,8 +725,8 @@ async function executeSql() {
     await fetchTableNames()
     historyPage.value = 1
     await fetchHistory()
-  } catch (e: any) {
-    const msg = e.response?.data?.detail || '请求失败'
+  } catch (e) {
+    const msg = getApiErrorDetail(e) || '请求失败'
     result.value = {
       success: false,
       message: msg,
@@ -761,8 +758,8 @@ function confirmSubmitReview(sql: string, changeType: string) {
           change_type: changeType,
         })
         Message.success('已提交审核，等待审核员审批')
-      } catch (e: any) {
-        Message.error(e.response?.data?.detail || '提交审核失败')
+      } catch (e) {
+        Message.error(getApiErrorDetail(e) || '提交审核失败')
       }
     },
   })
@@ -808,8 +805,8 @@ function requestRowDelete(record: Record<string, unknown>) {
           description: `删除表 ${table} 中 ${pk.column}=${pk.value} 的记录`,
         })
         Message.success('已提交删除审核')
-      } catch (e: any) {
-        Message.error(e.response?.data?.detail || '提交删除审核失败')
+      } catch (e) {
+        Message.error(getApiErrorDetail(e) || '提交删除审核失败')
       }
     },
   })
@@ -832,8 +829,8 @@ async function executeSqlPage() {
     } else {
       Message.error(res.data.message)
     }
-  } catch (e: any) {
-    const msg = e.response?.data?.detail || '请求失败'
+  } catch (e) {
+    const msg = getApiErrorDetail(e) || '请求失败'
     Message.error(msg)
   } finally {
     executing.value = false

@@ -189,7 +189,7 @@ import PlatformIcon from '@/components/shared/PlatformIcon.vue'
 import type { PlatformIconType } from '@/components/shared/PlatformIcon.ts'
 import { formatDateTime } from '@/utils/time'
 import type { Paginated, Campaign } from '@/types'
-import api from '@/utils/api'
+import api, { getApiErrorDetail } from '@/utils/api'
 
 const router = useRouter()
 
@@ -248,7 +248,7 @@ function parseMedia(raw: string | string[] | null | undefined): string[] {
 async function fetchCampaigns() {
   loading.value = true
   try {
-    const params: Record<string, any> = {
+    const params: Record<string, unknown> = {
       page: page.value,
       page_size: pageSize.value,
     }
@@ -258,8 +258,8 @@ async function fetchCampaigns() {
     const res = await api.get<Paginated<Campaign>>('/campaigns/', { params })
     campaigns.value = res.data.items || []
     total.value = res.data.total || 0
-  } catch (e: any) {
-    Message.error(e?.response?.data?.detail || '加载活动失败')
+  } catch (e) {
+    Message.error(getApiErrorDetail(e) || '加载活动失败')
   } finally {
     loading.value = false
   }
@@ -299,8 +299,8 @@ async function handleToggleStatus(campaign: Campaign) {
     await api.put(`/campaigns/${campaign.id}`, { status: next })
     Message.success(next === 'active' ? '活动已启用' : '活动已归档，将不再出现在创作候选活动中')
     await fetchCampaigns()
-  } catch (e: any) {
-    Message.error(e?.response?.data?.detail || '操作失败')
+  } catch (e) {
+    Message.error(getApiErrorDetail(e) || '操作失败')
   }
 }
 
@@ -310,8 +310,8 @@ async function handleDelete(campaign: Campaign) {
     Message.success('删除成功')
     if (campaigns.value.length === 1 && page.value > 1) page.value -= 1
     await fetchCampaigns()
-  } catch (e: any) {
-    Message.error(e?.response?.data?.detail || '删除失败')
+  } catch (e) {
+    Message.error(getApiErrorDetail(e) || '删除失败')
   }
 }
 

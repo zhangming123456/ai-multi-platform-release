@@ -100,6 +100,7 @@ import type { Component } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { usePermissionStore } from '@/stores/permission'
+import type { PermContext } from '@/utils/permExpression'
 import {
   IconHome,
   IconFile,
@@ -172,7 +173,7 @@ function isGroup(item: MenuItem): item is MenuGroup {
   return 'children' in item
 }
 
-const props = defineProps<{
+defineProps<{
   collapsed: boolean
 }>()
 
@@ -186,7 +187,7 @@ const router = useRouter()
 const userStore = useUserStore()
 const permStore = usePermissionStore()
 
-function hasPerm(key: string, ctx?: any): boolean {
+function hasPerm(key: string, ctx?: PermContext): boolean {
   return permStore.hasPermission(key, ctx)
 }
 
@@ -217,7 +218,7 @@ const menuItems = computed<MenuItem[]>(() => {
     const visibleEntries: MenuEntry[] = []
     for (const entry of entries) {
       const permKey = entry.route.meta.permKey as string | undefined
-      if (permKey && !hasPerm(permKey, entry.route.meta.ctx)) continue
+      if (permKey && !hasPerm(permKey, entry.route.meta.ctx as PermContext | undefined)) continue
 
       const icon = iconRegistry[entry.route.meta.icon ?? ''] ?? IconFile
       const resolved = router.resolve({ name: entry.route.name as string })

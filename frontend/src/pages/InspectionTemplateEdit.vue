@@ -6,7 +6,12 @@
     >
       <template #actions>
         <a-tooltip content="从素材库添加" mini>
-          <a-button size="mini" type="text" class="!text-[#007AFF]" @click="openMaterialPicker">
+          <a-button
+            size="mini"
+            type="text"
+            class="!text-[#007AFF]"
+            @click="() => openMaterialPicker()"
+          >
             <template #icon><IconStorage :size="13" /></template>
             <span class="hidden md:inline">从素材库添加</span>
           </a-button>
@@ -83,7 +88,7 @@
               class="text-[13px] text-[#86868b] py-6 text-center flex flex-col items-center gap-3"
             >
               <span>暂无检查项，点击右侧浮动按钮或从素材库批量添加</span>
-              <a-button size="small" type="primary" @click="openMaterialPicker">
+              <a-button size="small" type="primary" @click="() => openMaterialPicker()">
                 <template #icon><IconStorage :size="13" /></template>
                 从素材库批量添加
               </a-button>
@@ -508,7 +513,12 @@
             :style="{ right: barRight + 'px', top: '50%', transform: 'translateY(-50%)' }"
           >
             <a-tooltip content="从素材库批量添加" position="left">
-              <a-button shape="circle" size="small" class="!shadow-md" @click="openMaterialPicker">
+              <a-button
+                shape="circle"
+                size="small"
+                class="!shadow-md"
+                @click="() => openMaterialPicker()"
+              >
                 <template #icon><IconStorage :size="16" class="text-[#722ED1]" /></template>
               </a-button>
             </a-tooltip>
@@ -744,12 +754,27 @@ import AITemplateItemGenerator, {
 } from '@/components/AITemplateItemGenerator.vue'
 import { uploadImageFile } from '@/composables/useFileUpload'
 import type { InspectionTemplate, InspectionMaterial, Paginated } from '@/types'
-import api from '@/utils/api'
+import api, { getApiErrorDetail } from '@/utils/api'
 import { useResizeObserver } from '@vueuse/core'
 
 interface ScoreOptionRow {
   score: number
   label: string
+}
+
+interface InspectionTemplateItemPayload {
+  category: string
+  title: string
+  standard: string
+  standard_images: string[]
+  score_type: 'score' | 'pass_fail'
+  score_options: { score: number; label: string }[]
+  require_remark: boolean
+  require_photo: boolean
+  show_remark: boolean
+  show_photo: boolean
+  category_precondition_enabled: boolean
+  category_precondition: string
 }
 
 interface ItemRow {
@@ -1001,8 +1026,8 @@ function navItem(delta: number) {
 
 const itemEls: Record<number, HTMLElement | null> = {}
 
-function setItemRef(key: number, el: any) {
-  if (el) itemEls[key] = el
+function setItemRef(key: number, el: unknown) {
+  if (el) itemEls[key] = el as HTMLElement
 }
 
 function highlightSection(sectionKey: string) {
@@ -1132,7 +1157,7 @@ function getCategoryPrecondition(gIndex: number): string {
 }
 
 // 更新分类前置条件开关，同步到同分类下所有 item
-function setCategoryPreconditionEnabled(gIndex: number, val: any) {
+function setCategoryPreconditionEnabled(gIndex: number, val: unknown) {
   const enabled = !!val
   const group = groupedItems.value[gIndex]
   if (!group) return
@@ -1145,7 +1170,10 @@ function setCategoryPreconditionEnabled(gIndex: number, val: any) {
 }
 
 // 更新分类前置条件内容，同步到同分类下所有 item
-function setCategoryPrecondition(gIndex: number, val: any) {
+function setCategoryPrecondition(
+  gIndex: number,
+  val: string | { value?: string } | null | undefined,
+) {
   const raw = typeof val === 'string' ? val : (val?.value ?? '')
   const group = groupedItems.value[gIndex]
   if (!group) return
@@ -1161,7 +1189,11 @@ function sanitizeMultiline(val: string): string {
   return val.replace(/(\n[ \t]*)+\n/g, '\n')
 }
 
-function onMultilineInput(target: any, field: string, val: any) {
+function onMultilineInput(
+  target: Record<string, unknown>,
+  field: string,
+  val: string | { value?: string } | null | undefined,
+) {
   const raw = typeof val === 'string' ? val : (val?.value ?? '')
   const cleaned = sanitizeMultiline(raw)
   if (target && typeof target === 'object') {
@@ -1504,8 +1536,8 @@ async function fetchDetail() {
       }
     })
     autoExpandItemsWithData()
-  } catch (e: any) {
-    Message.error(e?.response?.data?.detail || '加载模板失败')
+  } catch (e) {
+    Message.error(getApiErrorDetail(e) || '加载模板失败')
   }
 }
 
@@ -1637,7 +1669,7 @@ async function handleSave() {
   }
   saving.value = true
   try {
-    const itemPayloads: any[] = []
+    const itemPayloads: InspectionTemplateItemPayload[] = []
     for (const item of items.value) {
       itemPayloads.push({
         category: item.category.trim(),
@@ -1674,8 +1706,8 @@ async function handleSave() {
       Message.success('模板已创建')
     }
     router.push({ name: 'InspectionTemplateList' })
-  } catch (e: any) {
-    Message.error(e?.response?.data?.detail || '保存失败')
+  } catch (e) {
+    Message.error(getApiErrorDetail(e) || '保存失败')
   } finally {
     saving.value = false
   }
@@ -1715,7 +1747,7 @@ const materialColumns = [
 async function fetchMaterials() {
   materialLoading.value = true
   try {
-    const params: Record<string, any> = {
+    const params: Record<string, unknown> = {
       page: materialPage.value,
       page_size: materialPageSize.value,
     }
@@ -1723,8 +1755,8 @@ async function fetchMaterials() {
     const res = await api.get<Paginated<InspectionMaterial>>('/inspection-materials/', { params })
     materialList.value = res.data.items || []
     materialTotal.value = res.data.total || 0
-  } catch (e: any) {
-    Message.error(e?.response?.data?.detail || '加载素材库失败')
+  } catch (e) {
+    Message.error(getApiErrorDetail(e) || '加载素材库失败')
   } finally {
     materialLoading.value = false
   }
@@ -1757,7 +1789,7 @@ function onMaterialPageSizeChange(size: number) {
   fetchMaterials()
 }
 
-function onMaterialSelectionChange(keys: string[]) {
+function onMaterialSelectionChange(keys: (string | number)[]) {
   const currentIds = new Set(materialList.value.map((m) => m.id))
   const keySet = new Set(keys)
   for (const m of materialList.value) {

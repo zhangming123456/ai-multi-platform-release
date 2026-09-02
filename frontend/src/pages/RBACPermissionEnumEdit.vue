@@ -16,7 +16,7 @@
       <a-spin :loading="loading" tip="加载中..." class="w-full">
         <div class="max-w-[560px]">
           <a-card :bordered="false" class="!rounded-xl">
-            <a-form layout="vertical" class="!max-w-[480px]">
+            <a-form :model="form" layout="vertical" class="!max-w-[480px]">
               <a-form-item label="权限类型">
                 <a-radio-group v-model="form.type" type="button" :disabled="isEdit">
                   <a-radio value="page">页面权限</a-radio>
@@ -89,7 +89,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { Message } from '@arco-design/web-vue'
 import { IconLeft } from '@arco-design/web-vue/es/icon'
 import PageHeader from '@/components/layout/PageHeader.vue'
-import api from '@/utils/api'
+import api, { getApiErrorDetail } from '@/utils/api'
 
 interface ResourceRef {
   id: string
@@ -181,8 +181,8 @@ async function loadPermission() {
       displayName: item.resource.name,
       description: item.resource.description || '',
     }
-  } catch (e: any) {
-    Message.error(e.response?.data?.detail || '加载权限字典失败')
+  } catch (e) {
+    Message.error(getApiErrorDetail(e) || '加载权限字典失败')
     router.push({ name: 'RBACPermissionEnumManage' })
   } finally {
     loading.value = false
@@ -231,8 +231,8 @@ async function handleSave() {
     }
 
     router.push({ name: 'RBACPermissionEnumManage' })
-  } catch (e: any) {
-    Message.error(e.response?.data?.detail || (isEdit.value ? '更新失败' : '创建失败'))
+  } catch (e) {
+    Message.error(getApiErrorDetail(e) || (isEdit.value ? '更新失败' : '创建失败'))
   } finally {
     saving.value = false
   }

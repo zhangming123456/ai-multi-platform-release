@@ -37,11 +37,7 @@
             class="tree-scroll"
           >
             <div class="tree-chain">
-              <div
-                v-for="(node, idx) in data.ancestor_chain"
-                :key="node.role.id"
-                class="tree-node-group"
-              >
+              <div v-for="node in data.ancestor_chain" :key="node.role.id" class="tree-node-group">
                 <div class="tree-node inherited" @click="toggleNode(node.role.id)">
                   <div class="node-header">
                     <a-tag :color="nodeColor(node.role)" size="small" class="!m-0">
@@ -145,11 +141,7 @@
                 </div>
               </div>
 
-              <div
-                v-for="(node, idx) in data.descendant_tree"
-                :key="node.role.id"
-                class="tree-node-group"
-              >
+              <div v-for="node in data.descendant_tree" :key="node.role.id" class="tree-node-group">
                 <div class="tree-connector">
                   <div class="connector-line"></div>
                   <IconRight :size="12" class="connector-arrow" />
@@ -242,7 +234,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, computed } from 'vue'
+import { ref, watch } from 'vue'
 import { Message } from '@arco-design/web-vue'
 import {
   IconLeft,
@@ -252,7 +244,7 @@ import {
   IconRight as IconRightSmall,
   IconClose,
 } from '@arco-design/web-vue/es/icon'
-import api from '@/utils/api'
+import api, { getApiErrorDetail } from '@/utils/api'
 
 interface RoleRef {
   id: string
@@ -300,15 +292,6 @@ function nodeColor(node: RoleRef): string {
   return BUILTIN_COLORS[node.name] || 'arcoblue'
 }
 
-const allDescendantLevels = computed(() => {
-  if (!data.value) return new Set<number>()
-  const levels = new Set<number>()
-  for (const d of data.value.descendant_tree) {
-    levels.add(d.level)
-  }
-  return levels
-})
-
 const expandedNodes = ref<Set<string>>(new Set())
 
 function toggleNode(nodeId: string) {
@@ -342,8 +325,8 @@ async function fetchData() {
   try {
     const res = await api.get<InheritanceData>(`/v2/roles/${props.roleId}/inheritance`)
     data.value = res.data
-  } catch (e: any) {
-    Message.error(e.response?.data?.detail || '加载继承关系失败')
+  } catch (e) {
+    Message.error(getApiErrorDetail(e) || '加载继承关系失败')
   } finally {
     loading.value = false
   }

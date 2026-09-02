@@ -93,7 +93,7 @@
                   :model-value="moduleReadChecked(module)"
                   :indeterminate="moduleReadIndeterminate(module)"
                   :disabled="readOnly"
-                  @change="toggleModuleAllRead(module, $event)"
+                  @change="toggleModuleAllRead(module, $event as boolean)"
                 >
                   读
                 </a-checkbox>
@@ -102,7 +102,7 @@
                   :model-value="moduleWriteChecked(module)"
                   :indeterminate="moduleWriteIndeterminate(module)"
                   :disabled="readOnly"
-                  @change="toggleModuleAllWrite(module, $event)"
+                  @change="toggleModuleAllWrite(module, $event as boolean)"
                 >
                   写
                 </a-checkbox>
@@ -155,7 +155,7 @@ import { Message, Modal } from '@arco-design/web-vue'
 import { IconLeft, IconSafe, IconRefresh } from '@arco-design/web-vue/es/icon'
 import PageHeader from '@/components/layout/PageHeader.vue'
 import { usePermissionStore } from '@/stores/permission'
-import api from '@/utils/api'
+import api, { getApiErrorDetail } from '@/utils/api'
 import { isAdminTypePermission } from '@/utils/rbac'
 
 interface Role {
@@ -528,8 +528,8 @@ async function loadAll() {
   loading.value = true
   try {
     await Promise.all([fetchUser(), fetchAllPermissions(), fetchOverrides()])
-  } catch (e: any) {
-    Message.error(e.response?.data?.detail || '加载数据失败')
+  } catch (e) {
+    Message.error(getApiErrorDetail(e) || '加载数据失败')
   } finally {
     loading.value = false
   }
@@ -543,8 +543,8 @@ async function saveOverrides() {
     await api.put(`/v2/users/${userId.value}/permission-overrides`, { overrides })
     Message.success('自定义权限保存成功')
     await Promise.all([fetchAllPermissions(), fetchOverrides()])
-  } catch (e: any) {
-    Message.error(e.response?.data?.detail || '保存失败')
+  } catch (e) {
+    Message.error(getApiErrorDetail(e) || '保存失败')
   } finally {
     saving.value = false
   }
@@ -564,8 +564,8 @@ function resetOverrides() {
         await api.delete(`/v2/users/${userId.value}/permission-overrides`)
         Message.success('已重置为角色默认权限')
         await Promise.all([fetchAllPermissions(), fetchOverrides()])
-      } catch (e: any) {
-        Message.error(e.response?.data?.detail || '重置失败')
+      } catch (e) {
+        Message.error(getApiErrorDetail(e) || '重置失败')
       } finally {
         resetting.value = false
       }

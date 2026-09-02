@@ -36,6 +36,7 @@ func (c *BaseController) WriteJSON(status int, data interface{}) {
 }
 
 func (c *BaseController) WriteError(status int, detail string) {
+	services.LogBackendError("http", c.Ctx.Input.Method(), c.Ctx.Input.URL(), status, detail)
 	c.Ctx.Output.SetStatus(status)
 	c.Data["json"] = map[string]interface{}{"detail": detail}
 	c.ServeJSON()

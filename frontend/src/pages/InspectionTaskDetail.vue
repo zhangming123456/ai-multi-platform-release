@@ -335,13 +335,11 @@ import AttachmentInputArea from '@/components/AttachmentInputArea.vue'
 import ModelSelect, { type ModelSelectValue } from '@/components/shared/ModelSelect.vue'
 import { uploadImageFile } from '@/composables/useFileUpload'
 import { formatDateTime } from '@/utils/time'
-import { useUserStore } from '@/stores/user'
 import type { InspectionTask, InspectionTaskItem, InspectionTaskLog } from '@/types'
-import api from '@/utils/api'
+import api, { getApiErrorDetail } from '@/utils/api'
 
 const route = useRoute()
 const router = useRouter()
-const userStore = useUserStore()
 
 const loading = ref(false)
 const task = ref<InspectionTask | null>(null)
@@ -372,8 +370,6 @@ const confirmComments = ref<Record<string, string>>({})
 const selectedPlanId = ref('')
 const selectedModelId = ref('')
 const selectedHasVision = ref(false)
-
-const currentUserId = computed(() => userStore.userInfo?.id || '')
 
 const pendingItems = computed(() =>
   items.value.filter((it) => it.status === 'pending' || it.status === 'not_fixed'),
@@ -529,8 +525,8 @@ async function handleSubmitRectify() {
     submitVisible.value = false
     selectedItemIds.value = []
     await fetchDetail()
-  } catch (e: any) {
-    Message.error(e?.response?.data?.detail || '提交失败')
+  } catch (e) {
+    Message.error(getApiErrorDetail(e) || '提交失败')
   } finally {
     submitting.value = false
   }
@@ -554,8 +550,8 @@ async function handleRecheck() {
     })
     Message.success(`复核完成：${statusText(res.data.status)}`)
     await fetchDetail()
-  } catch (e: any) {
-    const detail = e?.response?.data?.detail
+  } catch (e) {
+    const detail = getApiErrorDetail(e)
     if (detail) {
       Message.error(detail)
     } else {
@@ -593,8 +589,8 @@ async function handleManualConfirm() {
     confirmVisible.value = false
     selectedItemIds.value = []
     await fetchDetail()
-  } catch (e: any) {
-    Message.error(e?.response?.data?.detail || '确认失败')
+  } catch (e) {
+    Message.error(getApiErrorDetail(e) || '确认失败')
   } finally {
     confirming.value = false
   }
@@ -612,8 +608,8 @@ async function fetchDetail() {
     items.value = res.data.items || []
     logs.value = res.data.logs || []
     selectedItemIds.value = []
-  } catch (e: any) {
-    Message.error(e?.response?.data?.detail || '加载整改任务详情失败')
+  } catch (e) {
+    Message.error(getApiErrorDetail(e) || '加载整改任务详情失败')
   } finally {
     loading.value = false
   }

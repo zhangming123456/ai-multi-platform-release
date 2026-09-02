@@ -645,11 +645,10 @@ import {
   IconEye,
   IconApps,
   IconList,
-  IconLink as IconLinkMini,
 } from '@arco-design/web-vue/es/icon'
 import PageHeader from '@/components/layout/PageHeader.vue'
 import RoleInheritanceTree from '@/components/rbac/RoleInheritanceTree.vue'
-import api from '@/utils/api'
+import api, { getApiErrorDetail } from '@/utils/api'
 
 interface RoleRef {
   id: string
@@ -741,8 +740,8 @@ async function fetchRoles() {
   try {
     const res = await api.get<Role[]>('/v2/roles')
     roles.value = Array.isArray(res.data) ? res.data : []
-  } catch (e: any) {
-    Message.error(e.response?.data?.detail || '加载角色列表失败')
+  } catch (e) {
+    Message.error(getApiErrorDetail(e) || '加载角色列表失败')
   } finally {
     loading.value = false
   }
@@ -752,7 +751,9 @@ async function fetchConstraints() {
   try {
     const res = await api.get<Constraint[]>('/v2/constraints')
     constraints.value = Array.isArray(res.data) ? res.data : []
-  } catch {}
+  } catch {
+    // 加载约束失败不阻断页面
+  }
 }
 
 onMounted(async () => {
@@ -796,8 +797,8 @@ async function createRole() {
     Message.success('角色创建成功')
     addVisible.value = false
     await fetchRoles()
-  } catch (e: any) {
-    Message.error(e.response?.data?.detail || '创建失败')
+  } catch (e) {
+    Message.error(getApiErrorDetail(e) || '创建失败')
   } finally {
     addSaving.value = false
   }
@@ -830,8 +831,8 @@ async function saveEdit() {
     Message.success('角色已更新')
     editVisible.value = false
     await fetchRoles()
-  } catch (e: any) {
-    Message.error(e.response?.data?.detail || '更新失败')
+  } catch (e) {
+    Message.error(getApiErrorDetail(e) || '更新失败')
   } finally {
     editSaving.value = false
   }
@@ -849,8 +850,8 @@ function deleteRole(role: Role) {
         await api.delete(`/v2/roles/${role.id}`)
         Message.success('角色已删除')
         await fetchRoles()
-      } catch (e: any) {
-        Message.error(e.response?.data?.detail || '删除失败')
+      } catch (e) {
+        Message.error(getApiErrorDetail(e) || '删除失败')
       }
     },
   })
@@ -923,11 +924,11 @@ async function fetchParentPreview(parentId: string) {
       ...parentPreviewMap.value,
       [parentId]: res.data || {},
     }
-  } catch (e: any) {
-    if (e.response?.status === 400) {
+  } catch (e) {
+    if ((e as { response?: { status?: number } }).response?.status === 400) {
       parentPreviewMap.value = {
         ...parentPreviewMap.value,
-        [parentId]: { _error: 'cycle' } as any,
+        [parentId]: { _error: 'cycle' } as Record<string, string>,
       }
     } else {
       parentPreviewMap.value = {
@@ -973,7 +974,7 @@ function groupedPreviewPermissions(): {
   const pid = previewedParentId()
   if (!pid) return []
   const perms = preview[pid]
-  if (!perms || (perms as any)._error) return []
+  if (!perms || perms._error) return []
 
   const groups: Record<string, { key: string; name: string }[]> = {}
   for (const [key, name] of Object.entries(perms)) {
@@ -1011,8 +1012,8 @@ async function saveParents() {
     for (const parentId of toAdd) {
       try {
         await api.post(`/v2/roles/${parentsRole.value.id}/parents`, { id: parentId })
-      } catch (e: any) {
-        const msg = e.response?.data?.detail || '添加父角色失败'
+      } catch (e) {
+        const msg = getApiErrorDetail(e) || '添加父角色失败'
         if (msg.includes('循环继承')) {
           Message.error(`无法添加「${getRoleName(parentId)}」为父角色：会形成循环继承`)
         } else {
@@ -1029,8 +1030,8 @@ async function saveParents() {
     Message.success('父角色已更新')
     parentsVisible.value = false
     await fetchRoles()
-  } catch (e: any) {
-    Message.error(e.response?.data?.detail || '更新失败')
+  } catch (e) {
+    Message.error(getApiErrorDetail(e) || '更新失败')
   } finally {
     parentsSaving.value = false
   }
@@ -1111,6 +1112,9 @@ const viewMode = ref<'card' | 'table'>('card')
     transform 0.22s cubic-bezier(0.25, 0.1, 0.25, 1),
     box-shadow 0.22s,
     border-color 0.22s;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
 }
 .role-card:hover {
   transform: translateY(-2px);

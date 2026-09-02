@@ -35,7 +35,7 @@ type updateConstraintRequest struct {
 	AssociationTypes *[]string `json:"association_types"`
 }
 
-func constraintRoleRefs(constraintID string) (subjectRoles, prerequisiteRoles []map[string]interface{}) {
+func constraintRoleRefs(constraintID string) (roles, subjectRoles, prerequisiteRoles []map[string]interface{}) {
 	o := services.GetOrm()
 	var assocs []models.RBACConstraintRoleAssociation
 	_, err := o.QueryTable(new(models.RBACConstraintRoleAssociation)).
@@ -53,12 +53,13 @@ func constraintRoleRefs(constraintID string) (subjectRoles, prerequisiteRoles []
 		for id := range roleIDs {
 			ids = append(ids, id)
 		}
-		var roles []models.RBACRole
-		_, _ = o.QueryTable(new(models.RBACRole)).Filter("id__in", ids).All(&roles)
-		for _, r := range roles {
+		var matchedRoles []models.RBACRole
+		_, _ = o.QueryTable(new(models.RBACRole)).Filter("id__in", ids).All(&matchedRoles)
+		for _, r := range matchedRoles {
 			roleMap[r.ID] = r
 		}
 	}
+	roles = []map[string]interface{}{}
 	subjectRoles = []map[string]interface{}{}
 	prerequisiteRoles = []map[string]interface{}{}
 	for _, a := range assocs {
@@ -66,7 +67,14 @@ func constraintRoleRefs(constraintID string) (subjectRoles, prerequisiteRoles []
 		if !ok {
 			continue
 		}
-		ref := map[string]interface{}{"id": role.ID, "name": role.Name, "display_name": role.DisplayName}
+		ref := map[string]interface{}{
+			"id":                role.ID,
+			"role_id":           role.ID,
+			"role_name":         role.Name,
+			"role_display_name": role.DisplayName,
+			"association_type":  a.AssociationType,
+		}
+		roles = append(roles, ref)
 		if a.AssociationType == "subject" {
 			subjectRoles = append(subjectRoles, ref)
 		} else if a.AssociationType == "prerequisite" {
@@ -77,7 +85,7 @@ func constraintRoleRefs(constraintID string) (subjectRoles, prerequisiteRoles []
 }
 
 func constraintItem(c *models.RBACConstraint) map[string]interface{} {
-	subjectRoles, prerequisiteRoles := constraintRoleRefs(c.ID)
+	roles, subjectRoles, prerequisiteRoles := constraintRoleRefs(c.ID)
 	return map[string]interface{}{
 		"id":                 c.ID,
 		"name":               c.Name,
@@ -87,6 +95,7 @@ func constraintItem(c *models.RBACConstraint) map[string]interface{} {
 		"is_active":          c.IsActive,
 		"created_at":         c.CreatedAt.Format("2006-01-02T15:04:05"),
 		"updated_at":         c.CreatedAt.Format("2006-01-02T15:04:05"),
+		"roles":              roles,
 		"subject_roles":      subjectRoles,
 		"prerequisite_roles": prerequisiteRoles,
 	}

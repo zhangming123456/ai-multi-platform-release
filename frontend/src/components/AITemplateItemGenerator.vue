@@ -180,6 +180,7 @@ import { IconRobot } from '@arco-design/web-vue/es/icon'
 import ModelSelect from '@/components/shared/ModelSelect.vue'
 import AttachmentInputArea from '@/components/AttachmentInputArea.vue'
 import { uploadImageFile } from '@/composables/useFileUpload'
+import { getApiErrorDetail } from '@/utils/api'
 
 export interface AIGeneratedItem {
   category: string
@@ -342,7 +343,14 @@ async function handleGenerate() {
           else if (line.startsWith('data:')) dataStr = line.slice(5).trim()
         }
         if (!eventType || !dataStr) continue
-        let payload: any
+        let payload: {
+          level?: string
+          message?: string
+          text?: string
+          items?: AIGeneratedItem[]
+          template_name?: string
+          template_description?: string
+        }
         try {
           payload = JSON.parse(dataStr)
         } catch {
@@ -390,10 +398,11 @@ async function handleGenerate() {
         Message.error('未收到识别结果，请重试')
       }
     }
-  } catch (e: any) {
-    if (e?.name !== 'AbortError') {
-      pushLog('err', e?.message || 'AI 识别失败')
-      Message.error(e?.message || 'AI 识别失败')
+  } catch (e) {
+    const errMessage = e instanceof Error ? e.message : ''
+    if (!(e instanceof Error && e.name === 'AbortError')) {
+      pushLog('err', errMessage || 'AI 识别失败')
+      Message.error(errMessage || 'AI 识别失败')
     }
   } finally {
     generating.value = false
@@ -465,8 +474,9 @@ async function handleConfirm() {
       items,
     })
     emit('update:visible', false)
-  } catch (e: any) {
-    Message.error(e?.response?.data?.detail || e?.message || '标准图上传失败')
+  } catch (e) {
+    const message = e instanceof Error ? e.message : ''
+    Message.error(getApiErrorDetail(e) || message || '标准图上传失败')
   } finally {
     confirming.value = false
   }

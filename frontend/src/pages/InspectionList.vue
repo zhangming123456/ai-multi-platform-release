@@ -154,7 +154,7 @@ import { IconPlus, IconEdit, IconDelete, IconEye, IconRobot } from '@arco-design
 import PageHeader from '@/components/layout/PageHeader.vue'
 import { formatDateTime } from '@/utils/time'
 import type { Paginated, Store } from '@/types'
-import api from '@/utils/api'
+import api, { getApiErrorDetail } from '@/utils/api'
 
 interface InspectionListItem {
   id: string
@@ -207,7 +207,7 @@ async function fetchStores() {
 async function fetchInspections() {
   loading.value = true
   try {
-    const params: Record<string, any> = {
+    const params: Record<string, unknown> = {
       page: page.value,
       page_size: pageSize.value,
     }
@@ -216,8 +216,8 @@ async function fetchInspections() {
     const res = await api.get<Paginated<InspectionListItem>>('/inspections/', { params })
     inspections.value = res.data.items || []
     total.value = res.data.total || 0
-  } catch (e: any) {
-    Message.error(e?.response?.data?.detail || '加载巡店记录失败')
+  } catch (e) {
+    Message.error(getApiErrorDetail(e) || '加载巡店记录失败')
   } finally {
     loading.value = false
   }
@@ -287,8 +287,8 @@ async function handleDelete(record: InspectionListItem) {
     Message.success('删除成功')
     if (inspections.value.length === 1 && page.value > 1) page.value -= 1
     await fetchInspections()
-  } catch (e: any) {
-    Message.error(e?.response?.data?.detail || '删除失败')
+  } catch (e) {
+    Message.error(getApiErrorDetail(e) || '删除失败')
   }
 }
 

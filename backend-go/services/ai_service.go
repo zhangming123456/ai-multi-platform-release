@@ -248,19 +248,23 @@ func parseModelField(raw string) []map[string]interface{} {
 	return result
 }
 
-// ResolveModelConfig 解析模型配置，返回 (api_key, base_url, model, plan_name, supports_vision)。
+// ResolveModelConfig 解析模型配置，返回 (api_key, base_url, model, plan_name, supports_vision, api_format)。
 // 失败时返回 *AIGenerationError。
-func ResolveModelConfig(planID, modelID string) (string, string, string, string, bool, error) {
+func ResolveModelConfig(planID, modelID string) (string, string, string, string, bool, string, error) {
 	apiKey := getAIAPIKey()
 	baseURL := getAIBaseURL()
 	model := getAIModel()
 	planName := "默认配置"
 	supportsVision := false
+	apiFormat := "openai_chat"
 
 	if planID != "" {
 		o := GetOrm()
 		plan := &models.ModelConfig{ID: planID}
 		if err := o.Read(plan); err == nil {
+			if plan.APIFormat != "" {
+				apiFormat = plan.APIFormat
+			}
 			if plan.APIKey != "" {
 				apiKey = plan.APIKey
 			}
@@ -303,9 +307,9 @@ func ResolveModelConfig(planID, modelID string) (string, string, string, string,
 		} else {
 			available, aerr := getAvailablePlans()
 			if aerr != nil {
-				return "", "", "", "", false, aerr
+				return "", "", "", "", false, "", aerr
 			}
-			return "", "", "", "", false, &AIGenerationError{
+			return "", "", "", "", false, "", &AIGenerationError{
 				Message:        fmt.Sprintf("未找到指定的模型配置（plan_id=%s），请切换到可用的模型配置。", planID),
 				AvailablePlans: available,
 			}
@@ -315,15 +319,15 @@ func ResolveModelConfig(planID, modelID string) (string, string, string, string,
 	if apiKey == "" {
 		available, aerr := getAvailablePlans()
 		if aerr != nil {
-			return "", "", "", "", false, aerr
+			return "", "", "", "", false, "", aerr
 		}
-		return "", "", "", "", false, &AIGenerationError{
+		return "", "", "", "", false, "", &AIGenerationError{
 			Message:        "未配置 API Key，请在模型配置中添加有效的 API 密钥后重试。",
 			AvailablePlans: available,
 		}
 	}
 
-	return apiKey, baseURL, model, planName, supportsVision, nil
+	return apiKey, baseURL, model, planName, supportsVision, apiFormat, nil
 }
 
 type chatMessage struct {
@@ -332,11 +336,10 @@ type chatMessage struct {
 }
 
 type chatRequest struct {
-	Model       string        `json:"model"`
-	Messages    []chatMessage `json:"messages"`
-	Temperature float64       `json:"temperature"`
-	MaxTokens   int           `json:"max_tokens"`
-	Stream      bool          `json:"stream"`
+	Model     string        `json:"model"`
+	Messages  []chatMessage `json:"messages"`
+	MaxTokens int           `json:"max_tokens"`
+	Stream    bool          `json:"stream"`
 }
 
 // writeAILog 将模型调用请求或响应记录到 backend-go/logs/ai/ 目录，按天分片。
@@ -473,11 +476,10 @@ func (b *loggingBody) Close() error {
 
 func callChatCompletions(apiKey, baseURL, model string, messages []chatMessage, stream bool) (*http.Response, error) {
 	payload := chatRequest{
-		Model:       model,
-		Messages:    messages,
-		Temperature: 0.8,
-		MaxTokens:   4000,
-		Stream:      stream,
+		Model:     model,
+		Messages:  messages,
+		MaxTokens: 4000,
+		Stream:    stream,
 	}
 	reqBody, err := json.Marshal(payload)
 	if err != nil {
@@ -495,7 +497,11 @@ func callChatCompletions(apiKey, baseURL, model string, messages []chatMessage, 
 	writeAILog(ts, "request", "chat.completions", baseURL, model, stream, 0, reqBody)
 	resp, err := client.Do(req)
 	if err != nil {
+		LogBackendError("ai", http.MethodPost, url, http.StatusBadGateway, err.Error())
 		return nil, err
+	}
+	if resp.StatusCode >= http.StatusBadRequest {
+		LogBackendError("ai", http.MethodPost, url, resp.StatusCode, fmt.Sprintf("模型接口返回 HTTP %d", resp.StatusCode))
 	}
 	const maxRespSize = 10 * 1024 * 1024
 	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, maxRespSize))
@@ -535,11 +541,10 @@ func callChatCompletionsWithTools(apiKey, baseURL, model string, messages []chat
 		maxTokens = 4000
 	}
 	payload := map[string]interface{}{
-		"model":       model,
-		"messages":    messages,
-		"temperature": 0.4,
-		"max_tokens":  maxTokens,
-		"stream":      false,
+		"model":      model,
+		"messages":   messages,
+		"max_tokens": maxTokens,
+		"stream":     false,
 	}
 	if len(tools) > 0 {
 		payload["tools"] = tools
@@ -565,7 +570,11 @@ func callChatCompletionsWithTools(apiKey, baseURL, model string, messages []chat
 	writeAILog(ts, "request", "chat.completions.tools", baseURL, model, false, 0, reqBody)
 	resp, err := client.Do(req)
 	if err != nil {
+		LogBackendError("ai", http.MethodPost, url, http.StatusBadGateway, err.Error())
 		return nil, err
+	}
+	if resp.StatusCode >= http.StatusBadRequest {
+		LogBackendError("ai", http.MethodPost, url, resp.StatusCode, fmt.Sprintf("模型接口返回 HTTP %d", resp.StatusCode))
 	}
 	const maxRespSize = 10 * 1024 * 1024
 	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, maxRespSize))
@@ -582,11 +591,10 @@ func callChatCompletionsStreamWithTools(apiKey, baseURL, model string, messages 
 		maxTokens = 4000
 	}
 	payload := map[string]interface{}{
-		"model":       model,
-		"messages":    messages,
-		"temperature": 0.4,
-		"max_tokens":  maxTokens,
-		"stream":      true,
+		"model":      model,
+		"messages":   messages,
+		"max_tokens": maxTokens,
+		"stream":     true,
 	}
 	if len(tools) > 0 {
 		payload["tools"] = tools
@@ -613,7 +621,11 @@ func callChatCompletionsStreamWithTools(apiKey, baseURL, model string, messages 
 	writeAILog(ts, "request", "chat.completions.stream.tools", baseURL, model, true, 0, reqBody)
 	resp, err := client.Do(req)
 	if err != nil {
+		LogBackendError("ai", http.MethodPost, url, http.StatusBadGateway, err.Error())
 		return nil, err
+	}
+	if resp.StatusCode >= http.StatusBadRequest {
+		LogBackendError("ai", http.MethodPost, url, resp.StatusCode, fmt.Sprintf("模型接口返回 HTTP %d", resp.StatusCode))
 	}
 	var buf bytes.Buffer
 	resp.Body = &loggingBody{
@@ -621,6 +633,269 @@ func callChatCompletionsStreamWithTools(apiKey, baseURL, model string, messages 
 		buf:       &buf,
 		timestamp: ts,
 		callType:  "chat.completions.stream.tools",
+		baseURL:   baseURL,
+		model:     model,
+		stream:    true,
+	}
+	return resp, nil
+}
+
+// ---- OpenAI Responses API 支持 ----
+
+// convertToResponsesInput 将 chat 风格 messages 转换为 Responses API 的 input。
+func convertToResponsesInput(messages []chatMessage) []interface{} {
+	input := make([]interface{}, 0, len(messages))
+	for _, m := range messages {
+		if s, ok := m.Content.(string); ok {
+			input = append(input, map[string]interface{}{"role": m.Role, "content": s})
+			continue
+		}
+		parts, ok := m.Content.([]interface{})
+		if !ok {
+			continue
+		}
+		converted := make([]interface{}, 0, len(parts))
+		for _, p := range parts {
+			pm, ok := p.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			switch pm["type"] {
+			case "text":
+				converted = append(converted, map[string]interface{}{"type": "input_text", "text": pm["text"]})
+			case "image_url":
+				imgURL := ""
+				if iu, ok := pm["image_url"].(map[string]interface{}); ok {
+					imgURL, _ = iu["url"].(string)
+				} else if s, ok := pm["image_url"].(string); ok {
+					imgURL = s
+				}
+				converted = append(converted, map[string]interface{}{"type": "input_image", "image_url": imgURL})
+			case "video_url":
+				vidURL := ""
+				if vu, ok := pm["video_url"].(map[string]interface{}); ok {
+					vidURL, _ = vu["url"].(string)
+				}
+				converted = append(converted, map[string]interface{}{"type": "input_video", "video_url": vidURL})
+			default:
+				converted = append(converted, pm)
+			}
+		}
+		input = append(input, map[string]interface{}{"role": m.Role, "content": converted})
+	}
+	return input
+}
+
+// convertToolsToResponses 将 chat 风格 tools 转换为 Responses API 扁平结构。
+func convertToolsToResponses(tools []toolDefinition) []interface{} {
+	result := make([]interface{}, 0, len(tools))
+	for _, t := range tools {
+		result = append(result, map[string]interface{}{
+			"type":        t.Type,
+			"name":        t.Function.Name,
+			"description": t.Function.Description,
+			"parameters":  t.Function.Parameters,
+		})
+	}
+	return result
+}
+
+// convertToolChoiceToResponses 将 chat 风格 tool_choice 转换为 Responses API 格式。
+func convertToolChoiceToResponses(tc interface{}) interface{} {
+	if tc == nil {
+		return nil
+	}
+	if s, ok := tc.(string); ok {
+		return s
+	}
+	m, ok := tc.(map[string]interface{})
+	if !ok {
+		return tc
+	}
+	if m["type"] != "function" {
+		return m
+	}
+	name := ""
+	if fn, ok := m["function"].(map[string]interface{}); ok {
+		name, _ = fn["name"].(string)
+	}
+	return map[string]interface{}{"type": "function", "name": name}
+}
+
+// extractResponsesResult 解析 Responses API 非流式响应，返回 (content, toolName, toolArgs)。
+func extractResponsesResult(respBody []byte) (string, string, string) {
+	var result struct {
+		Output []struct {
+			Type      string `json:"type"`
+			Name      string `json:"name"`
+			Arguments string `json:"arguments"`
+			Content   []struct {
+				Type string `json:"type"`
+				Text string `json:"text"`
+			} `json:"content"`
+		} `json:"output"`
+		OutputText string `json:"output_text"`
+	}
+	if err := json.Unmarshal(respBody, &result); err != nil {
+		return "", "", ""
+	}
+	for _, out := range result.Output {
+		if out.Type == "function_call" {
+			return "", out.Name, out.Arguments
+		}
+	}
+	content := ""
+	for _, out := range result.Output {
+		if out.Type != "message" {
+			continue
+		}
+		for _, c := range out.Content {
+			if c.Text != "" {
+				content += c.Text
+			}
+		}
+	}
+	if content == "" {
+		content = result.OutputText
+	}
+	return content, "", ""
+}
+
+// callResponses 调用 Responses API 普通端点（无工具）。
+func callResponses(apiKey, baseURL, model string, messages []chatMessage, stream bool) (*http.Response, error) {
+	payload := map[string]interface{}{
+		"model":             model,
+		"input":             convertToResponsesInput(messages),
+		"max_output_tokens": 4000,
+		"stream":            stream,
+	}
+	reqBody, err := json.Marshal(payload)
+	if err != nil {
+		return nil, err
+	}
+	url := strings.TrimRight(baseURL, "/") + "/responses"
+	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(reqBody))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+	client := &http.Client{Timeout: 120 * time.Second}
+	ts := time.Now().Format("2006-01-02_20060102_150405.000")
+	writeAILog(ts, "request", "responses", baseURL, model, stream, 0, reqBody)
+	resp, err := client.Do(req)
+	if err != nil {
+		LogBackendError("ai", http.MethodPost, url, http.StatusBadGateway, err.Error())
+		return nil, err
+	}
+	if resp.StatusCode >= http.StatusBadRequest {
+		LogBackendError("ai", http.MethodPost, url, resp.StatusCode, fmt.Sprintf("模型接口返回 HTTP %d", resp.StatusCode))
+	}
+	const maxRespSize = 10 * 1024 * 1024
+	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, maxRespSize))
+	_ = resp.Body.Close()
+	resp.Body = io.NopCloser(bytes.NewReader(respBody))
+	writeAILog(ts, "response", "responses", baseURL, model, stream, resp.StatusCode, respBody)
+	return resp, nil
+}
+
+// callResponsesWithTools 调用 Responses API，支持 tools/function calling（非流式）。
+func callResponsesWithTools(apiKey, baseURL, model string, messages []chatMessage, tools []toolDefinition, toolChoice interface{}, maxTokens int) (*http.Response, error) {
+	if maxTokens <= 0 {
+		maxTokens = 4000
+	}
+	payload := map[string]interface{}{
+		"model":             model,
+		"input":             convertToResponsesInput(messages),
+		"max_output_tokens": maxTokens,
+		"stream":            false,
+	}
+	if len(tools) > 0 {
+		payload["tools"] = convertToolsToResponses(tools)
+		if toolChoice != nil {
+			payload["tool_choice"] = convertToolChoiceToResponses(toolChoice)
+		} else {
+			payload["tool_choice"] = "auto"
+		}
+	}
+	reqBody, err := json.Marshal(payload)
+	if err != nil {
+		return nil, err
+	}
+	url := strings.TrimRight(baseURL, "/") + "/responses"
+	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(reqBody))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+	client := &http.Client{Timeout: 120 * time.Second}
+	ts := time.Now().Format("2006-01-02_20060102_150405.000")
+	writeAILog(ts, "request", "responses.tools", baseURL, model, false, 0, reqBody)
+	resp, err := client.Do(req)
+	if err != nil {
+		LogBackendError("ai", http.MethodPost, url, http.StatusBadGateway, err.Error())
+		return nil, err
+	}
+	if resp.StatusCode >= http.StatusBadRequest {
+		LogBackendError("ai", http.MethodPost, url, resp.StatusCode, fmt.Sprintf("模型接口返回 HTTP %d", resp.StatusCode))
+	}
+	const maxRespSize = 10 * 1024 * 1024
+	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, maxRespSize))
+	_ = resp.Body.Close()
+	resp.Body = io.NopCloser(bytes.NewReader(respBody))
+	writeAILog(ts, "response", "responses.tools", baseURL, model, false, resp.StatusCode, respBody)
+	return resp, nil
+}
+
+// callResponsesStreamWithTools 流式调用 Responses API，支持 tools/function calling。
+func callResponsesStreamWithTools(apiKey, baseURL, model string, messages []chatMessage, tools []toolDefinition, toolChoice interface{}, maxTokens int) (*http.Response, error) {
+	if maxTokens <= 0 {
+		maxTokens = 4000
+	}
+	payload := map[string]interface{}{
+		"model":             model,
+		"input":             convertToResponsesInput(messages),
+		"max_output_tokens": maxTokens,
+		"stream":            true,
+	}
+	if len(tools) > 0 {
+		payload["tools"] = convertToolsToResponses(tools)
+		if toolChoice != nil {
+			payload["tool_choice"] = convertToolChoiceToResponses(toolChoice)
+		} else {
+			payload["tool_choice"] = "auto"
+		}
+	}
+	reqBody, err := json.Marshal(payload)
+	if err != nil {
+		return nil, err
+	}
+	url := strings.TrimRight(baseURL, "/") + "/responses"
+	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(reqBody))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+	req.Header.Set("Accept", "text/event-stream")
+	client := &http.Client{Timeout: 120 * time.Second}
+	ts := time.Now().Format("2006-01-02_20060102_150405.000")
+	writeAILog(ts, "request", "responses.stream.tools", baseURL, model, true, 0, reqBody)
+	resp, err := client.Do(req)
+	if err != nil {
+		LogBackendError("ai", http.MethodPost, url, http.StatusBadGateway, err.Error())
+		return nil, err
+	}
+	if resp.StatusCode >= http.StatusBadRequest {
+		LogBackendError("ai", http.MethodPost, url, resp.StatusCode, fmt.Sprintf("模型接口返回 HTTP %d", resp.StatusCode))
+	}
+	var buf bytes.Buffer
+	resp.Body = &loggingBody{
+		rc:        resp.Body,
+		buf:       &buf,
+		timestamp: ts,
+		callType:  "responses.stream.tools",
 		baseURL:   baseURL,
 		model:     model,
 		stream:    true,
@@ -918,6 +1193,68 @@ func parseContentVariantsArgs(raw string) ([]AIVariant, bool) {
 	return nil, false
 }
 
+// parseContentVariantsText extracts the first valid JSON object/array from a
+// model response that may contain markdown fences or explanatory text.
+func parseContentVariantsText(raw string) ([]AIVariant, bool) {
+	clean := strings.TrimSpace(raw)
+	if variants, ok := parseContentVariantsArgs(clean); ok && len(variants) > 0 {
+		return variants, true
+	}
+	if variant, ok := parseContentVariantArgs(clean); ok {
+		return []AIVariant{variant}, true
+	}
+
+	collected := make([]AIVariant, 0)
+	for start := 0; start < len(clean); {
+		if clean[start] != '{' && clean[start] != '[' {
+			start++
+			continue
+		}
+		var value json.RawMessage
+		decoder := json.NewDecoder(strings.NewReader(clean[start:]))
+		if err := decoder.Decode(&value); err != nil {
+			start++
+			continue
+		}
+		if variants, ok := parseContentVariantsArgs(string(value)); ok && len(variants) > 0 {
+			return append(collected, variants...), true
+		}
+		if variant, ok := parseContentVariantArgs(string(value)); ok {
+			collected = append(collected, variant)
+		}
+		consumed := int(decoder.InputOffset())
+		if consumed <= 0 {
+			start++
+		} else {
+			start += consumed
+		}
+	}
+	if len(collected) > 0 {
+		return collected, true
+	}
+	return nil, false
+}
+
+func buildTextVariant(raw string) (AIVariant, bool) {
+	text := strings.TrimSpace(stripCodeFence(raw))
+	if text == "" {
+		return AIVariant{}, false
+	}
+	lines := strings.Split(text, "\n")
+	title := strings.TrimSpace(lines[0])
+	title = strings.TrimLeft(title, "#* -")
+	if title == "" {
+		title = "AI 生成内容"
+	}
+	hashtags := make([]string, 0)
+	for _, match := range regexp.MustCompile(`#([\p{L}\p{N}_-]+)`).FindAllStringSubmatch(text, -1) {
+		if len(match) > 1 && !containsString(hashtags, match[1]) {
+			hashtags = append(hashtags, match[1])
+		}
+	}
+	return AIVariant{Title: title, Body: text, Hashtags: hashtags}, true
+}
+
 func hashtagsText(hashtags []string) string {
 	clean := make([]string, 0, len(hashtags))
 	for _, t := range hashtags {
@@ -931,7 +1268,7 @@ func hashtagsText(hashtags []string) string {
 
 // GenerateContentVariants 生成多个内容变体。
 func GenerateContentVariants(topic, platform, style string, keywords []string, count int, planID, modelID, campaignID string) ([]AIVariant, error) {
-	apiKey, baseURL, model, planName, supportsVision, err := ResolveModelConfig(planID, modelID)
+	apiKey, baseURL, model, planName, supportsVision, apiFormat, err := ResolveModelConfig(planID, modelID)
 	if err != nil {
 		return nil, err
 	}
@@ -947,7 +1284,12 @@ func GenerateContentVariants(topic, platform, style string, keywords []string, c
 
 	messages, tools, toolChoice := buildContentVariantMessages(topic, platform, style, keywords, files, count, contextText)
 
-	resp, err := callChatCompletionsWithTools(apiKey, baseURL, model, messages, tools, toolChoice, 8000)
+	var resp *http.Response
+	if apiFormat == "openai_responses" {
+		resp, err = callResponsesWithTools(apiKey, baseURL, model, messages, tools, toolChoice, 8000)
+	} else {
+		resp, err = callChatCompletionsWithTools(apiKey, baseURL, model, messages, tools, toolChoice, 8000)
+	}
 	if err != nil {
 		return nil, aiCallError(planName, err)
 	}
@@ -956,7 +1298,11 @@ func GenerateContentVariants(topic, platform, style string, keywords []string, c
 		resp.Body.Close()
 		lower := strings.ToLower(string(bodyBytes))
 		if strings.Contains(lower, "tool_choice") || strings.Contains(lower, "tool choice") {
-			resp, err = callChatCompletionsWithTools(apiKey, baseURL, model, messages, tools, nil, 8000)
+			if apiFormat == "openai_responses" {
+				resp, err = callResponsesWithTools(apiKey, baseURL, model, messages, tools, nil, 8000)
+			} else {
+				resp, err = callChatCompletionsWithTools(apiKey, baseURL, model, messages, tools, nil, 8000)
+			}
 			if err != nil {
 				return nil, aiCallError(planName, err)
 			}
@@ -970,26 +1316,35 @@ func GenerateContentVariants(topic, platform, style string, keywords []string, c
 		return nil, aiCallError(planName, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(b)))
 	}
 
-	var result struct {
-		Choices []struct {
-			Message struct {
-				Content   string           `json:"content"`
-				ToolCalls []toolCallResult `json:"tool_calls"`
-			} `json:"message"`
-		} `json:"choices"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, aiCallError(planName, err)
-	}
-	if len(result.Choices) == 0 {
-		return nil, aiCallError(planName, fmt.Errorf("模型无返回内容"))
-	}
-
 	args := ""
-	if len(result.Choices[0].Message.ToolCalls) > 0 {
-		args = strings.TrimSpace(result.Choices[0].Message.ToolCalls[0].Function.Arguments)
+	if apiFormat == "openai_responses" {
+		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 10*1024*1024))
+		content, _, toolArgs := extractResponsesResult(respBody)
+		args = strings.TrimSpace(toolArgs)
+		if args == "" {
+			args = strings.TrimSpace(content)
+		}
 	} else {
-		args = strings.TrimSpace(result.Choices[0].Message.Content)
+		var result struct {
+			Choices []struct {
+				Message struct {
+					Content   string           `json:"content"`
+					ToolCalls []toolCallResult `json:"tool_calls"`
+				} `json:"message"`
+			} `json:"choices"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+			return nil, aiCallError(planName, err)
+		}
+		if len(result.Choices) == 0 {
+			return nil, aiCallError(planName, fmt.Errorf("模型无返回内容"))
+		}
+
+		if len(result.Choices[0].Message.ToolCalls) > 0 {
+			args = strings.TrimSpace(result.Choices[0].Message.ToolCalls[0].Function.Arguments)
+		} else {
+			args = strings.TrimSpace(result.Choices[0].Message.Content)
+		}
 	}
 
 	variants, ok := parseContentVariantsArgs(args)
@@ -1013,6 +1368,7 @@ func GenerateContentVariants(topic, platform, style string, keywords []string, c
 }
 
 func aiCallError(planName string, err error) error {
+	LogBackendError("ai", http.MethodPost, "/chat/completions", http.StatusBadGateway, fmt.Sprintf("模型 %s 调用失败: %v", planName, err))
 	available, aerr := getAvailablePlans()
 	if aerr != nil {
 		return aerr
@@ -1024,14 +1380,20 @@ func aiCallError(planName string, err error) error {
 }
 
 // generateContentVariantsFallback 在模型不支持 function calling 时使用纯 JSON 请求兜底。
-func generateContentVariantsFallback(apiKey, baseURL, model string, messages []chatMessage, count int) ([]AIVariant, error) {
+func generateContentVariantsFallback(apiFormat, apiKey, baseURL, model string, messages []chatMessage, count int) ([]AIVariant, error) {
 	fallbackMessages := append([]chatMessage(nil), messages...)
 	fallbackMessages = append(fallbackMessages, chatMessage{
 		Role: "user",
 		Content: fmt.Sprintf("当前接口不支持工具调用。请只返回合法 JSON，不要 markdown 或解释文字。%s",
 			contentVariantJSONFormat(count)),
 	})
-	resp, err := callChatCompletionsWithTools(apiKey, baseURL, model, fallbackMessages, nil, nil, 8000)
+	var resp *http.Response
+	var err error
+	if apiFormat == "openai_responses" {
+		resp, err = callResponses(apiKey, baseURL, model, fallbackMessages, false)
+	} else {
+		resp, err = callChatCompletionsWithTools(apiKey, baseURL, model, fallbackMessages, nil, nil, 8000)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -1040,32 +1402,29 @@ func generateContentVariantsFallback(apiKey, baseURL, model string, messages []c
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
 		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
 	}
-	var result struct {
-		Choices []struct {
-			Message struct {
-				Content string `json:"content"`
-			} `json:"message"`
-		} `json:"choices"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, err
-	}
-	if len(result.Choices) == 0 {
-		return nil, fmt.Errorf("模型无返回内容")
-	}
-	content := stripCodeFence(strings.TrimSpace(result.Choices[0].Message.Content))
-	if count > 1 {
-		if variants, ok := parseContentVariantsArgs(content); ok {
-			return variants, nil
+	content := ""
+	if apiFormat == "openai_responses" {
+		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 10*1024*1024))
+		content, _, _ = extractResponsesResult(respBody)
+	} else {
+		var result struct {
+			Choices []struct {
+				Message struct {
+					Content string `json:"content"`
+				} `json:"message"`
+			} `json:"choices"`
 		}
-	} else if variant, ok := parseContentVariantArgs(content); ok {
-		return []AIVariant{variant}, nil
+		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+			return nil, err
+		}
+		if len(result.Choices) == 0 {
+			return nil, fmt.Errorf("模型无返回内容")
+		}
+		content = result.Choices[0].Message.Content
 	}
-	if variants, ok := parseContentVariantsArgs(content); ok {
+	content = stripCodeFence(strings.TrimSpace(content))
+	if variants, ok := parseContentVariantsText(content); ok {
 		return variants, nil
-	}
-	if variant, ok := parseContentVariantArgs(content); ok {
-		return []AIVariant{variant}, nil
 	}
 	return nil, fmt.Errorf("纯 JSON 兜底响应格式异常")
 }
@@ -1075,6 +1434,13 @@ func contentVariantJSONFormat(count int) string {
 		return fmt.Sprintf("返回 {\"variants\":[...]}，数组中包含 %d 个对象，每个对象包含 title、body、hashtags。", count)
 	}
 	return "返回 {\"title\":\"标题\",\"body\":\"正文\",\"hashtags\":[\"话题\"]}。"
+}
+
+// isJSONOnlyContentModel identifies the local OpenCode-compatible endpoint,
+// which accepts chat completions but does not implement tool calls.
+func isJSONOnlyContentModel(baseURL string) bool {
+	url := strings.ToLower(strings.TrimRight(baseURL, "/"))
+	return strings.Contains(url, "127.0.0.1:8010") || strings.Contains(url, "localhost:8010")
 }
 
 func toString(v interface{}) string {
@@ -1176,7 +1542,7 @@ func GenerateContentStream(topic, platform, style string, keywords []string, pla
 		versionNum = 3
 	}
 
-	apiKey, baseURL, model, planName, supportsVision, err := ResolveModelConfig(planID, modelID)
+	apiKey, baseURL, model, planName, supportsVision, apiFormat, err := ResolveModelConfig(planID, modelID)
 	if err != nil {
 		if aiErr, ok := err.(*AIGenerationError); ok {
 			go func() {
@@ -1236,8 +1602,23 @@ func GenerateContentStream(topic, platform, style string, keywords []string, pla
 			}
 			events <- AIStreamEvent{Event: "log", Level: "info", Message: fmt.Sprintf("附带 %s（多模态分析）", strings.Join(parts, "、"))}
 		}
+		jsonOnly := isJSONOnlyContentModel(baseURL)
+		if jsonOnly {
+			events <- AIStreamEvent{Event: "log", Level: "info", Message: "当前 OpenCode 端点不支持工具调用，使用单次流式纯 JSON 模式"}
+		}
 
-		resp, err := callChatCompletionsStreamWithTools(apiKey, baseURL, model, messages, tools, toolChoice, 8000)
+		requestTools := tools
+		requestToolChoice := toolChoice
+		if jsonOnly {
+			requestTools = nil
+			requestToolChoice = nil
+		}
+		var resp *http.Response
+		if apiFormat == "openai_responses" {
+			resp, err = callResponsesStreamWithTools(apiKey, baseURL, model, messages, requestTools, requestToolChoice, 8000)
+		} else {
+			resp, err = callChatCompletionsStreamWithTools(apiKey, baseURL, model, messages, requestTools, requestToolChoice, 8000)
+		}
 		if err != nil {
 			events <- AIStreamEvent{Event: "error", Message: fmt.Sprintf("模型「%s」调用失败：%s。请尝试切换到其他模型配置后重试。", planName, err)}
 			return
@@ -1248,7 +1629,11 @@ func GenerateContentStream(topic, platform, style string, keywords []string, pla
 			lower := strings.ToLower(string(bodyBytes))
 			if strings.Contains(lower, "tool_choice") || strings.Contains(lower, "tool choice") {
 				events <- AIStreamEvent{Event: "log", Level: "warn", Message: "当前模型不支持强制工具调用，已自动降级为自动模式"}
-				resp, err = callChatCompletionsStreamWithTools(apiKey, baseURL, model, messages, tools, nil, 8000)
+				if apiFormat == "openai_responses" {
+					resp, err = callResponsesStreamWithTools(apiKey, baseURL, model, messages, tools, nil, 8000)
+				} else {
+					resp, err = callChatCompletionsStreamWithTools(apiKey, baseURL, model, messages, tools, nil, 8000)
+				}
 				if err != nil {
 					events <- AIStreamEvent{Event: "error", Message: fmt.Sprintf("模型「%s」调用失败：%s。请尝试切换到其他模型配置后重试。", planName, err)}
 					return
@@ -1265,47 +1650,96 @@ func GenerateContentStream(topic, platform, style string, keywords []string, pla
 			return
 		}
 
-		events <- AIStreamEvent{Event: "log", Level: "req", Message: "POST /chat/completions → SSE 连接已建立"}
+		if apiFormat == "openai_responses" {
+			events <- AIStreamEvent{Event: "log", Level: "req", Message: "POST /responses → SSE 连接已建立"}
+		} else {
+			events <- AIStreamEvent{Event: "log", Level: "req", Message: "POST /chat/completions → SSE 连接已建立"}
+		}
 
 		fullContent := ""
 		accumulatedArgs := make(map[int]string)
 		accumulatedName := make(map[int]string)
 		scanner := bufio.NewScanner(resp.Body)
-		for scanner.Scan() {
-			line := strings.TrimSpace(scanner.Text())
-			if !strings.HasPrefix(line, "data:") {
-				continue
-			}
-			data := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
-			if data == "[DONE]" {
-				break
-			}
-			var chunk struct {
-				Choices []struct {
-					Delta struct {
-						Content   string           `json:"content"`
-						ToolCalls []toolCallResult `json:"tool_calls"`
-					} `json:"delta"`
-				} `json:"choices"`
-			}
-			if err := json.Unmarshal([]byte(data), &chunk); err != nil {
-				continue
-			}
-			if len(chunk.Choices) == 0 {
-				continue
-			}
-			delta := chunk.Choices[0].Delta
-			if delta.Content != "" {
-				fullContent += delta.Content
-				events <- AIStreamEvent{Event: "chunk", Text: delta.Content}
-			}
-			for _, tc := range delta.ToolCalls {
-				idx := 0
-				if tc.Function.Name != "" {
-					accumulatedName[idx] = tc.Function.Name
+		if apiFormat == "openai_responses" {
+			var respAccumulatedArgs string
+			var respAccumulatedName string
+			for scanner.Scan() {
+				line := strings.TrimSpace(scanner.Text())
+				if !strings.HasPrefix(line, "data:") {
+					continue
 				}
-				if tc.Function.Arguments != "" {
-					accumulatedArgs[idx] += tc.Function.Arguments
+				data := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+				if data == "[DONE]" {
+					break
+				}
+				var evt struct {
+					Type  string `json:"type"`
+					Delta string `json:"delta"`
+					Item  struct {
+						Type string `json:"type"`
+						Name string `json:"name"`
+					} `json:"item"`
+				}
+				if err := json.Unmarshal([]byte(data), &evt); err != nil {
+					continue
+				}
+				switch evt.Type {
+				case "response.output_item.added":
+					if evt.Item.Type == "function_call" {
+						respAccumulatedName = evt.Item.Name
+					}
+				case "response.function_call_arguments.delta":
+					respAccumulatedArgs += evt.Delta
+				case "response.output_text.delta":
+					if evt.Delta != "" {
+						fullContent += evt.Delta
+						events <- AIStreamEvent{Event: "chunk", Text: evt.Delta}
+					}
+				}
+			}
+			if respAccumulatedArgs != "" {
+				accumulatedArgs[0] = respAccumulatedArgs
+			}
+			if respAccumulatedName != "" {
+				accumulatedName[0] = respAccumulatedName
+			}
+		} else {
+			for scanner.Scan() {
+				line := strings.TrimSpace(scanner.Text())
+				if !strings.HasPrefix(line, "data:") {
+					continue
+				}
+				data := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+				if data == "[DONE]" {
+					break
+				}
+				var chunk struct {
+					Choices []struct {
+						Delta struct {
+							Content   string           `json:"content"`
+							ToolCalls []toolCallResult `json:"tool_calls"`
+						} `json:"delta"`
+					} `json:"choices"`
+				}
+				if err := json.Unmarshal([]byte(data), &chunk); err != nil {
+					continue
+				}
+				if len(chunk.Choices) == 0 {
+					continue
+				}
+				delta := chunk.Choices[0].Delta
+				if delta.Content != "" {
+					fullContent += delta.Content
+					events <- AIStreamEvent{Event: "chunk", Text: delta.Content}
+				}
+				for _, tc := range delta.ToolCalls {
+					idx := 0
+					if tc.Function.Name != "" {
+						accumulatedName[idx] = tc.Function.Name
+					}
+					if tc.Function.Arguments != "" {
+						accumulatedArgs[idx] += tc.Function.Arguments
+					}
 				}
 			}
 		}
@@ -1336,17 +1770,21 @@ func GenerateContentStream(topic, platform, style string, keywords []string, pla
 			}
 		}
 		if len(variants) == 0 {
-			if list, ok := parseContentVariantsArgs(stripCodeFence(fullContent)); ok && len(list) > 0 {
+			if list, ok := parseContentVariantsText(fullContent); ok && len(list) > 0 {
 				variants = list
 				events <- AIStreamEvent{Event: "log", Level: "ok", Message: fmt.Sprintf("已从文本内容回退解析 %d 个 JSON 变体", len(list))}
-			} else if v, ok := parseContentVariantArgs(stripCodeFence(fullContent)); ok {
-				variants = []AIVariant{v}
-				events <- AIStreamEvent{Event: "log", Level: "ok", Message: "已从文本内容回退解析 JSON 结果"}
+			} else {
+				if variant, ok := buildTextVariant(fullContent); ok {
+					variants = []AIVariant{variant}
+					events <- AIStreamEvent{Event: "log", Level: "warn", Message: "流式响应未返回 JSON，已按纯文本整理为内容结果"}
+				} else {
+					events <- AIStreamEvent{Event: "log", Level: "warn", Message: "流式响应已结束，但未提取到可用内容"}
+				}
 			}
 		}
-		if len(variants) == 0 {
+		if len(variants) == 0 && !jsonOnly {
 			events <- AIStreamEvent{Event: "log", Level: "warn", Message: "模型未返回工具调用，正在切换为纯 JSON 兼容模式"}
-			fallbackVariants, fallbackErr := generateContentVariantsFallback(apiKey, baseURL, model, messages, versionNum)
+			fallbackVariants, fallbackErr := generateContentVariantsFallback(apiFormat, apiKey, baseURL, model, messages, versionNum)
 			if fallbackErr == nil {
 				variants = fallbackVariants
 				events <- AIStreamEvent{Event: "log", Level: "ok", Message: fmt.Sprintf("纯 JSON 兼容模式解析成功（%d 个版本）", len(variants))}

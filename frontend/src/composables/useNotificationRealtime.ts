@@ -4,6 +4,13 @@ import { useNotificationStore } from '@/stores/notification'
 import { usePermissionStore } from '@/stores/permission'
 import { useUserStore } from '@/stores/user'
 
+type BadgeNavigator = Navigator & {
+  setAppBadge?: (count: number) => Promise<void>
+  clearAppBadge?: () => Promise<void>
+  setClientBadge?: (count: number) => Promise<void>
+  clearClientBadge?: () => Promise<void>
+}
+
 interface NotificationItem {
   id: string
   type: string
@@ -90,9 +97,9 @@ function createRealtimeInstance() {
       const unread = notificationStore.unreadCount
       if (unread > 0) {
         if ('setAppBadge' in navigator) {
-          await (navigator as any).setAppBadge(unread)
+          await (navigator as BadgeNavigator).setAppBadge!(unread)
         } else if ('setClientBadge' in navigator) {
-          await (navigator as any).setClientBadge(unread)
+          await (navigator as BadgeNavigator).setClientBadge!(unread)
         }
         console.log(`${LOG_PREFIX} Badging API 已更新: ${unread}`)
       }
@@ -106,9 +113,9 @@ function createRealtimeInstance() {
 
     try {
       if ('clearAppBadge' in navigator) {
-        await (navigator as any).clearAppBadge()
+        await (navigator as BadgeNavigator).clearAppBadge!()
       } else if ('clearClientBadge' in navigator) {
-        await (navigator as any).clearClientBadge()
+        await (navigator as BadgeNavigator).clearClientBadge!()
       }
       console.log(`${LOG_PREFIX} Badging API 已清除`)
     } catch (err) {
@@ -238,7 +245,7 @@ function createRealtimeInstance() {
 
     ArcoNotification[kind]({
       title: item.title,
-      content: summary || undefined,
+      content: summary,
       duration: 5000,
       closable: true,
     })
@@ -373,13 +380,6 @@ function createRealtimeInstance() {
       clearTimeout(sseConnectTimeout)
       sseConnectTimeout = null
     }
-  }
-
-  function tryUpgradeToSSE() {
-    if (destroyed) return
-    console.log(`${LOG_PREFIX} 尝试升级为 SSE 模式`)
-    stopPolling()
-    connectSSE()
   }
 
   function startPolling() {

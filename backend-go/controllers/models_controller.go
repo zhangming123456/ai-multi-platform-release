@@ -18,26 +18,48 @@ type ModelsController struct {
 // 1x1 像素黑色 PNG 的 base64 编码，用于检测模型是否支持 image_url
 const testImageBase64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
 
-func testVisionSupport(baseURL, apiKey, model string) bool {
-	payload := map[string]interface{}{
-		"model": model,
-		"messages": []map[string]interface{}{
-			{
-				"role": "user",
-				"content": []map[string]interface{}{
-					{"type": "text", "text": "describe this image briefly"},
-					{"type": "image_url", "image_url": map[string]string{"url": "data:image/png;base64," + testImageBase64}},
+func testVisionSupport(baseURL, apiKey, model, apiFormat string) bool {
+	var payload map[string]interface{}
+	if apiFormat == "openai_responses" {
+		payload = map[string]interface{}{
+			"model": model,
+			"input": []map[string]interface{}{
+				{
+					"role": "user",
+					"content": []map[string]interface{}{
+						{"type": "input_text", "text": "describe this image briefly"},
+						{"type": "input_image", "image_url": "data:image/png;base64," + testImageBase64},
+					},
 				},
 			},
-		},
-		"max_tokens": 16,
-		"stream":     false,
+			"max_output_tokens": 4096,
+			"stream":            false,
+		}
+	} else {
+		payload = map[string]interface{}{
+			"model": model,
+			"messages": []map[string]interface{}{
+				{
+					"role": "user",
+					"content": []map[string]interface{}{
+						{"type": "text", "text": "describe this image briefly"},
+						{"type": "image_url", "image_url": map[string]string{"url": "data:image/png;base64," + testImageBase64}},
+					},
+				},
+			},
+			"max_tokens": 4096,
+			"stream":     false,
+		}
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return false
 	}
-	url := strings.TrimRight(baseURL, "/") + "/chat/completions"
+	endpoint := "/chat/completions"
+	if apiFormat == "openai_responses" {
+		endpoint = "/responses"
+	}
+	url := strings.TrimRight(baseURL, "/") + endpoint
 	httpReq, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
 		return false
@@ -172,18 +194,32 @@ func (c *ModelsController) Test() {
 		return
 	}
 	start := time.Now()
-	payload := map[string]interface{}{
-		"model":      req.Model,
-		"messages":   []map[string]string{{"role": "user", "content": "hi"}},
-		"max_tokens": 8,
-		"stream":     false,
+	var payload map[string]interface{}
+	if req.APIShape == "openai_responses" {
+		payload = map[string]interface{}{
+			"model":             req.Model,
+			"input":             []map[string]string{{"role": "user", "content": "hi"}},
+			"max_output_tokens": 4096,
+			"stream":            false,
+		}
+	} else {
+		payload = map[string]interface{}{
+			"model":      req.Model,
+			"messages":   []map[string]string{{"role": "user", "content": "hi"}},
+			"max_tokens": 4096,
+			"stream":     false,
+		}
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {
 		c.WriteError(http.StatusBadGateway, "请求构造失败")
 		return
 	}
-	url := strings.TrimRight(req.BaseURL, "/") + "/chat/completions"
+	endpoint := "/chat/completions"
+	if req.APIShape == "openai_responses" {
+		endpoint = "/responses"
+	}
+	url := strings.TrimRight(req.BaseURL, "/") + endpoint
 	httpReq, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
 		c.WriteError(http.StatusBadGateway, "请求构造失败："+err.Error())
@@ -234,7 +270,7 @@ func (c *ModelsController) Test() {
 		return
 	}
 
-	supportsVision := testVisionSupport(req.BaseURL, req.APIKey, req.Model)
+	supportsVision := testVisionSupport(req.BaseURL, req.APIKey, req.Model, req.APIShape)
 
 	c.OK(map[string]interface{}{
 		"ok":              true,

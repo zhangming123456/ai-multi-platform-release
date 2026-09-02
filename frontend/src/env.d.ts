@@ -2,11 +2,13 @@
 
 declare module '*.vue' {
   import type { DefineComponent } from 'vue'
+  // eslint-disable-next-line @typescript-eslint/no-empty-object-type, @typescript-eslint/no-explicit-any
   const component: DefineComponent<{}, {}, any>
   export default component
 }
 
 declare module 'swagger-ui-dist/swagger-ui-bundle.js' {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const SwaggerUI: any
   export default SwaggerUI
 }

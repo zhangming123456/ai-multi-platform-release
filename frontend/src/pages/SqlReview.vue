@@ -89,7 +89,7 @@ import { ref, onMounted } from 'vue'
 import { Message, Modal } from '@arco-design/web-vue'
 import { IconCheckCircle, IconCloseCircle } from '@arco-design/web-vue/es/icon'
 import PageHeader from '@/components/layout/PageHeader.vue'
-import api from '@/utils/api'
+import api, { getApiErrorDetail } from '@/utils/api'
 import { formatDateTime } from '@/utils/time'
 
 interface SqlChangeItem {
@@ -119,8 +119,8 @@ const fetchChanges = async () => {
       params: statusFilter.value ? { status: statusFilter.value } : {},
     })
     changes.value = res.data.items
-  } catch (e: any) {
-    Message.error(e.response?.data?.detail || '获取审核列表失败')
+  } catch (e) {
+    Message.error(getApiErrorDetail(e) || '获取审核列表失败')
   } finally {
     loading.value = false
   }
@@ -146,8 +146,8 @@ const handleApprove = (item: SqlChangeItem) => {
           Message.success(`审核通过（${res.data.approvals}/${res.data.required_approvals}）`)
         }
         await fetchChanges()
-      } catch (e: any) {
-        Message.error(e.response?.data?.detail || '审核失败')
+      } catch (e) {
+        Message.error(getApiErrorDetail(e) || '审核失败')
       }
     },
   })
@@ -165,8 +165,8 @@ const handleReject = (item: SqlChangeItem) => {
         await api.post(`/db-changes/${item.id}/reject`, { reason })
         Message.success('已驳回')
         await fetchChanges()
-      } catch (e: any) {
-        Message.error(e.response?.data?.detail || '驳回失败')
+      } catch (e) {
+        Message.error(getApiErrorDetail(e) || '驳回失败')
       }
     },
   })

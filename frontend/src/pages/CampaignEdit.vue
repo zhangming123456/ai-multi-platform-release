@@ -79,7 +79,7 @@ import PlatformIcon from '@/components/shared/PlatformIcon.vue'
 import type { PlatformIconType } from '@/components/shared/PlatformIcon.ts'
 import AttachmentInputArea from '@/components/AttachmentInputArea.vue'
 import type { Campaign } from '@/types'
-import api from '@/utils/api'
+import api, { getApiErrorDetail } from '@/utils/api'
 
 const route = useRoute()
 const router = useRouter()
@@ -164,8 +164,8 @@ async function fetchCampaign() {
       location: c.location || '',
       platforms: parsePlatforms(c.platforms),
     }
-  } catch (e: any) {
-    Message.error(e?.response?.data?.detail || '加载活动失败')
+  } catch (e) {
+    Message.error(getApiErrorDetail(e) || '加载活动失败')
   } finally {
     loading.value = false
   }
@@ -194,8 +194,8 @@ async function handleSave() {
       Message.success('创建成功')
     }
     router.push({ name: 'CampaignManage' })
-  } catch (e: any) {
-    Message.error(e?.response?.data?.detail || '保存失败')
+  } catch (e) {
+    Message.error(getApiErrorDetail(e) || '保存失败')
   } finally {
     saving.value = false
   }

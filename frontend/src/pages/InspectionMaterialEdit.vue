@@ -146,7 +146,7 @@ import PageHeader from '@/components/layout/PageHeader.vue'
 import AttachmentInputArea from '@/components/AttachmentInputArea.vue'
 import { uploadImageFile } from '@/composables/useFileUpload'
 import type { InspectionMaterial, ScoreOption } from '@/types'
-import api from '@/utils/api'
+import api, { getApiErrorDetail } from '@/utils/api'
 
 const ALLOWED_SCORE_VALUES = [0, 0.5, 1, 2, 3, 4, 5]
 const MIN_SCORE = 0
@@ -200,7 +200,7 @@ function cloneOptions(options: ScoreOption[]): ScoreOption[] {
   return options.map((o) => ({ score: o.score, label: o.label }))
 }
 
-function onOptionScoreSelect(index: number, val: any) {
+function onOptionScoreSelect(index: number, val: string | number | boolean) {
   form.value.score_options[index].score = Number(val)
 }
 
@@ -286,8 +286,8 @@ async function handleSave() {
       Message.success('素材已创建')
     }
     router.push('/inspection/materials')
-  } catch (e: any) {
-    Message.error(e?.response?.data?.detail || '保存失败')
+  } catch (e) {
+    Message.error(getApiErrorDetail(e) || '保存失败')
   } finally {
     saving.value = false
   }
@@ -317,8 +317,8 @@ async function fetchDetail() {
             ),
     }
     standardImages.value = data.standard_images ?? []
-  } catch (e: any) {
-    Message.error(e?.response?.data?.detail || '加载素材失败')
+  } catch (e) {
+    Message.error(getApiErrorDetail(e) || '加载素材失败')
   } finally {
     loading.value = false
   }

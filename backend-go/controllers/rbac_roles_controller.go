@@ -38,9 +38,49 @@ type updateRolePermissionsRequest struct {
 
 func roleRef(r *models.RBACRole) map[string]interface{} {
 	return map[string]interface{}{
-		"id":           r.ID,
-		"name":         r.Name,
-		"display_name": r.DisplayName,
+		"id":             r.ID,
+		"name":           r.Name,
+		"display_name":   r.DisplayName,
+		"role_type":      r.RoleType,
+		"is_super_admin": r.IsSuperAdmin,
+		"is_builtin":     r.IsBuiltin,
+	}
+}
+
+func roleDirectPermissions(roleID string) map[string]string {
+	o := services.GetOrm()
+	var rps []models.RBACRolePermission
+	_, _ = o.QueryTable(new(models.RBACRolePermission)).Filter("role_id", roleID).All(&rps)
+	permIDs := make([]string, 0, len(rps))
+	for _, rp := range rps {
+		permIDs = append(permIDs, rp.PermissionID)
+	}
+	result := map[string]string{}
+	if len(permIDs) > 0 {
+		var perms []models.RBACPermission
+		_, _ = o.QueryTable(new(models.RBACPermission)).
+			Filter("id__in", permIDs).Filter("is_active", true).All(&perms)
+		keys := make([]string, 0, len(perms))
+		for _, p := range perms {
+			keys = append(keys, p.Key)
+		}
+		names, _ := services.GetPermissionDisplayNames(keys)
+		for _, key := range keys {
+			if name, ok := names[key]; ok {
+				result[key] = name
+			} else {
+				result[key] = key
+			}
+		}
+	}
+	return result
+}
+
+func inheritanceNode(r *models.RBACRole, level int) map[string]interface{} {
+	return map[string]interface{}{
+		"role":               roleRef(r),
+		"direct_permissions": roleDirectPermissions(r.ID),
+		"level":              level,
 	}
 }
 
@@ -66,6 +106,7 @@ func buildRoleItem(role *models.RBACRole) map[string]interface{} {
 		"description":     role.Description,
 		"role_type":       role.RoleType,
 		"is_builtin":      role.IsBuiltin,
+		"is_super_admin":  role.IsSuperAdmin,
 		"parent_roles":    parentRoles,
 		"child_roles":     childRoles,
 		"all_ancestors":   ancestors,
@@ -512,35 +553,71 @@ func (c *RBACRolesController) GetRolePermissionsDetail() {
 		c.WriteError(http.StatusNotFound, "角色不存在")
 		return
 	}
-	roleIDs := []string{role.ID}
 	ancestors, _ := services.GetRoleAncestorIDs(role.ID)
-	roleIDs = append(roleIDs, ancestors...)
 	o := services.GetOrm()
-	var rps []models.RBACRolePermission
+
+	var directRps []models.RBACRolePermission
 	_, _ = o.QueryTable(new(models.RBACRolePermission)).
-		Filter("role_id__in", roleIDs).All(&rps)
-	permIDs := make([]string, 0, len(rps))
-	for _, rp := range rps {
-		permIDs = append(permIDs, rp.PermissionID)
+		Filter("role_id", role.ID).All(&directRps)
+	grantType := map[string]string{}
+	for _, rp := range directRps {
+		grantType[rp.PermissionID] = "direct"
 	}
-	result := map[string]interface{}{}
+	if len(ancestors) > 0 {
+		var inheritedRps []models.RBACRolePermission
+		_, _ = o.QueryTable(new(models.RBACRolePermission)).
+			Filter("role_id__in", ancestors).All(&inheritedRps)
+		for _, rp := range inheritedRps {
+			if _, ok := grantType[rp.PermissionID]; !ok {
+				grantType[rp.PermissionID] = "inherited"
+			}
+		}
+	}
+
+	permIDs := make([]string, 0, len(grantType))
+	for pid := range grantType {
+		permIDs = append(permIDs, pid)
+	}
+
+	result := []map[string]interface{}{}
 	if len(permIDs) > 0 {
 		var perms []models.RBACPermission
 		_, _ = o.QueryTable(new(models.RBACPermission)).
 			Filter("id__in", permIDs).Filter("is_active", true).All(&perms)
-		keys := make([]string, 0, len(perms))
+
+		resourceIDs := map[string]bool{}
 		for _, p := range perms {
-			keys = append(keys, p.Key)
+			resourceIDs[p.ResourceID] = true
 		}
-		names, _ := services.GetPermissionDisplayNames(keys)
+		resList := make([]string, 0, len(resourceIDs))
+		for rid := range resourceIDs {
+			resList = append(resList, rid)
+		}
+		resourcesByID := map[string]models.RBACResource{}
+		if len(resList) > 0 {
+			var resources []models.RBACResource
+			_, _ = o.QueryTable(new(models.RBACResource)).
+				Filter("id__in", resList).All(&resources)
+			for _, r := range resources {
+				resourcesByID[r.ID] = r
+			}
+		}
+
 		for _, p := range perms {
-			name := names[p.Key]
-			if name == "" {
-				name = p.Key
+			gt := grantType[p.ID]
+			if gt == "" {
+				gt = "direct"
 			}
-			result[p.Key] = map[string]interface{}{
-				"key": p.Key, "name": name, "operation": p.Operation,
-			}
+			resource := resourcesByID[p.ResourceID]
+			result = append(result, map[string]interface{}{
+				"id":            p.ID,
+				"key":           p.Key,
+				"operation":     p.Operation,
+				"resource_id":   p.ResourceID,
+				"resource_key":  resource.Key,
+				"resource_name": resource.Name,
+				"grant_type":    gt,
+			})
 		}
 	}
 	c.OK(result)
@@ -638,20 +715,22 @@ func (c *RBACRolesController) GetRoleInheritance() {
 		c.WriteError(http.StatusNotFound, "角色不存在")
 		return
 	}
-	parentRoles := []map[string]interface{}{}
-	childRoles := []map[string]interface{}{}
+	ancestorChain := []map[string]interface{}{}
+	descendantTree := []map[string]interface{}{}
 	if parents, err := services.GetRoleAncestors(role.ID); err == nil {
 		for i := range parents {
-			parentRoles = append(parentRoles, roleRef(&parents[i]))
+			ancestorChain = append(ancestorChain, inheritanceNode(&parents[i], i+1))
 		}
 	}
 	if children, err := services.GetRoleDescendants(role.ID); err == nil {
 		for i := range children {
-			childRoles = append(childRoles, roleRef(&children[i]))
+			descendantTree = append(descendantTree, inheritanceNode(&children[i], i+1))
 		}
 	}
 	c.OK(map[string]interface{}{
-		"parent_roles": parentRoles,
-		"child_roles":  childRoles,
+		"role":               roleRef(role),
+		"direct_permissions": roleDirectPermissions(role.ID),
+		"ancestor_chain":     ancestorChain,
+		"descendant_tree":    descendantTree,
 	})
 }

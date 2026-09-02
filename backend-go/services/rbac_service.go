@@ -418,6 +418,12 @@ func ComputeUserEffectivePermissions(userID string, activeRoleIDs []string) (*Us
 				if WRITE_OPERATIONS[opLower] {
 					access.Write = true
 				}
+				keyParts := splitKey(perm.Key)
+				if last := keyParts[len(keyParts)-1]; last == "read" {
+					access.Read = true
+				} else if last == "write" {
+					access.Write = true
+				}
 			}
 		}
 	}

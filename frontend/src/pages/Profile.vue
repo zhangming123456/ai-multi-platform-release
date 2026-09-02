@@ -195,7 +195,7 @@ import PageHeader from '@/components/layout/PageHeader.vue'
 import { useUserStore } from '@/stores/user'
 import { useNotificationStore } from '@/stores/notification'
 import type { UserInfo } from '@/types'
-import api from '@/utils/api'
+import api, { getApiErrorDetail } from '@/utils/api'
 import { formatDateTime as formatDate } from '@/utils/time'
 
 const router = useRouter()
@@ -255,11 +255,15 @@ onMounted(async () => {
   try {
     const rolesRes = await api.get<RoleDef[]>('/v2/roles')
     roleDefs.value = rolesRes.data
-  } catch {}
+  } catch {
+    // 加载辅助数据失败不阻断页面
+  }
 
   try {
     await notifyStore.fetchNotifications()
-  } catch {}
+  } catch {
+    // 加载通知失败不阻断页面
+  }
 })
 
 const recentNotifications = computed(() => notifyStore.notifications.slice(0, 10))
@@ -295,8 +299,8 @@ async function saveProfile() {
     userStore.userInfo = res.data as unknown as UserInfo
     Message.success('个人资料已更新')
     profileEditing.value = false
-  } catch (e: any) {
-    Message.error(e.response?.data?.detail || '更新失败')
+  } catch (e) {
+    Message.error(getApiErrorDetail(e) || '更新失败')
   } finally {
     profileSaving.value = false
   }
@@ -334,8 +338,8 @@ async function changePassword() {
     pwdVisible.value = false
     userStore.logout()
     router.push('/login')
-  } catch (e: any) {
-    Message.error(e.response?.data?.detail || '密码修改失败')
+  } catch (e) {
+    Message.error(getApiErrorDetail(e) || '密码修改失败')
   } finally {
     pwdSaving.value = false
   }
@@ -359,7 +363,9 @@ async function handleNotifyClick(item: { id: string; is_read: boolean }) {
   if (!item.is_read) {
     try {
       await notifyStore.markAsRead(item.id)
-    } catch {}
+    } catch {
+      // 标记已读失败静默处理
+    }
   }
 }
 </script>

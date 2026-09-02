@@ -176,7 +176,7 @@ import { IconPlus, IconEdit, IconDelete } from '@arco-design/web-vue/es/icon'
 import PageHeader from '@/components/layout/PageHeader.vue'
 import { formatDateTime } from '@/utils/time'
 import type { Paginated, Store } from '@/types'
-import api from '@/utils/api'
+import api, { getApiErrorDetail } from '@/utils/api'
 
 const loading = ref(false)
 const stores = ref<Store[]>([])
@@ -219,7 +219,7 @@ function managerName(managerId: string | null | undefined): string {
 
 async function fetchUsers() {
   try {
-    const res = await api.get<any[]>('/v2/users')
+    const res = await api.get<{ id: string; username: string; nickname: string }[]>('/v2/users')
     if (Array.isArray(res.data)) {
       userOptions.value = res.data.map((u) => ({
         id: u.id,
@@ -227,7 +227,7 @@ async function fetchUsers() {
         nickname: u.nickname || '',
       }))
     }
-  } catch (e) {
+  } catch {
     userOptions.value = []
   }
 }
@@ -235,7 +235,7 @@ async function fetchUsers() {
 async function fetchStores() {
   loading.value = true
   try {
-    const params: Record<string, any> = {
+    const params: Record<string, unknown> = {
       page: page.value,
       page_size: pageSize.value,
     }
@@ -244,8 +244,8 @@ async function fetchStores() {
     const res = await api.get<Paginated<Store>>('/stores/', { params })
     stores.value = res.data.items || []
     total.value = res.data.total || 0
-  } catch (e: any) {
-    Message.error(e?.response?.data?.detail || '加载门店失败')
+  } catch (e) {
+    Message.error(getApiErrorDetail(e) || '加载门店失败')
   } finally {
     loading.value = false
   }
@@ -269,7 +269,15 @@ function onPageSizeChange(size: number) {
 
 function openCreate() {
   editingId.value = null
-  form.value = { name: '', code: '', address: '', contact: '', phone: '', status: 'active' }
+  form.value = {
+    name: '',
+    code: '',
+    address: '',
+    contact: '',
+    phone: '',
+    manager_id: undefined,
+    status: 'active',
+  }
   modalVisible.value = true
 }
 
@@ -281,6 +289,7 @@ function openEdit(store: Store) {
     address: store.address || '',
     contact: store.contact || '',
     phone: store.phone || '',
+    manager_id: store.manager_id ?? undefined,
     status: store.status,
   }
   modalVisible.value = true
@@ -301,8 +310,8 @@ async function handleSave() {
     }
     modalVisible.value = false
     await fetchStores()
-  } catch (e: any) {
-    Message.error(e?.response?.data?.detail || '保存失败')
+  } catch (e) {
+    Message.error(getApiErrorDetail(e) || '保存失败')
   }
 }
 
@@ -312,8 +321,8 @@ async function handleDelete(store: Store) {
     Message.success('删除成功')
     if (stores.value.length === 1 && page.value > 1) page.value -= 1
     await fetchStores()
-  } catch (e: any) {
-    Message.error(e?.response?.data?.detail || '删除失败')
+  } catch (e) {
+    Message.error(getApiErrorDetail(e) || '删除失败')
   }
 }
 

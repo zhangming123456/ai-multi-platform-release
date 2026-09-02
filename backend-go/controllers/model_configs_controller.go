@@ -77,9 +77,6 @@ type modelConfigUpdateRequest struct {
 
 // List GET /api/model-configs
 func (c *ModelConfigsController) List() {
-	if !c.CheckPermission("token_plan:read") {
-		return
-	}
 	var configs []models.ModelConfig
 	_, err := services.GetOrm().QueryTable(new(models.ModelConfig)).
 		OrderBy("sort_order", "created_at").
@@ -248,7 +245,7 @@ func (c *ModelConfigsController) Update() {
 
 // Delete DELETE /api/model-configs/:config_id
 func (c *ModelConfigsController) Delete() {
-	if !c.CheckPermission("model_config:delete:write") {
+	if !c.CheckPermission("model_config:update:write") {
 		return
 	}
 	config, err := findModelConfig(c.GetPathParam("config_id"))

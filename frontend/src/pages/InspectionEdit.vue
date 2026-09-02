@@ -777,7 +777,7 @@ import type {
   ScoreOption,
   Store,
 } from '@/types'
-import api from '@/utils/api'
+import api, { getApiErrorDetail } from '@/utils/api'
 
 const [DefineAIInspectForm, ReuseAIInspectForm] = createReusableTemplate<{
   selectSize?: string
@@ -1046,10 +1046,6 @@ let aiLogSeq = 0
 const aiOriginalIssues = ref('')
 const aiOriginalSuggestion = ref('')
 
-// AI 面板图片上传（大屏 / Drawer 各自持有隐藏 input）
-const aiFileInput = ref<HTMLInputElement | null>(null)
-const aiDrawerFileInput = ref<HTMLInputElement | null>(null)
-
 function levelColor(level: string): string {
   switch (level) {
     case '高':
@@ -1236,7 +1232,7 @@ function scoreLabel(row: ScoreRow): string {
   return String(row.score)
 }
 
-function onScoreOptionChange(row: ScoreRow, val: any) {
+function onScoreOptionChange(row: ScoreRow, val: string | number | boolean) {
   row.score = Number(val)
   row.ai_generated = false
 }
@@ -1354,14 +1350,14 @@ async function loadTemplateItems(templateId: string) {
   try {
     const res = await api.get<InspectionTemplate>(`/inspection-templates/${templateId}`)
     scoreRows.value = (res.data.items || []).map(rowFromTemplateItem)
-  } catch (e: any) {
-    Message.error(e?.response?.data?.detail || '加载模板检查项失败')
+  } catch (e) {
+    Message.error(getApiErrorDetail(e) || '加载模板检查项失败')
     scoreRows.value = []
   }
 }
 
-async function onTemplateChange(templateId: any) {
-  await loadTemplateItems(templateId || '')
+async function onTemplateChange(templateId: unknown) {
+  await loadTemplateItems(typeof templateId === 'string' ? templateId : '')
 }
 
 async function fetchDetail() {
@@ -1449,19 +1445,18 @@ async function fetchDetail() {
     if (data.store_id && !storeOptions.value.some((o) => o.value === data.store_id)) {
       storeOptions.value.push({ label: data.store_name || '未知门店', value: data.store_id })
     }
-  } catch (e: any) {
-    Message.error(e?.response?.data?.detail || '加载巡店记录失败')
+  } catch (e) {
+    Message.error(getApiErrorDetail(e) || '加载巡店记录失败')
   }
 }
 
-function onStoreChange(storeId: any) {
+function onStoreChange(storeId: unknown) {
   const store = storeOptions.value.find((o) => o.value === storeId)
   if (store && !form.value.title.trim()) {
     form.value.title = `${store.label}巡店检查`
   }
 }
 
-const MAX_IMAGE_SIZE = 10 * 1024 * 1024 // 10MB
 const MAX_ROW_PHOTOS = 10
 
 // ===== 反馈问题 + 巡店图片一体化输入区（AttachmentInputArea 公共组件） =====
@@ -2017,9 +2012,10 @@ async function handleSingleItemAI(row: ScoreRow) {
         }
       }
     }
-  } catch (err: any) {
-    pushAILog('err', `[${row.item_name}] 请求异常 · ${err?.message || '未知错误'}`)
-    Message.error(err?.message || 'AI 生成请求失败')
+  } catch (err) {
+    const message = err instanceof Error ? err.message : ''
+    pushAILog('err', `[${row.item_name}] 请求异常 · ${message || '未知错误'}`)
+    Message.error(message || 'AI 生成请求失败')
   } finally {
     row._aiScoring = false
   }
@@ -2132,8 +2128,8 @@ async function doSave() {
       Message.success('巡店记录已保存')
     }
     router.push({ name: 'InspectionList' })
-  } catch (e: any) {
-    Message.error(e?.response?.data?.detail || '保存失败')
+  } catch (e) {
+    Message.error(getApiErrorDetail(e) || '保存失败')
   } finally {
     saving.value = false
   }
@@ -2219,7 +2215,7 @@ const activeRowEditable = computed(() => {
 let programmaticScrollUntil = 0
 let scrollRafId: number | null = null
 
-function setRowRef(index: number, el: any) {
+function setRowRef(index: number, el: unknown) {
   rowEls[index] = el as HTMLElement | null
 }
 

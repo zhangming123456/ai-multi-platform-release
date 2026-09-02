@@ -226,7 +226,7 @@ import { IconPlus, IconEdit, IconDelete, IconUpload } from '@arco-design/web-vue
 import PageHeader from '@/components/layout/PageHeader.vue'
 import { formatDateTime } from '@/utils/time'
 import type { Paginated, InspectionMaterial, Material } from '@/types'
-import api from '@/utils/api'
+import api, { getApiErrorDetail } from '@/utils/api'
 
 const router = useRouter()
 const activeTab = ref<'items' | 'images'>('items')
@@ -251,7 +251,7 @@ const itemColumns = [
 async function fetchItems() {
   itemLoading.value = true
   try {
-    const params: Record<string, any> = {
+    const params: Record<string, unknown> = {
       page: itemPage.value,
       page_size: itemPageSize.value,
     }
@@ -259,8 +259,8 @@ async function fetchItems() {
     const res = await api.get<Paginated<InspectionMaterial>>('/inspection-materials/', { params })
     materials.value = res.data.items || []
     itemTotal.value = res.data.total || 0
-  } catch (e: any) {
-    Message.error(e?.response?.data?.detail || '加载检查项素材失败')
+  } catch (e) {
+    Message.error(getApiErrorDetail(e) || '加载检查项素材失败')
   } finally {
     itemLoading.value = false
   }
@@ -296,8 +296,8 @@ async function handleDeleteItem(material: InspectionMaterial) {
     Message.success('删除成功')
     if (materials.value.length === 1 && itemPage.value > 1) itemPage.value -= 1
     await fetchItems()
-  } catch (e: any) {
-    Message.error(e?.response?.data?.detail || '删除失败')
+  } catch (e) {
+    Message.error(getApiErrorDetail(e) || '删除失败')
   }
 }
 
@@ -313,7 +313,7 @@ const imgKeyword = ref('')
 async function fetchImages() {
   imgLoading.value = true
   try {
-    const params: Record<string, any> = {
+    const params: Record<string, unknown> = {
       type: 'image',
       category: STANDARD_IMAGE_CATEGORY,
       page: imgPage.value,
@@ -323,8 +323,8 @@ async function fetchImages() {
     const res = await api.get<Paginated<Material>>('/materials/', { params })
     images.value = res.data.items || []
     imgTotal.value = res.data.total || 0
-  } catch (e: any) {
-    Message.error(e?.response?.data?.detail || '加载标准图素材失败')
+  } catch (e) {
+    Message.error(getApiErrorDetail(e) || '加载标准图素材失败')
   } finally {
     imgLoading.value = false
   }
@@ -346,7 +346,7 @@ function onImgPageSizeChange(size: number) {
   fetchImages()
 }
 
-async function handleImgBatchUpload(fileList: any[]) {
+async function handleImgBatchUpload(fileList: { file?: File }[]) {
   const files = (fileList || []).filter((f) => f.file).map((f) => f.file as File)
   if (files.length === 0) return
   let successCount = 0
@@ -382,12 +382,12 @@ async function handleDeleteImg(item: Material) {
     Message.success('删除成功')
     if (images.value.length === 1 && imgPage.value > 1) imgPage.value -= 1
     await fetchImages()
-  } catch (e: any) {
-    Message.error(e?.response?.data?.detail || '删除失败')
+  } catch (e) {
+    Message.error(getApiErrorDetail(e) || '删除失败')
   }
 }
 
-function onTabChange(key: string) {
+function onTabChange(key: string | number) {
   if (key === 'images' && images.value.length === 0) {
     fetchImages()
   } else if (key === 'items' && materials.value.length === 0) {

@@ -64,6 +64,7 @@ import { useRouter } from 'vue-router'
 import { Message } from '@arco-design/web-vue'
 import { IconLock, IconUser } from '@arco-design/web-vue/es/icon'
 import { useUserStore } from '@/stores/user'
+import { getApiErrorDetail } from '@/utils/api'
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -82,8 +83,8 @@ async function handleLogin() {
     await userStore.login(username.value, password.value)
     Message.success('登录成功')
     router.push('/')
-  } catch (e: any) {
-    const msg = e.response?.data?.detail || '登录失败，请检查用户名和密码'
+  } catch (e) {
+    const msg = getApiErrorDetail(e) || '登录失败，请检查用户名和密码'
     Message.error(msg)
   } finally {
     loading.value = false

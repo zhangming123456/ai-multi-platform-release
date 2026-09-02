@@ -265,7 +265,7 @@ async function loadDashboard() {
     ]
     platformStatus.value = data.platform_stats || []
     recentPublishes.value = data.recent_publishes || []
-  } catch (e) {
+  } catch {
     stats.value = []
     platformStatus.value = []
     recentPublishes.value = []

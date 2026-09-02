@@ -110,7 +110,7 @@ import { IconPlus, IconEdit, IconDelete } from '@arco-design/web-vue/es/icon'
 import PageHeader from '@/components/layout/PageHeader.vue'
 import { formatDateTime } from '@/utils/time'
 import type { Paginated, InspectionTemplate } from '@/types'
-import api from '@/utils/api'
+import api, { getApiErrorDetail } from '@/utils/api'
 
 const router = useRouter()
 const loading = ref(false)
@@ -131,7 +131,7 @@ const columns = [
 async function fetchTemplates() {
   loading.value = true
   try {
-    const params: Record<string, any> = {
+    const params: Record<string, unknown> = {
       page: page.value,
       page_size: pageSize.value,
     }
@@ -139,8 +139,8 @@ async function fetchTemplates() {
     const res = await api.get<Paginated<InspectionTemplate>>('/inspection-templates/', { params })
     templates.value = res.data.items || []
     total.value = res.data.total || 0
-  } catch (e: any) {
-    Message.error(e?.response?.data?.detail || '加载模板失败')
+  } catch (e) {
+    Message.error(getApiErrorDetail(e) || '加载模板失败')
   } finally {
     loading.value = false
   }
@@ -176,8 +176,8 @@ async function handleDelete(template: InspectionTemplate) {
     Message.success('删除成功')
     if (templates.value.length === 1 && page.value > 1) page.value -= 1
     await fetchTemplates()
-  } catch (e: any) {
-    Message.error(e?.response?.data?.detail || '删除失败')
+  } catch (e) {
+    Message.error(getApiErrorDetail(e) || '删除失败')
   }
 }
 

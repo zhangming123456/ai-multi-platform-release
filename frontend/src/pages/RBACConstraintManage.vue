@@ -226,7 +226,7 @@ import {
 import { Message, Modal } from '@arco-design/web-vue'
 import PageHeader from '@/components/layout/PageHeader.vue'
 import { formatDateTime } from '@/utils/time'
-import api from '@/utils/api'
+import api, { getApiErrorDetail } from '@/utils/api'
 
 interface Role {
   id: string
@@ -246,12 +246,18 @@ interface Association {
   association_type: string
 }
 
+interface ConstraintConfig {
+  scope?: string
+  require_all?: boolean
+  max_users?: number
+}
+
 interface Constraint {
   id: string
   name: string
   description: string | null
   constraint_type: 'mutual_exclusive' | 'prerequisite' | 'cardinality'
-  config: Record<string, any>
+  config: ConstraintConfig
   is_active: boolean
   created_at: string
   roles: Association[]
@@ -286,8 +292,8 @@ async function fetchRoles() {
   try {
     const res = await api.get<Role[]>('/v2/roles')
     roles.value = Array.isArray(res.data) ? res.data : []
-  } catch (e: any) {
-    Message.error(e.response?.data?.detail || '加载角色列表失败')
+  } catch (e) {
+    Message.error(getApiErrorDetail(e) || '加载角色列表失败')
   }
 }
 
@@ -296,8 +302,8 @@ async function fetchConstraints() {
   try {
     const res = await api.get<Constraint[]>('/v2/constraints')
     constraints.value = Array.isArray(res.data) ? res.data : []
-  } catch (e: any) {
-    Message.error(e.response?.data?.detail || '加载约束失败')
+  } catch (e) {
+    Message.error(getApiErrorDetail(e) || '加载约束失败')
   } finally {
     loading.value = false
   }
@@ -417,7 +423,7 @@ function buildPayload() {
       associations.push({ role_id: roleId, association_type: 'prerequisite' })
     }
   }
-  const config: Record<string, any> = {}
+  const config: ConstraintConfig = {}
   if (form.value.constraint_type === 'mutual_exclusive') {
     config.scope = form.value.scope
   } else if (form.value.constraint_type === 'prerequisite') {
@@ -472,8 +478,8 @@ async function saveConstraint() {
     }
     modalVisible.value = false
     await fetchConstraints()
-  } catch (e: any) {
-    Message.error(e.response?.data?.detail || '保存失败')
+  } catch (e) {
+    Message.error(getApiErrorDetail(e) || '保存失败')
   } finally {
     modalSaving.value = false
   }
@@ -484,8 +490,8 @@ async function toggleActive(constraint: Constraint, next: boolean) {
     await api.put(`/v2/constraints/${constraint.id}`, { is_active: next })
     constraint.is_active = next
     Message.success('状态已更新')
-  } catch (e: any) {
-    Message.error(e.response?.data?.detail || '更新失败')
+  } catch (e) {
+    Message.error(getApiErrorDetail(e) || '更新失败')
   }
 }
 
@@ -501,8 +507,8 @@ function removeConstraint(constraint: Constraint) {
         await api.delete(`/v2/constraints/${constraint.id}`)
         constraints.value = constraints.value.filter((c) => c.id !== constraint.id)
         Message.success('约束已删除')
-      } catch (e: any) {
-        Message.error(e.response?.data?.detail || '删除失败')
+      } catch (e) {
+        Message.error(getApiErrorDetail(e) || '删除失败')
       }
     },
   })

@@ -202,7 +202,7 @@ import {
 } from '@arco-design/web-vue/es/icon'
 import { orderBy } from 'lodash-es'
 import PageHeader from '@/components/layout/PageHeader.vue'
-import api from '@/utils/api'
+import api, { getApiErrorDetail } from '@/utils/api'
 
 interface ResourceRef {
   id: string
@@ -261,8 +261,8 @@ async function fetchPermissions() {
   try {
     const res = await api.get<PermissionItem[]>('/v2/permissions')
     permissions.value = Array.isArray(res.data) ? res.data : []
-  } catch (e: any) {
-    Message.error(e.response?.data?.detail || '加载权限列表失败')
+  } catch (e) {
+    Message.error(getApiErrorDetail(e) || '加载权限列表失败')
   } finally {
     loading.value = false
   }
@@ -282,8 +282,8 @@ async function toggleActive(permissionId: string, currentActive: boolean) {
     await api.put(`/v2/permissions/${permissionId}`, { is_active: !currentActive })
     Message.success(currentActive ? '权限已禁用' : '权限已启用')
     await fetchPermissions()
-  } catch (e: any) {
-    Message.error(e.response?.data?.detail || '操作失败')
+  } catch (e) {
+    Message.error(getApiErrorDetail(e) || '操作失败')
   } finally {
     saving.value = false
   }
@@ -300,8 +300,8 @@ async function deletePermission(item: PermissionItem) {
         await api.delete(`/v2/resources/${item.resource.id}`)
         Message.success('权限已删除')
         await fetchPermissions()
-      } catch (e: any) {
-        Message.error(e.response?.data?.detail || '删除失败')
+      } catch (e) {
+        Message.error(getApiErrorDetail(e) || '删除失败')
       } finally {
         saving.value = false
       }

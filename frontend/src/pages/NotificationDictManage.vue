@@ -146,7 +146,7 @@ import { ref, computed, onMounted } from 'vue'
 import { Message } from '@arco-design/web-vue'
 import { IconPlus, IconEdit, IconDelete } from '@arco-design/web-vue/es/icon'
 import PageHeader from '@/components/layout/PageHeader.vue'
-import api from '@/utils/api'
+import api, { getApiErrorDetail } from '@/utils/api'
 
 interface DictItem {
   id: string
@@ -261,8 +261,8 @@ async function handleSave() {
     }
     modalVisible.value = false
     await fetchGroups()
-  } catch (err: any) {
-    Message.error(err?.response?.data?.detail || '操作失败')
+  } catch (err) {
+    Message.error(getApiErrorDetail(err) || '操作失败')
   }
 }
 
@@ -271,8 +271,8 @@ async function handleDelete(item: DictItem) {
     await api.delete(`/notification-dict/${item.id}`)
     Message.success('删除成功')
     await fetchGroups()
-  } catch (err: any) {
-    Message.error(err?.response?.data?.detail || '删除失败')
+  } catch (err) {
+    Message.error(getApiErrorDetail(err) || '删除失败')
   }
 }
 

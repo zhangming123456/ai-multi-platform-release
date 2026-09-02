@@ -97,7 +97,7 @@ import PlatformIcon from '@/components/shared/PlatformIcon.vue'
 import type { PlatformIconType } from '@/components/shared/PlatformIcon.ts'
 import { formatDateTime } from '@/utils/time'
 import type { Campaign } from '@/types'
-import api from '@/utils/api'
+import api, { getApiErrorDetail } from '@/utils/api'
 
 const route = useRoute()
 const router = useRouter()
@@ -143,8 +143,8 @@ async function fetchCampaign() {
   try {
     const res = await api.get<Campaign>(`/campaigns/${route.params.id}`)
     campaign.value = res.data
-  } catch (e: any) {
-    Message.error(e?.response?.data?.detail || '加载活动失败')
+  } catch (e) {
+    Message.error(getApiErrorDetail(e) || '加载活动失败')
   } finally {
     loading.value = false
   }

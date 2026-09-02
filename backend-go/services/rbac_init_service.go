@@ -75,7 +75,6 @@ var RBACResources = []resourceDef{
 	{Key: "db_change:reject:write", Name: "驳回SQL变更", Description: "驳回SQL变更申请"},
 	{Key: "model_config:create:write", Name: "创建模型配置", Description: "创建新的AI模型配置"},
 	{Key: "model_config:update:write", Name: "编辑模型配置", Description: "编辑AI模型配置参数"},
-	{Key: "model_config:delete:write", Name: "删除模型配置", Description: "删除AI模型配置"},
 	{Key: "db_history:view:read", Name: "查看SQL历史", Description: "查看SQL执行历史记录"},
 	{Key: "stores:read", Name: "门店管理", Description: "查看门店列表和门店信息"},
 	{Key: "stores:create:write", Name: "创建门店", Description: "创建新的门店"},
@@ -122,6 +121,7 @@ var builtinRoles = []builtinRoleDef{
 	{Name: "manager", DisplayName: "管理员", RoleType: "admin", IsSuperAdmin: false, IsBuiltin: true},
 	{Name: "operator", DisplayName: "运营者", RoleType: "other", IsSuperAdmin: false, IsBuiltin: true},
 	{Name: "reviewer", DisplayName: "审核员", RoleType: "other", IsSuperAdmin: false, IsBuiltin: true},
+	{Name: "inspector", DisplayName: "巡店人", RoleType: "other", IsSuperAdmin: false, IsBuiltin: true},
 }
 
 var defaultRolePermissions = map[string][]string{
@@ -142,7 +142,7 @@ var defaultRolePermissions = map[string][]string{
 		"templates:delete:write", "account:create:write", "account:update:write",
 		"account:delete:write", "account:check:write", "publish:create:write",
 		"publish:retry:write", "model_config:create:write", "model_config:update:write",
-		"model_config:delete:write", "db:execute:write", "db_history:view:read",
+		"db:execute:write", "db_history:view:read",
 		"stores:read", "stores:create:write", "stores:update:write",
 		"stores:delete:write", "inspection:read", "inspection:create:write",
 		"inspection:update:write", "inspection:delete:write", "inspection:ai:write",
@@ -189,6 +189,13 @@ var defaultRolePermissions = map[string][]string{
 		"stores:read", "inspection:read", "inspection:template:read",
 		"inspection:material:read", "inspection:task:read", "inspection:task:confirm:write",
 		"material:read", "campaign:read",
+	},
+	"inspector": []string{
+		"dashboard:read", "stores:read",
+		"inspection:read", "inspection:create:write", "inspection:update:write",
+		"inspection:ai:write", "inspection:template:read", "inspection:material:read",
+		"inspection:task:read", "inspection:task:update:write", "inspection:task:recheck:write",
+		"material:read",
 	},
 }
 
@@ -415,6 +422,7 @@ func SeedUsers() error {
 		{ID: "", Username: "manager", Email: "manager@example.com", Password: "manager123", Nickname: "管理员", Role: "manager"},
 		{ID: "", Username: "operator", Email: "operator@example.com", Password: "operator123", Nickname: "运营小二", Role: "operator"},
 		{ID: "", Username: "reviewer", Email: "reviewer@example.com", Password: "reviewer123", Nickname: "审核专员", Role: "reviewer"},
+		{ID: "", Username: "inspector", Email: "inspector@example.com", Password: "Inspector@2026", Nickname: "巡店人", Role: "inspector"},
 	}
 	for _, s := range seeds {
 		exists := o.QueryTable(new(models.User)).Filter("username", s.Username).Exist()

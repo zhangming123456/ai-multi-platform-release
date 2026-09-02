@@ -130,7 +130,7 @@ import { IconMenuFold, IconMenuUnfold, IconMenu, IconLanguage } from '@arco-desi
 import { useRegionStore } from '@/stores/region'
 import NotificationBell from '@/components/NotificationBell.vue'
 
-const props = defineProps<{
+defineProps<{
   collapsed: boolean
 }>()
 

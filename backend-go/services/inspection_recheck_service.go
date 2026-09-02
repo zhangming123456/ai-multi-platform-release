@@ -33,7 +33,7 @@ type RecheckRectifyResult struct {
 // RecheckRectifyPhoto 复核整改照片，判断问题是否已修复。
 // 以整改照片为核心依据，结合检查标准与巡店原问题判定，返回 fixed 结论与理由。
 func RecheckRectifyPhoto(req RecheckRectifyRequest) (*RecheckRectifyResult, error) {
-	apiKey, baseURL, model, planName, supportsVision, err := ResolveModelConfig(req.PlanID, req.ModelID)
+	apiKey, baseURL, model, planName, supportsVision, apiFormat, err := ResolveModelConfig(req.PlanID, req.ModelID)
 	if err != nil {
 		return nil, err
 	}
@@ -91,7 +91,12 @@ func RecheckRectifyPhoto(req RecheckRectifyRequest) (*RecheckRectifyResult, erro
 		messages = append(messages, chatMessage{Role: "user", Content: prompt})
 	}
 
-	resp, err := callChatCompletions(apiKey, baseURL, model, messages, false)
+	var resp *http.Response
+	if apiFormat == "openai_responses" {
+		resp, err = callResponses(apiKey, baseURL, model, messages, false)
+	} else {
+		resp, err = callChatCompletions(apiKey, baseURL, model, messages, false)
+	}
 	if err != nil {
 		return nil, aiCallError(planName, err)
 	}
@@ -101,21 +106,29 @@ func RecheckRectifyPhoto(req RecheckRectifyRequest) (*RecheckRectifyResult, erro
 		return nil, aiCallError(planName, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(bodyBytes)))
 	}
 
-	var raw struct {
-		Choices []struct {
-			Message struct {
-				Content string `json:"content"`
-			} `json:"message"`
-		} `json:"choices"`
+	var content string
+	if apiFormat == "openai_responses" {
+		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 10*1024*1024))
+		content, _, _ = extractResponsesResult(respBody)
+		if content == "" {
+			return nil, aiCallError(planName, fmt.Errorf("模型无返回内容"))
+		}
+	} else {
+		var raw struct {
+			Choices []struct {
+				Message struct {
+					Content string `json:"content"`
+				} `json:"message"`
+			} `json:"choices"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
+			return nil, aiCallError(planName, err)
+		}
+		if len(raw.Choices) == 0 {
+			return nil, aiCallError(planName, fmt.Errorf("模型无返回内容"))
+		}
+		content = strings.TrimSpace(raw.Choices[0].Message.Content)
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
-		return nil, aiCallError(planName, err)
-	}
-	if len(raw.Choices) == 0 {
-		return nil, aiCallError(planName, fmt.Errorf("模型无返回内容"))
-	}
-
-	content := strings.TrimSpace(raw.Choices[0].Message.Content)
 	if strings.HasPrefix(content, "```") {
 		parts := strings.Split(content, "```")
 		if len(parts) > 1 {

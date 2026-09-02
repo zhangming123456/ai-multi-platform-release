@@ -192,7 +192,7 @@ import { IconUpload, IconEdit, IconDelete } from '@arco-design/web-vue/es/icon'
 import PageHeader from '@/components/layout/PageHeader.vue'
 import { formatDateTime } from '@/utils/time'
 import type { Paginated, Material } from '@/types'
-import api from '@/utils/api'
+import api, { getApiErrorDetail } from '@/utils/api'
 
 const loading = ref(false)
 const materials = ref<Material[]>([])
@@ -221,7 +221,7 @@ const categoryOptions = computed(() => {
 async function fetchMaterials() {
   loading.value = true
   try {
-    const params: Record<string, any> = {
+    const params: Record<string, unknown> = {
       type: 'image',
       page: page.value,
       page_size: pageSize.value,
@@ -231,8 +231,8 @@ async function fetchMaterials() {
     const res = await api.get<Paginated<Material>>('/materials/', { params })
     materials.value = res.data.items || []
     total.value = res.data.total || 0
-  } catch (e: any) {
-    Message.error(e?.response?.data?.detail || '加载素材失败')
+  } catch (e) {
+    Message.error(getApiErrorDetail(e) || '加载素材失败')
   } finally {
     loading.value = false
   }
@@ -268,7 +268,7 @@ function onPageSizeChange(size: number) {
   fetchMaterials()
 }
 
-async function handleBatchUpload(fileList: any[]) {
+async function handleBatchUpload(fileList: { file?: File }[]) {
   const files = (fileList || []).filter((f) => f.file).map((f) => f.file as File)
   if (files.length === 0) return
   let successCount = 0
@@ -325,8 +325,8 @@ async function handleSave() {
     editVisible.value = false
     await fetchMaterials()
     await fetchCategories()
-  } catch (e: any) {
-    Message.error(e?.response?.data?.detail || '保存失败')
+  } catch (e) {
+    Message.error(getApiErrorDetail(e) || '保存失败')
   }
 }
 
@@ -337,8 +337,8 @@ async function handleDelete(item: Material) {
     if (materials.value.length === 1 && page.value > 1) page.value -= 1
     await fetchMaterials()
     await fetchCategories()
-  } catch (e: any) {
-    Message.error(e?.response?.data?.detail || '删除失败')
+  } catch (e) {
+    Message.error(getApiErrorDetail(e) || '删除失败')
   }
 }
 

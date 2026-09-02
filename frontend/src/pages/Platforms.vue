@@ -187,7 +187,7 @@ async function loadAccounts() {
   try {
     const { data } = await api.get<Account[]>('/accounts/')
     accounts.value = Array.isArray(data) ? data : []
-  } catch (e) {
+  } catch {
     Message.error('加载账号列表失败')
   } finally {
     loading.value = false
@@ -210,7 +210,7 @@ async function addAccount() {
     showAddModal.value = false
     newAccount.value = { platform: 'wechat_mp', nickname: '', cookie: '' }
     Message.success('账号添加成功')
-  } catch (e) {
+  } catch {
     Message.error('添加账号失败')
   } finally {
     submitting.value = false
@@ -223,7 +223,7 @@ async function deleteAccount(id: string) {
     await api.delete(`/accounts/${id}`)
     accounts.value = accounts.value.filter((a) => a.id !== id)
     Message.success('账号已移除')
-  } catch (e) {
+  } catch {
     Message.error('移除账号失败')
   } finally {
     deletingId.value = null
@@ -249,7 +249,7 @@ async function checkStatus(id: string) {
       }
     }
     Message.success('状态已刷新')
-  } catch (e) {
+  } catch {
     Message.error('状态检查失败')
   } finally {
     checkingId.value = null

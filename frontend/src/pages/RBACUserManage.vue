@@ -119,7 +119,7 @@ import { IconPlus, IconEdit, IconDelete, IconLock, IconEye } from '@arco-design/
 import { Message, Modal } from '@arco-design/web-vue'
 import PageHeader from '@/components/layout/PageHeader.vue'
 import { formatDateTime } from '@/utils/time'
-import api from '@/utils/api'
+import api, { getApiErrorDetail } from '@/utils/api'
 
 interface Role {
   id: string
@@ -186,8 +186,8 @@ async function fetchData() {
     ])
     users.value = Array.isArray(usersRes.data) ? usersRes.data : []
     roles.value = Array.isArray(rolesRes.data) ? rolesRes.data : []
-  } catch (e: any) {
-    Message.error(e.response?.data?.detail || '加载用户数据失败')
+  } catch (e) {
+    Message.error(getApiErrorDetail(e) || '加载用户数据失败')
   } finally {
     loading.value = false
   }
@@ -223,8 +223,8 @@ function removeUser(user: UserListItem) {
         await api.delete(`/v2/users/${user.id}`)
         users.value = users.value.filter((u) => u.id !== user.id)
         Message.success('用户已删除')
-      } catch (e: any) {
-        Message.error(e.response?.data?.detail || '删除失败')
+      } catch (e) {
+        Message.error(getApiErrorDetail(e) || '删除失败')
       }
     },
   })

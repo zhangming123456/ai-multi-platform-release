@@ -50,18 +50,7 @@
 
           <div v-else-if="isGenerating && streamingText" class="streaming-view">
             <div class="streaming-view__header">
-              <PlatformIcon
-                :platform="
-                  streamingPlatform as
-                    | 'wechat_mp'
-                    | 'xiaohongshu'
-                    | 'douyin'
-                    | 'wechat_video'
-                    | 'wechat_moments'
-                    | 'weibo'
-                "
-                size="sm"
-              />
+              <PlatformIcon :platform="streamingPlatformIcon" size="sm" />
               <span class="text-[13px] font-medium">{{ platformLabel(streamingPlatform) }}</span>
               <span class="streaming-view__badge">AI 生成中</span>
             </div>
@@ -413,6 +402,7 @@ const selectedCampaignId = ref('')
 const isGenerating = ref(false)
 const streamingText = ref('')
 const streamingPlatform = ref('')
+const streamingPlatformIcon = computed(() => streamingPlatform.value as PlatformIconType)
 const MAX_UPLOAD_FILES = 10
 const hasFiles = ref(false)
 

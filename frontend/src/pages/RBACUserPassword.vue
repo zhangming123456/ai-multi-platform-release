@@ -16,7 +16,7 @@
       <a-spin :loading="loading" class="w-full">
         <div class="max-w-[480px]">
           <a-card :bordered="false" class="!rounded-xl">
-            <a-form layout="vertical" class="!max-w-[400px]">
+            <a-form :model="{}" layout="vertical" class="!max-w-[400px]">
               <a-form-item label="用户">
                 <a-input
                   :model-value="`${user?.nickname || '...'}  (${user?.username || '...'})`"
@@ -71,8 +71,7 @@ import { IconLeft, IconLock, IconSafe } from '@arco-design/web-vue/es/icon'
 import { Message } from '@arco-design/web-vue'
 import PageHeader from '@/components/layout/PageHeader.vue'
 import { usePermissionStore } from '@/stores/permission'
-import { useUserStore } from '@/stores/user'
-import api from '@/utils/api'
+import api, { getApiErrorDetail } from '@/utils/api'
 
 interface UserDetail {
   id: string
@@ -96,7 +95,6 @@ const user = ref<UserDetail | null>(null)
 const newPassword = ref('')
 const oldPassword = ref('')
 const isDefaultPwd = ref(false)
-const isSelf = computed(() => useUserStore().userInfo?.id === userId)
 const canManageUsers = computed(() => permStore.hasPermission('users:change_password:write'))
 
 async function fetchUser() {
@@ -108,8 +106,8 @@ async function fetchUser() {
     ])
     user.value = userRes.data
     isDefaultPwd.value = canManageUsers.value || pwdRes.data.is_default_password
-  } catch (e: any) {
-    Message.error(e.response?.data?.detail || '加载用户信息失败')
+  } catch (e) {
+    Message.error(getApiErrorDetail(e) || '加载用户信息失败')
     router.push({ name: 'RBACUserManage' })
   } finally {
     loading.value = false
@@ -136,8 +134,8 @@ async function changePassword() {
     await api.put(`/v2/users/${userId}/password`, body)
     Message.success('密码修改成功')
     router.push({ name: 'RBACUserManage' })
-  } catch (e: any) {
-    Message.error(e.response?.data?.detail || '密码修改失败')
+  } catch (e) {
+    Message.error(getApiErrorDetail(e) || '密码修改失败')
   } finally {
     saving.value = false
   }

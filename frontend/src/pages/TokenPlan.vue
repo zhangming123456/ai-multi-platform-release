@@ -655,6 +655,7 @@ const providerOptions = [
 
 const apiFormatOptions = [
   { value: 'openai_chat', label: 'OpenAI Chat Completions 格式' },
+  { value: 'openai_responses', label: 'OpenAI Responses 格式' },
   { value: 'anthropic', label: 'Anthropic Messages 格式' },
   { value: 'gemini', label: 'Google Gemini 格式' },
 ]
@@ -673,6 +674,9 @@ const modelSeriesOptions = [
 const bannerText = computed(() => {
   if (form.value.apiFormat === 'openai_chat') {
     return '请填写兼容 OpenAI API 的服务端点地址，不要以斜杠结尾。/chat/completions 将会被补充到你填写的地址末尾。'
+  }
+  if (form.value.apiFormat === 'openai_responses') {
+    return '请填写兼容 OpenAI Responses API 的服务端点地址，不要以斜杠结尾。/responses 将会被补充到你填写的地址末尾。'
   }
   if (form.value.apiFormat === 'anthropic') {
     return '请填写兼容 Anthropic API 的服务端点地址，/v1/messages 将会被补充到地址末尾。'

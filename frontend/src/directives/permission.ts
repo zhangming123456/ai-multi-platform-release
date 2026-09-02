@@ -1,3 +1,4 @@
+import { watch } from 'vue'
 import type { DirectiveBinding, ObjectDirective } from 'vue'
 import { usePermissionStore } from '@/stores/permission'
 import type { PermContext } from '@/stores/permission'
@@ -11,6 +12,9 @@ const _permCache = new WeakMap<
   HTMLElement,
   { placeholder: Comment; originalParent: Node; originalNext: Node | null }
 >()
+
+const _activeBindings = new Map<HTMLElement, DirectiveBinding<string | PermBinding>>()
+let _watchStarted = false
 
 function resolve(binding: DirectiveBinding<string | PermBinding>): {
   key: string
@@ -58,10 +62,32 @@ function checkAndApply(el: HTMLElement, binding: DirectiveBinding<string | PermB
   }
 }
 
+function startPermWatcher() {
+  if (_watchStarted) return
+  const permStore = usePermissionStore()
+  watch(
+    () => permStore.permissions,
+    () => {
+      for (const [el, binding] of _activeBindings) {
+        checkAndApply(el, binding)
+      }
+    },
+  )
+  _watchStarted = true
+}
+
 const vPerm: ObjectDirective<HTMLElement, string | PermBinding> = {
-  mounted: checkAndApply,
-  updated: checkAndApply,
+  mounted(el, binding) {
+    _activeBindings.set(el, binding)
+    startPermWatcher()
+    checkAndApply(el, binding)
+  },
+  updated(el, binding) {
+    _activeBindings.set(el, binding)
+    checkAndApply(el, binding)
+  },
   beforeUnmount(el: HTMLElement) {
+    _activeBindings.delete(el)
     const cache = _permCache.get(el)
     if (cache) {
       // 1. 从 DOM 中移除占位注释节点

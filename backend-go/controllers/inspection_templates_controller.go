@@ -48,9 +48,6 @@ type inspectionTemplateUpdateRequest struct {
 
 // List GET /api/inspection-templates/
 func (c *InspectionTemplatesController) List() {
-	if !c.CheckPermission("inspection:template:read") {
-		return
-	}
 	page, pageSize := c.ParsePagination()
 	qs := services.GetOrm().QueryTable(new(models.InspectionTemplate))
 	if keyword := strings.TrimSpace(c.GetQuery("keyword")); keyword != "" {
@@ -80,9 +77,6 @@ func (c *InspectionTemplatesController) List() {
 
 // ListAll GET /api/inspection-templates/all
 func (c *InspectionTemplatesController) ListAll() {
-	if !c.CheckPermissionAny([]string{"inspection:template:read", "inspection:create:write"}) {
-		return
-	}
 	templates, err := services.GetActiveTemplates()
 	if err != nil {
 		c.WriteError(http.StatusInternalServerError, "查询模板失败")
@@ -256,9 +250,6 @@ func (c *InspectionTemplatesController) Create() {
 
 // Get GET /api/inspection-templates/:template_id
 func (c *InspectionTemplatesController) Get() {
-	if !c.CheckPermission("inspection:template:read") {
-		return
-	}
 	template, err := services.FindInspectionTemplate(c.GetPathParam("template_id"))
 	if err != nil {
 		c.WriteError(http.StatusNotFound, "模板不存在")

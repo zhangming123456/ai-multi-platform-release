@@ -411,14 +411,19 @@ func buildTemplateItemAIMessages(req AIGenerateTemplateItemRequest, supportsVisi
 
 // GenerateTemplateItemsByAI 根据图片或文字描述，让 AI 识别并生成结构化检查项列表。
 func GenerateTemplateItemsByAI(req AIGenerateTemplateItemRequest) ([]AIGenerateTemplateItemResult, error) {
-	apiKey, baseURL, model, planName, supportsVision, err := ResolveModelConfig(req.PlanID, req.ModelID)
+	apiKey, baseURL, model, planName, supportsVision, apiFormat, err := ResolveModelConfig(req.PlanID, req.ModelID)
 	if err != nil {
 		return nil, err
 	}
 
 	messages, tools, toolChoice := buildTemplateItemAIMessages(req, supportsVision)
 
-	resp, err := callChatCompletionsWithTools(apiKey, baseURL, model, messages, tools, toolChoice, 8000)
+	var resp *http.Response
+	if apiFormat == "openai_responses" {
+		resp, err = callResponsesWithTools(apiKey, baseURL, model, messages, tools, toolChoice, 8000)
+	} else {
+		resp, err = callChatCompletionsWithTools(apiKey, baseURL, model, messages, tools, toolChoice, 8000)
+	}
 	if err != nil {
 		return nil, aiCallError(planName, err)
 	}
@@ -427,7 +432,11 @@ func GenerateTemplateItemsByAI(req AIGenerateTemplateItemRequest) ([]AIGenerateT
 		resp.Body.Close()
 		lower := strings.ToLower(string(bodyBytes))
 		if strings.Contains(lower, "tool_choice") || strings.Contains(lower, "tool choice") {
-			resp, err = callChatCompletionsWithTools(apiKey, baseURL, model, messages, tools, nil, 8000)
+			if apiFormat == "openai_responses" {
+				resp, err = callResponsesWithTools(apiKey, baseURL, model, messages, tools, nil, 8000)
+			} else {
+				resp, err = callChatCompletionsWithTools(apiKey, baseURL, model, messages, tools, nil, 8000)
+			}
 			if err != nil {
 				return nil, aiCallError(planName, err)
 			}
@@ -441,27 +450,37 @@ func GenerateTemplateItemsByAI(req AIGenerateTemplateItemRequest) ([]AIGenerateT
 		return nil, aiCallError(planName, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(bodyBytes)))
 	}
 
-	var raw struct {
-		Choices []struct {
-			Message struct {
-				Content   string           `json:"content"`
-				ToolCalls []toolCallResult `json:"tool_calls"`
-			} `json:"message"`
-		} `json:"choices"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
-		return nil, aiCallError(planName, err)
-	}
-	if len(raw.Choices) == 0 {
-		return nil, aiCallError(planName, fmt.Errorf("模型无返回内容"))
-	}
-
-	choice := raw.Choices[0]
 	var args string
-	if len(choice.Message.ToolCalls) > 0 {
-		args = strings.TrimSpace(choice.Message.ToolCalls[0].Function.Arguments)
+	if apiFormat == "openai_responses" {
+		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 10*1024*1024))
+		content, toolName, toolArgs := extractResponsesResult(respBody)
+		if toolName != "" {
+			args = strings.TrimSpace(toolArgs)
+		} else {
+			args = stripCodeFence(content)
+		}
 	} else {
-		args = stripCodeFence(choice.Message.Content)
+		var raw struct {
+			Choices []struct {
+				Message struct {
+					Content   string           `json:"content"`
+					ToolCalls []toolCallResult `json:"tool_calls"`
+				} `json:"message"`
+			} `json:"choices"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
+			return nil, aiCallError(planName, err)
+		}
+		if len(raw.Choices) == 0 {
+			return nil, aiCallError(planName, fmt.Errorf("模型无返回内容"))
+		}
+
+		choice := raw.Choices[0]
+		if len(choice.Message.ToolCalls) > 0 {
+			args = strings.TrimSpace(choice.Message.ToolCalls[0].Function.Arguments)
+		} else {
+			args = stripCodeFence(choice.Message.Content)
+		}
 	}
 
 	parsed, parseErr := parseGeneratedItems(args, req.ExistingCategories)
@@ -473,7 +492,7 @@ func GenerateTemplateItemsByAI(req AIGenerateTemplateItemRequest) ([]AIGenerateT
 
 // GenerateTemplateItemsByAIStream 根据图片或文字描述，流式生成检查项列表，通过 events 输出 SSE 事件。
 func GenerateTemplateItemsByAIStream(req AIGenerateTemplateItemRequest, events chan<- AIStreamEvent) {
-	apiKey, baseURL, model, planName, supportsVision, err := ResolveModelConfig(req.PlanID, req.ModelID)
+	apiKey, baseURL, model, planName, supportsVision, apiFormat, err := ResolveModelConfig(req.PlanID, req.ModelID)
 	if err != nil {
 		events <- AIStreamEvent{Event: "error", Message: err.Error()}
 		return
@@ -490,7 +509,11 @@ func GenerateTemplateItemsByAIStream(req AIGenerateTemplateItemRequest, events c
 	}
 
 	var resp *http.Response
-	resp, err = callChatCompletionsStreamWithTools(apiKey, baseURL, model, messages, tools, toolChoice, 8000)
+	if apiFormat == "openai_responses" {
+		resp, err = callResponsesStreamWithTools(apiKey, baseURL, model, messages, tools, toolChoice, 8000)
+	} else {
+		resp, err = callChatCompletionsStreamWithTools(apiKey, baseURL, model, messages, tools, toolChoice, 8000)
+	}
 	if err != nil {
 		events <- AIStreamEvent{Event: "error", Message: fmt.Sprintf("模型「%s」调用失败：%s", planName, err)}
 		return
@@ -501,7 +524,11 @@ func GenerateTemplateItemsByAIStream(req AIGenerateTemplateItemRequest, events c
 		lower := strings.ToLower(string(bodyBytes))
 		if strings.Contains(lower, "tool_choice") || strings.Contains(lower, "tool choice") {
 			events <- AIStreamEvent{Event: "log", Level: "warn", Message: "当前模型不支持强制工具调用，已自动降级为自动模式"}
-			resp, err = callChatCompletionsStreamWithTools(apiKey, baseURL, model, messages, tools, nil, 8000)
+			if apiFormat == "openai_responses" {
+				resp, err = callResponsesStreamWithTools(apiKey, baseURL, model, messages, tools, nil, 8000)
+			} else {
+				resp, err = callChatCompletionsStreamWithTools(apiKey, baseURL, model, messages, tools, nil, 8000)
+			}
 			if err != nil {
 				events <- AIStreamEvent{Event: "error", Message: fmt.Sprintf("模型「%s」调用失败：%s", planName, err)}
 				return
@@ -519,47 +546,96 @@ func GenerateTemplateItemsByAIStream(req AIGenerateTemplateItemRequest, events c
 	}
 	defer resp.Body.Close()
 
-	events <- AIStreamEvent{Event: "log", Level: "req", Message: "POST /chat/completions → SSE 连接已建立"}
+	if apiFormat == "openai_responses" {
+		events <- AIStreamEvent{Event: "log", Level: "req", Message: "POST /responses → SSE 连接已建立"}
+	} else {
+		events <- AIStreamEvent{Event: "log", Level: "req", Message: "POST /chat/completions → SSE 连接已建立"}
+	}
 
 	scanner := bufio.NewScanner(resp.Body)
 	fullContent := ""
 	accumulatedArgs := make(map[int]string)
 	accumulatedName := make(map[int]string)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if !strings.HasPrefix(line, "data:") {
-			continue
-		}
-		data := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
-		if data == "[DONE]" {
-			break
-		}
-		var chunk struct {
-			Choices []struct {
-				Delta struct {
-					Content   string           `json:"content"`
-					ToolCalls []toolCallResult `json:"tool_calls"`
-				} `json:"delta"`
-			} `json:"choices"`
-		}
-		if err := json.Unmarshal([]byte(data), &chunk); err != nil {
-			continue
-		}
-		if len(chunk.Choices) == 0 {
-			continue
-		}
-		delta := chunk.Choices[0].Delta
-		if delta.Content != "" {
-			fullContent += delta.Content
-			events <- AIStreamEvent{Event: "chunk", Text: delta.Content}
-		}
-		for _, tc := range delta.ToolCalls {
-			idx := 0
-			if tc.Function.Name != "" {
-				accumulatedName[idx] = tc.Function.Name
+	if apiFormat == "openai_responses" {
+		respAccumulatedName := ""
+		respAccumulatedArgs := ""
+		for scanner.Scan() {
+			line := strings.TrimSpace(scanner.Text())
+			if !strings.HasPrefix(line, "data:") {
+				continue
 			}
-			if tc.Function.Arguments != "" {
-				accumulatedArgs[idx] += tc.Function.Arguments
+			data := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+			if data == "[DONE]" {
+				break
+			}
+			var evt struct {
+				Type  string `json:"type"`
+				Delta string `json:"delta"`
+				Item  struct {
+					Type string `json:"type"`
+					Name string `json:"name"`
+				} `json:"item"`
+			}
+			if err := json.Unmarshal([]byte(data), &evt); err != nil {
+				continue
+			}
+			switch evt.Type {
+			case "response.output_item.added":
+				if evt.Item.Type == "function_call" {
+					respAccumulatedName = evt.Item.Name
+				}
+			case "response.function_call_arguments.delta":
+				respAccumulatedArgs += evt.Delta
+			case "response.output_text.delta":
+				if evt.Delta != "" {
+					fullContent += evt.Delta
+					events <- AIStreamEvent{Event: "chunk", Text: evt.Delta}
+				}
+			}
+		}
+		if respAccumulatedName != "" {
+			accumulatedName[0] = respAccumulatedName
+		}
+		if respAccumulatedArgs != "" {
+			accumulatedArgs[0] = respAccumulatedArgs
+		}
+	} else {
+		for scanner.Scan() {
+			line := strings.TrimSpace(scanner.Text())
+			if !strings.HasPrefix(line, "data:") {
+				continue
+			}
+			data := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+			if data == "[DONE]" {
+				break
+			}
+			var chunk struct {
+				Choices []struct {
+					Delta struct {
+						Content   string           `json:"content"`
+						ToolCalls []toolCallResult `json:"tool_calls"`
+					} `json:"delta"`
+				} `json:"choices"`
+			}
+			if err := json.Unmarshal([]byte(data), &chunk); err != nil {
+				continue
+			}
+			if len(chunk.Choices) == 0 {
+				continue
+			}
+			delta := chunk.Choices[0].Delta
+			if delta.Content != "" {
+				fullContent += delta.Content
+				events <- AIStreamEvent{Event: "chunk", Text: delta.Content}
+			}
+			for _, tc := range delta.ToolCalls {
+				idx := 0
+				if tc.Function.Name != "" {
+					accumulatedName[idx] = tc.Function.Name
+				}
+				if tc.Function.Arguments != "" {
+					accumulatedArgs[idx] += tc.Function.Arguments
+				}
 			}
 		}
 	}

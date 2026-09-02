@@ -15,23 +15,13 @@
           <template #icon><IconEdit :size="13" /></template>
           权限字典管理
         </a-button>
-        <a-button
-          v-if="selectedRole && !selectedRole.is_super_admin"
-          type="text"
-          size="mini"
-          class="!text-[#007AFF] !px-0 !h-auto"
-          :loading="saving"
-          @click="savePermissions"
-        >
-          保存权限
-        </a-button>
       </template>
     </PageHeader>
 
-    <div class="px-4 md:px-6 lg:px-8 flex-1">
+    <div class="px-4 md:px-6 lg:px-8 flex-1 pb-24">
       <a-spin :loading="loading" tip="加载中..." class="w-full">
         <div class="flex flex-col lg:flex-row gap-5">
-          <div class="lg:w-[200px] shrink-0">
+          <div class="lg:w-[200px] shrink-0 lg:sticky lg:top-6 lg:self-start">
             <div class="bg-white/80 backdrop-blur-xl rounded-2xl border border-black/[0.05] p-4">
               <p class="text-[12px] text-[#86868B] font-medium px-1 pb-3">选择角色</p>
               <div class="flex flex-col gap-2">
@@ -105,7 +95,7 @@
                       :model-value="moduleReadChecked(module)"
                       :indeterminate="moduleReadIndeterminate(module)"
                       :disabled="selectedRole.is_super_admin"
-                      @change="toggleModuleAllRead(module, $event)"
+                      @change="toggleModuleAllRead(module, $event as boolean)"
                     >
                       读
                     </a-checkbox>
@@ -114,7 +104,7 @@
                       :model-value="moduleWriteChecked(module)"
                       :indeterminate="moduleWriteIndeterminate(module)"
                       :disabled="selectedRole.is_super_admin"
-                      @change="toggleModuleAllWrite(module, $event)"
+                      @change="toggleModuleAllWrite(module, $event as boolean)"
                     >
                       写
                     </a-checkbox>
@@ -166,20 +156,39 @@
         </div>
       </a-spin>
     </div>
+
+    <div
+      class="fixed bottom-0 right-0 z-30 border-t border-[#E5E5EA] bg-white/90 backdrop-blur-xl px-4 md:px-6 lg:px-8 py-3 flex items-center justify-between transition-all duration-350 ease-out"
+      :style="{ left: 'var(--f-aside-width)' }"
+      v-if="selectedRole && !selectedRole.is_super_admin"
+    >
+      <div></div>
+      <div class="flex items-center gap-3">
+        <a-button type="primary" :loading="saving" :disabled="saving" @click="savePermissions">
+          保存权限
+        </a-button>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, computed, onMounted, watch } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import { Message } from '@arco-design/web-vue'
 import { IconSafe, IconLock, IconEdit } from '@arco-design/web-vue/es/icon'
 import { orderBy } from 'lodash-es'
 import PageHeader from '@/components/layout/PageHeader.vue'
-import api from '@/utils/api'
+import api, { getApiErrorDetail } from '@/utils/api'
 import { isAdminTypePermission } from '@/utils/rbac'
+import { usePermissionStore } from '@/stores/permission'
+import { useUserStore } from '@/stores/user'
+
+const permStore = usePermissionStore()
+const userStore = useUserStore()
 
 const router = useRouter()
+const route = useRoute()
 
 interface Role {
   id: string
@@ -273,14 +282,10 @@ function roleColor(role: Role): string {
 
 const sortedRoles = computed(() => {
   return [...roles.value].sort((a, b) => {
-    if (a.is_super_admin) return -1
-    if (b.is_super_admin) return 1
-    const builtinOrder = ['manager', 'operator', 'reviewer']
-    const aIdx = builtinOrder.indexOf(a.name)
-    const bIdx = builtinOrder.indexOf(b.name)
-    if (aIdx !== -1 && bIdx !== -1) return aIdx - bIdx
-    if (aIdx !== -1) return -1
-    if (bIdx !== -1) return 1
+    const aSuper = a.is_super_admin || a.name === 'admin'
+    const bSuper = b.is_super_admin || b.name === 'admin'
+    if (aSuper !== bSuper) return aSuper ? -1 : 1
+    if (a.role_type !== b.role_type) return a.role_type === 'admin' ? -1 : 1
     return 0
   })
 })
@@ -339,12 +344,12 @@ function buildActionGroupMap(
     const rk = perm.resource.key.split(':')[0]
     if (filterKeys && !filterKeys.includes(rk)) continue
     const parts = perm.key.split(':')
-    const baseKey = `${parts[0]}:${parts[1]}`
+    const baseKey = parts.slice(0, -1).join(':')
     if (!groups.has(baseKey)) {
       groups.set(baseKey, {})
     }
     const group = groups.get(baseKey)!
-    if (parts.length >= 3 && parts[2] === 'write') {
+    if (parts[parts.length - 1] === 'write') {
       group.writePerm = perm
     } else {
       group.readPerm = perm
@@ -391,10 +396,19 @@ const modules = computed<ModuleDef[]>(() => {
 
   const reviewItems = actionItemsForKeys(['review', 'db_change'])
 
+  const inspectionItems = actionItemsForKeys(['inspection'])
+
   const basicItems = actionItemsForKeys(['account', 'db', 'db_history'])
 
   const coveredKeys = new Set<string>()
-  for (const items of [pageItemDefs.value, systemItems, contentItems, reviewItems, basicItems]) {
+  for (const items of [
+    pageItemDefs.value,
+    systemItems,
+    contentItems,
+    reviewItems,
+    inspectionItems,
+    basicItems,
+  ]) {
     for (const item of items) {
       if (item.readKey) coveredKeys.add(item.readKey)
       for (const k of item.writeKeys) coveredKeys.add(k)
@@ -411,6 +425,7 @@ const modules = computed<ModuleDef[]>(() => {
   const filteredSystem = filterModuleItems(systemItems)
   const filteredContent = filterModuleItems(contentItems)
   const filteredReview = filterModuleItems(reviewItems)
+  const filteredInspection = filterModuleItems(inspectionItems)
   const filteredBasic = filterModuleItems(basicItems)
   const filteredOther = filterModuleItems(otherItems)
 
@@ -421,6 +436,8 @@ const modules = computed<ModuleDef[]>(() => {
     result.push({ key: 'content', label: '内容管理', items: filteredContent })
   if (filteredReview.length > 0)
     result.push({ key: 'review', label: '审核管理', items: filteredReview })
+  if (filteredInspection.length > 0)
+    result.push({ key: 'inspection', label: '巡店管理', items: filteredInspection })
   if (filteredBasic.length > 0)
     result.push({ key: 'basic', label: '基础操作', items: filteredBasic })
   if (filteredOther.length > 0)
@@ -534,9 +551,39 @@ function toggleWriteKey(key: string) {
 async function fetchRoles() {
   const res = await api.get<Role[]>('/v2/roles')
   roles.value = Array.isArray(res.data) ? res.data : []
-  if (sortedRoles.value.length > 0 && !selectedRoleId.value) {
-    const firstEditable = sortedRoles.value.find((r) => !r.is_super_admin)
-    selectedRoleId.value = firstEditable?.id || sortedRoles.value[0].id
+}
+
+function resolveDefaultRole(): Role | undefined {
+  const currentRoleName = userStore.userInfo?.role
+  if (currentRoleName) {
+    const currentRole = roles.value.find((r) => r.name === currentRoleName)
+    if (currentRole) return currentRole
+  }
+  return sortedRoles.value.find((r) => !r.is_super_admin) || sortedRoles.value[0]
+}
+
+function normalizeQueryRole(queryRole: unknown): string | undefined {
+  if (Array.isArray(queryRole)) {
+    return typeof queryRole[0] === 'string' ? queryRole[0] : undefined
+  }
+  return typeof queryRole === 'string' ? queryRole : undefined
+}
+
+async function syncSelectedRole(queryRole?: unknown) {
+  if (roles.value.length === 0) return
+  const raw = normalizeQueryRole(queryRole)
+  let target: Role | undefined
+  if (raw) {
+    target = roles.value.find((r) => r.id === raw)
+    if (!target) {
+      Message.warning('指定的角色不存在，已切换到默认角色')
+    }
+  }
+  if (!target) {
+    target = resolveDefaultRole()
+  }
+  if (target && target.id !== selectedRoleId.value) {
+    await onRoleChange(target.id)
   }
 }
 
@@ -556,9 +603,11 @@ async function loadAll() {
     await Promise.all([fetchRoles(), fetchPermissions()])
     if (selectedRoleId.value) {
       await fetchRolePermissions(selectedRoleId.value)
+    } else {
+      await syncSelectedRole(route.query.role)
     }
-  } catch (e: any) {
-    Message.error(e.response?.data?.detail || '加载权限数据失败')
+  } catch (e) {
+    Message.error(getApiErrorDetail(e) || '加载权限数据失败')
   } finally {
     loading.value = false
   }
@@ -571,8 +620,8 @@ async function onRoleChange(roleId: string) {
   loading.value = true
   try {
     await fetchRolePermissions(roleId)
-  } catch (e: any) {
-    Message.error(e.response?.data?.detail || '加载角色权限失败')
+  } catch (e) {
+    Message.error(getApiErrorDetail(e) || '加载角色权限失败')
   } finally {
     loading.value = false
   }
@@ -618,12 +667,21 @@ async function savePermissions() {
     })
     Message.success(`${selectedRole.value?.display_name || '角色'} 权限保存成功`)
     await fetchRolePermissions(selectedRoleId.value)
-  } catch (e: any) {
-    Message.error(e.response?.data?.detail || '保存失败')
+    permStore.loadPermissions(userStore.userInfo?.id).catch(() => {})
+  } catch (e) {
+    Message.error(getApiErrorDetail(e) || '保存失败')
   } finally {
     saving.value = false
   }
 }
+
+watch(
+  () => route.query.role,
+  (val) => {
+    if (roles.value.length === 0) return
+    syncSelectedRole(val)
+  },
+)
 
 onMounted(loadAll)
 </script>

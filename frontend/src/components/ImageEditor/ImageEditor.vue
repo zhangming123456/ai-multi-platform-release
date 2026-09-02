@@ -214,7 +214,7 @@ const canvasHeight = ref(0)
  * @param {*} val
  * @returns {boolean}
  */
-function isDecimalNumber(val: any): boolean {
+function isDecimalNumber(val: unknown): boolean {
   // 先转字符串判断，匹配数字.数字，支持正负
   const reg = /^-?\d+\.\d+$/
   return reg.test(String(val ?? ''))
