@@ -302,7 +302,11 @@
             </button>
           </div>
           <div ref="modelListRef" class="model-list">
-            <div v-for="(entry, idx) in form.models" :key="idx" class="model-entry">
+            <div
+              v-for="(entry, idx) in form.models"
+              :key="modelEntryKey(entry)"
+              class="model-entry"
+            >
               <div class="model-entry__top">
                 <span class="model-entry__grip" title="拖拽排序">
                   <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
@@ -940,6 +944,17 @@ let planSortable: Sortable | null = null
 
 const modelListRef = ref<HTMLElement | null>(null)
 let modelsSortable: Sortable | null = null
+
+const modelUidMap = new WeakMap<object, string>()
+let modelUidSeq = 0
+function modelEntryKey(entry: ModelEntry): string {
+  let key = modelUidMap.get(entry)
+  if (!key) {
+    key = `model-${Date.now()}-${modelUidSeq++}`
+    modelUidMap.set(entry, key)
+  }
+  return key
+}
 
 function initModelsSortable() {
   if (!modelListRef.value) return

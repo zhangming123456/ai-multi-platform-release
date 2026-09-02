@@ -86,12 +86,12 @@
                   <div class="flex items-center gap-2">
                     <h3 class="text-[15px] font-semibold text-[#1D1D1F] m-0">{{ module.label }}</h3>
                     <span class="text-[12px] text-[#86868B] font-medium">{{
-                      module.items.length
+                      safeModuleItems(module).length
                     }}</span>
                   </div>
                   <div class="flex items-center gap-3">
                     <a-checkbox
-                      v-if="module.items.some((i) => i.readKey)"
+                      v-if="safeModuleItems(module).some((i) => i.readKey)"
                       :model-value="moduleReadChecked(module)"
                       :indeterminate="moduleReadIndeterminate(module)"
                       :disabled="selectedRole.is_super_admin"
@@ -100,7 +100,7 @@
                       读
                     </a-checkbox>
                     <a-checkbox
-                      v-if="module.items.some((i) => i.writeKeys.length > 0)"
+                      v-if="safeModuleItems(module).some((i) => itemHasWrite(i))"
                       :model-value="moduleWriteChecked(module)"
                       :indeterminate="moduleWriteIndeterminate(module)"
                       :disabled="selectedRole.is_super_admin"
@@ -137,7 +137,7 @@
                         读
                       </a-checkbox>
                       <a-checkbox
-                        v-if="item.writeKeys.length > 0"
+                        v-if="itemHasWrite(item)"
                         :model-value="item.writeKeys.some((k) => effectiveKeys.has(k))"
                         :disabled="
                           selectedRole.is_super_admin ||
@@ -303,6 +303,14 @@ function filterModuleItems(items: ModuleItemDef[]): ModuleItemDef[] {
     if (!checkKey) return false
     return !isAdminTypePermission(checkKey)
   })
+}
+
+function safeModuleItems(module: ModuleDef | null | undefined): ModuleItemDef[] {
+  return module && Array.isArray(module.items) ? module.items : []
+}
+
+function itemHasWrite(item: ModuleItemDef | null | undefined): boolean {
+  return !!(item && Array.isArray(item.writeKeys) && item.writeKeys.length > 0)
 }
 
 const permissionMap = computed(() => {
