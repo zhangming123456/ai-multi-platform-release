@@ -64,64 +64,86 @@
             </a-spin>
           </template>
 
-          <div v-else-if="hasGenerated" class="preview-result">
-            <div v-if="availableForms.length" class="preview-tier">
-              <a-tabs :active-key="activeForm" type="rounded" size="mini" @change="onFormTabChange">
-                <a-tab-pane v-for="f in availableForms" :key="f.value" :title="f.label" />
-              </a-tabs>
+          <template v-else-if="hasGenerated">
+            <div class="preview-result">
+              <div class="preview-tier">
+                <a-tabs
+                  :active-key="activePreview"
+                  type="rounded"
+                  size="mini"
+                  @change="onPlatformTabChange"
+                >
+                  <a-tab-pane
+                    v-for="p in previewPlatforms"
+                    :key="p.value"
+                    :title="p.label as string"
+                  />
+                </a-tabs>
+              </div>
+              <div v-if="availableForms.length" class="preview-tier">
+                <a-tabs
+                  :active-key="activeForm"
+                  type="rounded"
+                  size="mini"
+                  @change="onFormTabChange"
+                >
+                  <a-tab-pane
+                    v-for="f in availableForms"
+                    :key="f.value"
+                    :title="f.label as string"
+                  />
+                </a-tabs>
+              </div>
+              <div v-if="currentVariants.length" class="space-y-4 pt-2">
+                <div v-if="currentVariants.length > 1" class="version-preview-bar">
+                  <a-radio-group v-model="activeVersionIndex" size="small" type="button">
+                    <a-radio v-for="(_, vi) in currentVariants" :key="vi" :value="vi">
+                      版本 {{ vi + 1 }}
+                    </a-radio>
+                  </a-radio-group>
+                </div>
+                <div v-if="currentVariant">
+                  <a-typography-text
+                    type="secondary"
+                    class="text-[11px] font-semibold uppercase tracking-[0.06em] block mb-1.5"
+                    >标题</a-typography-text
+                  >
+                  <a-input :model-value="currentVariant.title" read-only class="font-semibold" />
+                </div>
+                <div v-if="currentVariant">
+                  <a-typography-text
+                    type="secondary"
+                    class="text-[11px] font-semibold uppercase tracking-[0.06em] block mb-1.5"
+                  >
+                    正文（底部含推荐话题标签）
+                  </a-typography-text>
+                  <a-textarea
+                    :model-value="bodyWithTags(currentVariant)"
+                    read-only
+                    :auto-size="true"
+                  />
+                </div>
+              </div>
+              <a-empty
+                v-if="availableForms.length === 0"
+                class="pt-6"
+                description="当前平台与内容形式暂无生成结果，请切换查看"
+              />
             </div>
-            <div class="preview-tier">
-              <a-tabs
-                :active-key="activePreview"
-                type="rounded"
-                size="mini"
-                @change="onPlatformTabChange"
-              >
-                <a-tab-pane v-for="p in previewPlatforms" :key="p.value" :title="p.label" />
-              </a-tabs>
-            </div>
+          </template>
 
-            <div v-if="currentVariants.length" class="space-y-4 pt-2">
-              <div v-if="currentVariants.length > 1" class="version-preview-bar">
-                <a-radio-group v-model="activeVersionIndex" size="small" type="button">
-                  <a-radio v-for="(_, vi) in currentVariants" :key="vi" :value="vi">
-                    版本 {{ vi + 1 }}
-                  </a-radio>
-                </a-radio-group>
-              </div>
-              <div v-if="currentVariant">
-                <a-typography-text
-                  type="secondary"
-                  class="text-[11px] font-semibold uppercase tracking-[0.06em] block mb-1.5"
-                  >标题</a-typography-text
-                >
-                <a-input :model-value="currentVariant.title" read-only class="font-semibold" />
-              </div>
-              <div v-if="currentVariant">
-                <a-typography-text
-                  type="secondary"
-                  class="text-[11px] font-semibold uppercase tracking-[0.06em] block mb-1.5"
-                  >正文（底部含推荐话题标签）</a-typography-text
-                >
-                <a-textarea
-                  :model-value="bodyWithTags(currentVariant)"
-                  read-only
-                  :auto-size="{ minRows: 4, maxRows: 12 }"
-                />
-              </div>
-              <div v-if="currentVariant" class="flex items-center justify-end gap-2 pt-1">
-                <a-button @click="copyContent">
-                  <template #icon><IconCopy /></template>
-                  复制文案
-                </a-button>
-                <a-button type="primary" :loading="isSaving" @click="saveContent">
-                  <template #icon><IconSave /></template>
-                  保存为内容
-                </a-button>
-              </div>
+          <template #extra v-if="currentVariants.length && currentVariant">
+            <div class="flex items-center justify-end gap-2 pt-1">
+              <a-button size="mini" @click="copyContent">
+                <template #icon><IconCopy /></template>
+                复制文案
+              </a-button>
+              <a-button size="mini" type="primary" :loading="isSaving" @click="saveContent">
+                <template #icon><IconSave /></template>
+                保存为内容
+              </a-button>
             </div>
-            <a-empty v-else class="pt-6" description="当前平台与内容形式暂无生成结果，请切换查看" />
-          </div>
+          </template>
         </a-card>
 
         <div class="content-left">
@@ -557,26 +579,11 @@
 </template>
 
 <script setup lang="ts">
-import {
-  ref,
-  computed,
-  reactive,
-  onMounted,
-  onUnmounted,
-  nextTick,
-  watch,
-  unref,
-  h,
-  type VNode,
-} from 'vue'
+import { ref, computed, reactive, onMounted, onUnmounted, nextTick, watch, unref, h } from 'vue'
 import { useRouter } from 'vue-router'
 import { Message } from '@arco-design/web-vue'
 import type { FormInstance } from '@arco-design/web-vue'
-import {
-  type DropdownMenuOption,
-  type DropdownMenuOptions,
-  type DropdownMenuProps,
-} from '@/components/DropdownMenu/types'
+import { type DropdownMenuOption, type DropdownMenuOptions } from '@/components/DropdownMenu/types'
 
 import {
   IconCopy,
@@ -775,7 +782,7 @@ const contentFormChoices: Partial<DropdownMenuOption>[] = [
   { value: 'product_detail', label: '商品详情页文案' },
 ]
 
-const versionFormChoices = computed<Partial<DropdownMenuOption>[]>(() => {
+const versionFormChoices = computed(() => {
   return Array.from({ length: 3 }).map((value, index) => {
     value = String(index + 1)
     return {
@@ -873,7 +880,7 @@ const toolbarOptions = computed(() => {
         onOptionClick: (option) => {
           versionNum.value = option.value as string
         },
-        children: unref(versionFormChoices),
+        children: unref(versionFormChoices) as any,
         triggerProps: {
           contentStyle: {},
         },
@@ -1916,10 +1923,12 @@ async function copyContent() {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  display: flex;
+  flex-direction: column;
 }
 
 .preview-result {
-  min-height: 100%;
+  padding-bottom: 20px;
 }
 
 .preview-tier {
@@ -2335,6 +2344,10 @@ async function copyContent() {
 
 .activity-modal-tabs :deep(.arco-tabs-content) {
   padding-top: 14px;
+}
+
+.preview-tier :deep(.arco-tabs-content) {
+  display: none;
 }
 
 .event-entry {
@@ -3033,6 +3046,9 @@ async function copyContent() {
   .content-layout {
     flex-direction: column;
     height: auto;
+    .content-left {
+      max-width: 100%;
+    }
   }
   .content-left .log-terminal__body {
     max-height: 200px;
