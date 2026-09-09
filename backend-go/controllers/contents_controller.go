@@ -18,21 +18,23 @@ type ContentsController struct {
 }
 
 type contentCreateRequest struct {
-	Title      string `json:"title"`
-	Body       string `json:"body"`
-	Platform   string `json:"platform"`
-	Status     string `json:"status"`
-	MediaURLs  string `json:"media_urls"`
-	CampaignID string `json:"campaign_id"`
+	Title      string          `json:"title"`
+	Body       string          `json:"body"`
+	Platform   string          `json:"platform"`
+	Status     string          `json:"status"`
+	MediaURLs  string          `json:"media_urls"`
+	CampaignID string          `json:"campaign_id"`
+	EventMeta  json.RawMessage `json:"event_meta"`
 }
 
 type contentUpdateRequest struct {
-	Title      *string `json:"title"`
-	Body       *string `json:"body"`
-	Platform   *string `json:"platform"`
-	Status     *string `json:"status"`
-	MediaURLs  *string `json:"media_urls"`
-	CampaignID *string `json:"campaign_id"`
+	Title      *string          `json:"title"`
+	Body       *string          `json:"body"`
+	Platform   *string          `json:"platform"`
+	Status     *string          `json:"status"`
+	MediaURLs  *string          `json:"media_urls"`
+	CampaignID *string          `json:"campaign_id"`
+	EventMeta  *json.RawMessage `json:"event_meta"`
 }
 
 type aiGenerateRequest struct {
@@ -54,7 +56,38 @@ type aiGenerateStreamRequest struct {
 	ModelID         string                  `json:"model_id"`
 	Files           []services.UploadedFile `json:"files"`
 	CampaignID      string                  `json:"campaign_id"`
+	ContentForms    []string                `json:"content_forms"`
+	EventContext    *services.EventContext  `json:"event_context"`
 	GenerateVersion int                     `json:"generate_version"`
+}
+
+const maxCombosPerRequest = 6
+
+var contentFormLabels = map[string]string{
+	"post":           "图文笔记/推文",
+	"script":         "短视频脚本",
+	"snippet":        "短文案/标题",
+	"live_script":    "直播脚本",
+	"product_detail": "商品详情页文案",
+}
+
+func normalizeContentForms(list []string) []string {
+	if len(list) == 0 {
+		return []string{"post"}
+	}
+	seen := map[string]bool{}
+	out := make([]string, 0, len(list))
+	for _, raw := range list {
+		f := strings.TrimSpace(raw)
+		if _, ok := contentFormLabels[f]; ok && !seen[f] {
+			seen[f] = true
+			out = append(out, f)
+		}
+	}
+	if len(out) == 0 {
+		return []string{"post"}
+	}
+	return out
 }
 
 var platformLabels = map[string]string{
@@ -64,6 +97,28 @@ var platformLabels = map[string]string{
 	"wechat_video":   "视频号",
 	"wechat_moments": "朋友圈",
 	"weibo":          "微博",
+}
+
+func contentMap(c *models.Content) map[string]interface{} {
+	var eventMeta interface{}
+	if strings.TrimSpace(c.EventMeta) != "" {
+		_ = json.Unmarshal([]byte(c.EventMeta), &eventMeta)
+	}
+	return map[string]interface{}{
+		"id":                  c.ID,
+		"user_id":             c.UserID,
+		"title":               c.Title,
+		"body":                c.Body,
+		"platform":            c.Platform,
+		"status":              c.Status,
+		"media_urls":          c.MediaURLs,
+		"campaign_id":         c.CampaignID,
+		"event_meta":          eventMeta,
+		"ai_generated":        c.AIGenerated,
+		"original_content_id": c.OriginalContentID,
+		"created_at":          c.CreatedAt,
+		"updated_at":          c.UpdatedAt,
+	}
 }
 
 func sseEvent(event string, data interface{}) string {
@@ -134,7 +189,11 @@ func (c *ContentsController) List() {
 		c.WriteError(http.StatusInternalServerError, "查询内容失败")
 		return
 	}
-	c.OK(contents)
+	items := make([]map[string]interface{}, 0, len(contents))
+	for i := range contents {
+		items = append(items, contentMap(&contents[i]))
+	}
+	c.OK(items)
 }
 
 // Create POST /api/contents/
@@ -165,6 +224,7 @@ func (c *ContentsController) Create() {
 		Status:     status,
 		MediaURLs:  req.MediaURLs,
 		CampaignID: req.CampaignID,
+		EventMeta:  string(req.EventMeta),
 	}
 	if _, err := services.GetOrm().Insert(content); err != nil {
 		c.WriteError(http.StatusInternalServerError, "创建内容失败")
@@ -188,7 +248,7 @@ func (c *ContentsController) Get() {
 		c.WriteError(http.StatusNotFound, "内容不存在")
 		return
 	}
-	c.OK(content)
+	c.OK(contentMap(content))
 }
 
 // Update PUT /api/contents/:content_id
@@ -229,11 +289,14 @@ func (c *ContentsController) Update() {
 	if req.CampaignID != nil {
 		content.CampaignID = *req.CampaignID
 	}
+	if req.EventMeta != nil {
+		content.EventMeta = string(*req.EventMeta)
+	}
 	if _, err := services.GetOrm().Update(content); err != nil {
 		c.WriteError(http.StatusInternalServerError, "更新内容失败")
 		return
 	}
-	c.OK(content)
+	c.OK(contentMap(content))
 }
 
 // Delete DELETE /api/contents/:content_id
@@ -450,7 +513,26 @@ func (c *ContentsController) AIGenerateStream() {
 		c.WriteError(http.StatusBadRequest, "当前模型不支持文件上传，请切换到支持视觉/图片/视频的模型配置")
 		return
 	}
-
+	forms := normalizeContentForms(req.ContentForms)
+	vNum := req.GenerateVersion
+	if vNum <= 0 {
+		vNum = 1
+	}
+	if vNum > 3 {
+		vNum = 3
+	}
+	if len(req.Platforms)*len(forms)*vNum > maxCombosPerRequest {
+		c.WriteError(http.StatusBadRequest, "组合数量超出上限（平台×内容形式×版本需 ≤ 6），请减少平台/形式/版本后再试")
+		return
+	}
+	if req.EventContext != nil && strings.TrimSpace(req.EventContext.Name) == "" {
+		c.WriteError(http.StatusBadRequest, "临时活动信息缺少活动名称")
+		return
+	}
+	if req.EventContext != nil && strings.TrimSpace(req.EventContext.Description) == "" {
+		c.WriteError(http.StatusBadRequest, "临时活动信息缺少活动描述")
+		return
+	}
 	w := c.Ctx.ResponseWriter
 	flusher, ok := w.ResponseWriter.(http.Flusher)
 	if !ok {
@@ -468,78 +550,89 @@ func (c *ContentsController) AIGenerateStream() {
 	}
 
 	o := services.GetOrm()
-	versionNum := req.GenerateVersion
-	if versionNum <= 0 {
-		versionNum = 1
+	supportsVision := services.ModelSupportsFiles(req.PlanID, req.ModelID)
+	contextText := ""
+	var campaignFiles []services.UploadedFile
+	eventName := ""
+	if req.CampaignID != "" || req.EventContext != nil {
+		contextText, campaignFiles, eventName = services.BuildGenerationContext(req.CampaignID, req.EventContext)
 	}
-	if versionNum > 3 {
-		versionNum = 3
+	if len(campaignFiles) > 0 && !supportsVision {
+		write("log", map[string]interface{}{"level": "warn", "message": "当前模型不支持视觉，活动宣传图已降级为仅文本注入"})
+		campaignFiles = nil
 	}
-	for _, platform := range req.Platforms {
-		label := platformLabels[platform]
-		if label == "" {
-			label = platform
-		}
-		write("log", map[string]interface{}{
-			"level":   "req",
-			"message": fmt.Sprintf("开始为「%s」生成内容（%d 个版本）…", label, versionNum),
-		})
+	allFiles := make([]services.UploadedFile, 0, len(req.Files)+len(campaignFiles))
+	allFiles = append(allFiles, req.Files...)
+	allFiles = append(allFiles, campaignFiles...)
 
-		events, err := services.GenerateContentStream(req.Topic, platform, req.Style, req.Keywords, req.PlanID, req.ModelID, req.Files, req.CampaignID, versionNum)
-		if err != nil {
-			write("error", map[string]interface{}{
-				"platform":        platform,
-				"message":         err.Error(),
-				"available_plans": []interface{}{},
+	events, err := services.GenerateContentBatchStream(services.BatchRequest{
+		Topic:           req.Topic,
+		Style:           req.Style,
+		Keywords:        req.Keywords,
+		Platforms:       req.Platforms,
+		ContentForms:    forms,
+		VersionNum:      vNum,
+		PlanID:          req.PlanID,
+		ModelID:         req.ModelID,
+		Files:           allFiles,
+		CampaignContext: contextText,
+		CampaignName:    eventName,
+	})
+	if err != nil {
+		write("error", map[string]interface{}{
+			"message":         err.Error(),
+			"available_plans": []interface{}{},
+		})
+		write("complete", map[string]interface{}{"message": "生成失败"})
+		return
+	}
+	for evt := range events {
+		switch evt.Event {
+		case "chunk":
+			write("chunk", map[string]interface{}{
+				"text": evt.Text,
 			})
-			continue
-		}
-		for evt := range events {
-			switch evt.Event {
-			case "chunk":
-				write("chunk", map[string]interface{}{
-					"platform": platform,
-					"text":     evt.Text,
-				})
-			case "done":
-				if evt.Variant != nil {
-					record := &models.AIGenerationRecord{
-						ID:         newID(),
-						UserID:     user.ID,
-						Topic:      req.Topic,
-						Platform:   platform,
-						PlanID:     req.PlanID,
-						Model:      evt.Model,
-						Title:      evt.Variant.Title,
-						Body:       evt.Variant.Body,
-						Hashtags:   marshalHashtags(evt.Variant.Hashtags),
-						CampaignID: req.CampaignID,
-					}
-					_, _ = o.Insert(record)
-					write("done", map[string]interface{}{
-						"platform":      platform,
-						"variant":       evt.Variant,
-						"variant_index": evt.VariantIndex,
-						"score":         evt.Score,
-					})
+		case "done":
+			if evt.Variant != nil {
+				record := &models.AIGenerationRecord{
+					ID:          newID(),
+					UserID:      user.ID,
+					Topic:       req.Topic,
+					Platform:    evt.Platform,
+					ContentForm: evt.ContentForm,
+					PlanID:      req.PlanID,
+					Model:       evt.Model,
+					Title:       evt.Variant.Title,
+					Body:        evt.Variant.Body,
+					Hashtags:    marshalHashtags(evt.Variant.Hashtags),
+					CampaignID:  req.CampaignID,
 				}
-			case "error":
-				write("error", map[string]interface{}{
-					"platform":        platform,
-					"message":         evt.Message,
-					"available_plans": evt.AvailablePlans,
-				})
-			case "log":
-				level := evt.Level
-				if level == "" {
-					level = "info"
-				}
-				write("log", map[string]interface{}{
-					"platform": platform,
-					"level":    level,
-					"message":  evt.Message,
+				_, _ = o.Insert(record)
+				write("done", map[string]interface{}{
+					"platform":      evt.Platform,
+					"content_form":  evt.ContentForm,
+					"variant":       evt.Variant,
+					"variant_index": evt.VariantIndex,
+					"score":         evt.Score,
+					"batch_index":   evt.BatchIndex,
+					"batch_total":   evt.BatchTotal,
 				})
 			}
+		case "error":
+			write("error", map[string]interface{}{
+				"platform":        evt.Platform,
+				"message":         evt.Message,
+				"available_plans": evt.AvailablePlans,
+			})
+		case "log":
+			level := evt.Level
+			if level == "" {
+				level = "info"
+			}
+			write("log", map[string]interface{}{
+				"level":   level,
+				"message": evt.Message,
+			})
 		}
 	}
 	write("complete", map[string]interface{}{"message": "全部生成完成"})

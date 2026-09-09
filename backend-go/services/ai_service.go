@@ -925,13 +925,6 @@ func loadCampaignContext(campaignID string) (contextText string, files []Uploade
 	if campaign.Location != "" {
 		b.WriteString("活动地点：" + campaign.Location + "\n")
 	}
-	var platforms []string
-	if campaign.Platforms != "" {
-		_ = json.Unmarshal([]byte(campaign.Platforms), &platforms)
-	}
-	if len(platforms) > 0 {
-		b.WriteString("面向平台：" + strings.Join(platforms, "、") + "\n")
-	}
 	b.WriteString("\n请围绕以上活动背景进行创作，内容需贴合活动调性与卖点。")
 	contextText = b.String()
 
@@ -1459,6 +1452,10 @@ type AIStreamEvent struct {
 	Level          string                   `json:"level,omitempty"`
 	Message        string                   `json:"message,omitempty"`
 	Text           string                   `json:"text,omitempty"`
+	Platform       string                   `json:"platform,omitempty"`
+	ContentForm    string                   `json:"content_form,omitempty"`
+	BatchIndex     int                      `json:"batch_index,omitempty"`
+	BatchTotal     int                      `json:"batch_total,omitempty"`
 	Variant        *AIVariant               `json:"variant,omitempty"`
 	VariantIndex   int                      `json:"variant_index,omitempty"`
 	Score          *VariantScore            `json:"score,omitempty"`

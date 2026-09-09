@@ -131,62 +131,64 @@
           </div>
         </a-col>
 
-        <a-col :xs="24" :lg="8">
-          <a-card :bordered="false" title="用量总览" style="padding: 20px">
-            <a-space direction="vertical" :size="16" fill>
-              <div v-for="plan in store.plans" :key="plan.id">
-                <div class="flex items-center justify-between mb-2">
-                  <a-typography-text class="text-[13px]">{{
-                    plan.displayName || plan.name
-                  }}</a-typography-text>
-                  <a-typography-text
-                    class="text-[12px]"
-                    :type="getUsagePercent(plan) > 80 ? 'danger' : 'secondary'"
-                  >
-                    {{ getUsagePercent(plan) }}%
-                  </a-typography-text>
+        <a-col :xs="24" :lg="8" class="lg:self-stretch">
+          <div class="lg:sticky lg:top-6 lg:self-start">
+            <a-card :bordered="false" title="用量总览" style="padding: 20px">
+              <a-space direction="vertical" :size="16" fill>
+                <div v-for="plan in store.plans" :key="plan.id">
+                  <div class="flex items-center justify-between mb-2">
+                    <a-typography-text class="text-[13px]">{{
+                      plan.displayName || plan.name
+                    }}</a-typography-text>
+                    <a-typography-text
+                      class="text-[12px]"
+                      :type="getUsagePercent(plan) > 80 ? 'danger' : 'secondary'"
+                    >
+                      {{ getUsagePercent(plan) }}%
+                    </a-typography-text>
+                  </div>
+                  <a-progress
+                    :percent="getUsagePercent(plan)"
+                    :show-text="false"
+                    size="small"
+                    :color="getUsagePercent(plan) > 80 ? '#FF3B30' : '#34C759'"
+                  />
+                  <div class="flex justify-between mt-1">
+                    <a-typography-text type="disabled" class="text-[11px]">
+                      {{ plan.usedTokens.toLocaleString() }} /
+                      {{ plan.monthlyQuota.toLocaleString() }}
+                    </a-typography-text>
+                    <a-typography-text type="secondary" class="text-[11px]">
+                      剩余 {{ (plan.monthlyQuota - plan.usedTokens).toLocaleString() }}
+                    </a-typography-text>
+                  </div>
                 </div>
-                <a-progress
-                  :percent="getUsagePercent(plan)"
-                  :show-text="false"
-                  size="small"
-                  :color="getUsagePercent(plan) > 80 ? '#FF3B30' : '#34C759'"
-                />
-                <div class="flex justify-between mt-1">
-                  <a-typography-text type="disabled" class="text-[11px]">
-                    {{ plan.usedTokens.toLocaleString() }} /
-                    {{ plan.monthlyQuota.toLocaleString() }}
-                  </a-typography-text>
-                  <a-typography-text type="secondary" class="text-[11px]">
-                    剩余 {{ (plan.monthlyQuota - plan.usedTokens).toLocaleString() }}
-                  </a-typography-text>
-                </div>
-              </div>
 
-              <a-divider v-if="store.plans.length > 0" style="margin: 12px 0" />
+                <a-divider v-if="store.plans.length > 0" style="margin: 12px 0" />
 
-              <div v-if="store.activePlan" class="bg-[#34C759]/10 rounded-[12px] p-4">
-                <div class="flex items-center gap-2 mb-2">
-                  <IconBarChart :size="16" style="color: #34c759" />
-                  <a-typography-text bold class="text-[13px]" style="color: #248a3d"
-                    >当前生效模型</a-typography-text
-                  >
+                <div v-if="store.activePlan" class="bg-[#34C759]/10 rounded-[12px] p-4">
+                  <div class="flex items-center gap-2 mb-2">
+                    <IconBarChart :size="16" style="color: #34c759" />
+                    <a-typography-text bold class="text-[13px]" style="color: #248a3d"
+                      >当前生效模型</a-typography-text
+                    >
+                  </div>
+                  <a-typography-text class="text-[12px]" style="color: #34c759">
+                    {{ store.activePlan.displayName || store.activePlan.name }} ·
+                    {{ providerLabel(store.activePlan.provider) }}
+                  </a-typography-text>
+                  <a-typography-text type="secondary" class="text-[11px] block mt-1">
+                    本月剩余配额：{{ store.getRemainingQuota().toLocaleString() }} tokens
+                  </a-typography-text>
                 </div>
-                <a-typography-text class="text-[12px]" style="color: #34c759">
-                  {{ store.activePlan.displayName || store.activePlan.name }} ·
-                  {{ providerLabel(store.activePlan.provider) }}
-                </a-typography-text>
-                <a-typography-text type="secondary" class="text-[11px] block mt-1">
-                  本月剩余配额：{{ store.getRemainingQuota().toLocaleString() }} tokens
-                </a-typography-text>
-              </div>
-              <div v-else class="bg-[#FF9500]/10 rounded-[12px] p-4">
-                <a-typography-text class="text-[12px]" style="color: #ff9500">
-                  未启用任何模型，请在卡片右侧打开开关并设为默认。
-                </a-typography-text>
-              </div>
-            </a-space>
-          </a-card>
+                <div v-else class="bg-[#FF9500]/10 rounded-[12px] p-4">
+                  <a-typography-text class="text-[12px]" style="color: #ff9500">
+                    未启用任何模型，请在卡片右侧打开开关并设为默认。
+                  </a-typography-text>
+                </div>
+              </a-space>
+            </a-card>
+          </div>
         </a-col>
       </a-row>
     </div>

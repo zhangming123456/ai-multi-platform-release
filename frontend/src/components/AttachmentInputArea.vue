@@ -97,7 +97,7 @@
       :max-length="maxLength"
       :show-word-limit="maxLength > 0 && showWordLimit"
       :disabled="disabled"
-      :placeholder="placeholder || DEFAULT_PLACEHOLDER"
+      :placeholder="[placeholder || DEFAULT_PLACEHOLDER, hintText].filter(isString).join('，')"
       class="aia-textarea"
       @input="handleTextInput"
       @paste="handleTextPaste"
@@ -106,25 +106,65 @@
 
     <div class="aia-toolbar">
       <div class="aia-toolbar-left">
-        <a-tooltip>
-          <template #content>
-            <p style="max-width: 200px">
-              <span>{{ uploadBtnTooltip }}</span>
-              <span v-if="maxCount > 0"> ({{ displayItems.length }}/{{ maxCount }}) </span>
-              <span v-if="hintText">, {{ hintText }}</span>
-            </p>
+        <slot name="toolbar-upload" :click-upload="pickFiles" :test="uploadBtnTooltip">
+          <template v-if="toolbarOptions.length === 1 && toolbarOptions[0].value === 'upload'">
+            <a-tooltip position="top">
+              <template #content>
+                <p style="max-width: 120px">
+                  <span>{{ uploadBtnTooltip }}</span>
+                </p>
+              </template>
+              <div class="flex items-center gap-1">
+                <button
+                  type="button"
+                  class="aia-toolbar-btn"
+                  :disabled="uploadBtnDisabled"
+                  @click="pickFiles"
+                >
+                  <component :is="toolbarIcon" :size="16" />
+                </button>
+                <span class="aia-toolbar-txt" v-if="maxCount > 0">
+                  {{ displayItems.length }} / {{ maxCount }}
+                </span>
+                <span class="aia-toolbar-txt" v-if="props.enterBehavior === 'send'">
+                  {{ shortcutHint }}
+                </span>
+              </div>
+            </a-tooltip>
           </template>
-          <span class="aia-toolbar-btn-wrap">
-            <button
-              type="button"
-              class="aia-toolbar-btn"
-              :disabled="uploadBtnDisabled"
-              @click="pickFiles"
-            >
-              <component :is="toolbarIcon" :size="16" />
-            </button>
-          </span>
-        </a-tooltip>
+          <DropdownMenu
+            v-else
+            :options="toolbarOptions as any[]"
+            :disabled="uploadBtnDisabled"
+            @option-click="handleOptionClick"
+          >
+            <template #default="{ visible }">
+              <div class="flex items-center gap-1">
+                <template v-if="visible">
+                  <button type="button" :disabled="uploadBtnDisabled" class="aia-toolbar-btn">
+                    <component :is="toolbarIcon" :size="16" />
+                  </button>
+                </template>
+                <a-tooltip v-else position="top" :disabled="visible">
+                  <template #content>
+                    <p style="max-width: 120px">
+                      <span>{{ uploadBtnTooltip }}</span>
+                    </p>
+                  </template>
+                  <button type="button" :disabled="uploadBtnDisabled" class="aia-toolbar-btn">
+                    <component :is="toolbarIcon" :size="16" />
+                  </button>
+                </a-tooltip>
+                <span class="aia-toolbar-txt" v-if="maxCount > 0">
+                  {{ displayItems.length }} / {{ maxCount }}
+                </span>
+                <span class="aia-toolbar-txt" v-if="props.enterBehavior === 'send'">
+                  {{ shortcutHint }}
+                </span>
+              </div>
+            </template>
+          </DropdownMenu>
+        </slot>
         <slot name="toolbar-left" />
       </div>
       <div class="aia-toolbar-right">
@@ -153,34 +193,39 @@
 
 <script setup lang="ts">
 import {
-  ref,
   computed,
-  reactive,
-  nextTick,
   defineAsyncComponent,
-  onMounted,
+  nextTick,
   onBeforeUnmount,
+  onMounted,
+  reactive,
+  ref,
+  unref,
   watch,
 } from 'vue'
 import { Message } from '@arco-design/web-vue'
 import {
-  IconPlus,
-  IconImage,
-  IconVideoCamera,
-  IconFile,
-  IconEdit,
+  IconAttachment,
   IconClose,
+  IconEdit,
+  IconFile,
+  IconImage,
   IconLeft,
+  IconPlus,
   IconRight,
+  IconVideoCamera,
 } from '@arco-design/web-vue/es/icon'
 import { compressImage, validateImageFile } from '@/composables/useFileUpload'
 import {
-  typeFromUrl,
-  extractUrlsFromText,
   cleanUrlsFromText,
+  extractUrlsFromText,
+  typeFromUrl,
   urlFileName,
 } from '@/composables/useUrlExtractor'
+import { isArray, isString } from 'lodash-es'
+import type { Option } from '@/components/DropdownMenu/types.ts'
 
+const DropdownMenu = defineAsyncComponent(() => import('./DropdownMenu/DropdownMenu.vue'))
 const ImageEditorModal = defineAsyncComponent(
   () => import('@/components/ImageEditor/ImageEditorModal.vue'),
 )
@@ -205,7 +250,7 @@ interface DisplayItem {
   size: number
 }
 
-const DEFAULT_PLACEHOLDER = '填写内容...支持拖拽 / 粘贴文件，或粘贴文件链接自动识别'
+const DEFAULT_PLACEHOLDER = '填写内容...'
 
 const ACCEPT_BY_TYPE: Record<AttachmentFileType, string> = {
   image: 'image/jpeg,image/png,image/webp',
@@ -242,6 +287,8 @@ const props = withDefaults(
     accept?: string
     enterBehavior?: 'newline' | 'send'
     theme?: 'light' | 'dark'
+    materialPicker?: boolean
+    toolbarOptions?: any[]
   }>(),
   {
     fileList: undefined,
@@ -262,6 +309,7 @@ const props = withDefaults(
     extractUrls: true,
     enterBehavior: 'newline',
     theme: 'light',
+    materialPicker: false,
     upload: undefined,
     accept: undefined,
   },
@@ -272,7 +320,26 @@ const emit = defineEmits<{
   (e: 'update:fileList', value: string[]): void
   (e: 'enter'): void
   (e: 'change', payload: { total: number; pending: number }): void
+  (e: 'option-click', option?: Option, index?: number): void
 }>()
+
+const toolbarOptions = computed(() => {
+  const options =
+    isArray(props.toolbarOptions) && props.toolbarOptions.length > 0
+      ? [...props.toolbarOptions]
+      : []
+  if (options.some((option) => option.value === 'upload')) {
+    return options
+  }
+
+  return [
+    {
+      value: 'upload',
+      label: unref(uploadBtnTooltip),
+      icon: IconAttachment,
+    },
+  ].concat(options)
+})
 
 const fileInputRef = ref<HTMLInputElement>()
 const uploading = ref(false)
@@ -284,6 +351,8 @@ const editorIndex = ref(0)
 const editorUrl = ref('')
 const videoVisible = ref(false)
 const videoUrl = ref('')
+const attachMenuVisible = ref(false)
+const attachWrapRef = ref<HTMLElement>()
 
 const pendingItems = ref<PendingItem[]>([])
 const objectUrlMap = new Map<File, string>()
@@ -294,6 +363,9 @@ const progressMap = reactive(new Map<string, number>())
 const cardsRef = ref<HTMLDivElement>()
 const canScrollLeft = ref(false)
 const canScrollRight = ref(false)
+
+const isMac = /Mac|iPhone|iPad|iPod/i.test(navigator.userAgent)
+const shortcutHint = computed(() => (isMac ? '⌘+Enter 换行' : 'Ctrl+Enter 换行'))
 
 const fileList = computed<string[]>({
   get: () => props.fileList ?? [],
@@ -359,9 +431,9 @@ const toolbarIcon = computed(() => {
 
 const uploadBtnTooltip = computed(() => {
   if (props.uploadMode === 'auto' && !props.upload) return '未配置上传'
-  if (props.fileTypes.length === 1 && props.fileTypes[0] === 'image') return '上传图片'
-  if (props.fileTypes.length === 1 && props.fileTypes[0] === 'video') return '上传视频'
-  return '上传文件'
+  if (props.fileTypes.length === 1 && props.fileTypes[0] === 'image') return '添加图片'
+  if (props.fileTypes.length === 1 && props.fileTypes[0] === 'video') return '添加视频'
+  return '添加文件'
 })
 
 const uploadBtnDisabled = computed(
@@ -382,13 +454,21 @@ const fileTypeLabel = computed(() => {
 const hintText = computed(() => {
   if (props.hint) return props.hint
   if (props.fileTypes.length === 1 && props.fileTypes[0] === 'image') {
-    return '支持拖拽 / 粘贴图片，链接自动识别'
+    return '支持拖拽，粘贴图片或图片链接自动识别'
   }
   if (props.fileTypes.length === 1 && props.fileTypes[0] === 'video') {
-    return '支持拖拽 / 粘贴视频，链接自动识别'
+    return '支持拖拽，粘贴视频或视频链接自动识别'
   }
-  return '支持拖拽 / 粘贴文件，链接自动识别'
+  return '支持拖拽，粘贴文件或文件链接自动识别'
 })
+
+function handleOptionClick(option: Option, index: number) {
+  if (option.value === 'upload') {
+    pickFiles()
+  } else {
+    emit('option-click', option, index)
+  }
+}
 
 const accept = computed(() => {
   if (props.accept) return props.accept
@@ -476,6 +556,7 @@ function previewUrl(item: DisplayItem): string {
 }
 
 function pickFiles() {
+  attachMenuVisible.value = false
   if (props.disabled) return
   if (props.uploadMode === 'auto' && !props.upload) {
     Message.warning('未配置上传')
@@ -750,8 +831,15 @@ function processText(raw: string) {
   emitChange()
 }
 
+function onDocClick(e: MouseEvent) {
+  const el = attachWrapRef.value
+  if (el && el.contains(e.target as Node)) return
+  attachMenuVisible.value = false
+}
+
 onMounted(() => {
   window.addEventListener('resize', updateScrollState)
+  document.addEventListener('click', onDocClick)
   nextTick(updateScrollState)
 })
 
@@ -762,6 +850,7 @@ watch(
 
 onBeforeUnmount(() => {
   window.removeEventListener('resize', updateScrollState)
+  document.removeEventListener('click', onDocClick)
   objectUrlMap.forEach((u) => URL.revokeObjectURL(u))
   objectUrlMap.clear()
 })
@@ -1048,6 +1137,9 @@ defineExpose({ handlePaste, pickFiles, addFiles, flushPending, getPendingFiles }
   cursor: pointer;
   transition: all 0.15s ease;
 }
+.aia-toolbar-txt {
+  color: #86909c;
+}
 .aia-toolbar-btn:hover:not(:disabled) {
   background: #e8f1ff;
   color: rgb(var(--primary-6));
@@ -1055,6 +1147,21 @@ defineExpose({ handlePaste, pickFiles, addFiles, flushPending, getPendingFiles }
 .aia-toolbar-btn:disabled {
   color: #c9cdd4;
   cursor: not-allowed;
+}
+.aia-toolbar-btn-wrap {
+  position: relative;
+}
+
+.aia-menu-fade-enter-active,
+.aia-menu-fade-leave-active {
+  transition:
+    opacity 0.15s ease,
+    transform 0.15s ease;
+}
+.aia-menu-fade-enter-from,
+.aia-menu-fade-leave-to {
+  opacity: 0;
+  transform: translateY(4px);
 }
 .aia-hint {
   font-size: 11px;
@@ -1170,6 +1277,21 @@ defineExpose({ handlePaste, pickFiles, addFiles, flushPending, getPendingFiles }
   color: #ffffff;
 }
 .aia-root--dark .aia-toolbar-btn:disabled {
+  color: #5f5f63;
+}
+.aia-root--dark .aia-attach-menu {
+  border-color: #48484a;
+  background: #2c2c2e;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+}
+.aia-root--dark .aia-attach-menu__item {
+  color: #e5e5ea;
+}
+.aia-root--dark .aia-attach-menu__item:hover:not(:disabled) {
+  background: #3a3a3c;
+  color: #ffffff;
+}
+.aia-root--dark .aia-attach-menu__item:disabled {
   color: #5f5f63;
 }
 .aia-root--dark .aia-hint,

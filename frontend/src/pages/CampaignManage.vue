@@ -19,7 +19,7 @@
       <div class="flex flex-col sm:flex-row sm:items-center gap-2 mb-4 flex-wrap">
         <a-input-search
           v-model="keyword"
-          placeholder="搜索活动名称"
+          placeholder="搜索活动名称 / 描述"
           allow-clear
           class="!w-full sm:!w-64"
           @search="onSearch"
@@ -46,6 +46,23 @@
             {{ p.label }}
           </a-option>
         </a-select>
+        <a-input
+          v-model="locationFilter"
+          placeholder="地点"
+          allow-clear
+          class="!w-full sm:!w-36"
+          @press-enter="onSearch"
+          @clear="onSearch"
+        />
+        <a-range-picker
+          v-model="dateRange"
+          value-format="YYYY-MM-DD"
+          allow-clear
+          :placeholder="['开始日期', '结束日期']"
+          class="!w-full sm:!w-72"
+          @change="onSearch"
+        />
+        <a-button class="!w-full sm:!w-auto" @click="onReset"> 重置 </a-button>
       </div>
 
       <a-spin :loading="loading" tip="加载中..." class="w-full">
@@ -201,6 +218,8 @@ const pageSize = ref(10)
 const keyword = ref('')
 const statusFilter = ref<string | undefined>(undefined)
 const platformFilter = ref<string | undefined>(undefined)
+const locationFilter = ref('')
+const dateRange = ref<[string, string] | undefined>(undefined)
 
 const platformChoices: { value: PlatformIconType; label: string }[] = [
   { value: 'wechat_mp', label: '公众号' },
@@ -255,6 +274,11 @@ async function fetchCampaigns() {
     if (keyword.value) params.keyword = keyword.value
     if (statusFilter.value) params.status = statusFilter.value
     if (platformFilter.value) params.platform = platformFilter.value
+    if (locationFilter.value.trim()) params.location = locationFilter.value.trim()
+    if (dateRange.value) {
+      params.start_date = dateRange.value[0]
+      params.end_date = dateRange.value[1]
+    }
     const res = await api.get<Paginated<Campaign>>('/campaigns/', { params })
     campaigns.value = res.data.items || []
     total.value = res.data.total || 0
@@ -279,6 +303,15 @@ function onPageSizeChange(size: number) {
   pageSize.value = size
   page.value = 1
   fetchCampaigns()
+}
+
+function onReset() {
+  keyword.value = ''
+  statusFilter.value = undefined
+  platformFilter.value = undefined
+  locationFilter.value = ''
+  dateRange.value = undefined
+  onSearch()
 }
 
 function goCreate() {

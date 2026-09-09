@@ -4,10 +4,66 @@ import (
 	"encoding/json"
 	"net/http"
 	"strings"
+	"time"
+
+	"github.com/beego/beego/v2/client/orm"
 
 	"ai-multi-platform-release/backend-go/models"
 	"ai-multi-platform-release/backend-go/services"
 )
+
+type campaignQueryFilter struct {
+	Keyword   string
+	Platform  string
+	Status    string
+	Location  string
+	StartDate string
+	EndDate   string
+}
+
+func queryCampaignFilter(c *CampaignsController, forceStatus string) campaignQueryFilter {
+	f := campaignQueryFilter{
+		Keyword:   c.GetQuery("keyword"),
+		Platform:  c.GetQuery("platform"),
+		Location:  c.GetQuery("location"),
+		StartDate: c.GetQuery("start_date"),
+		EndDate:   c.GetQuery("end_date"),
+	}
+	if forceStatus != "" {
+		f.Status = forceStatus
+	} else {
+		f.Status = c.GetQuery("status")
+	}
+	return f
+}
+
+func buildCampaignCond(userID string, f campaignQueryFilter) *orm.Condition {
+	cond := orm.NewCondition().And("user_id", userID)
+	if keyword := strings.TrimSpace(f.Keyword); keyword != "" {
+		kw := orm.NewCondition().Or("name__icontains", keyword).Or("description__icontains", keyword)
+		cond = cond.AndCond(kw)
+	}
+	if platform := strings.TrimSpace(f.Platform); platform != "" {
+		cond = cond.And("platforms__icontains", "\""+platform+"\"")
+	}
+	if status := strings.TrimSpace(f.Status); status != "" {
+		cond = cond.And("status", status)
+	}
+	if location := strings.TrimSpace(f.Location); location != "" {
+		cond = cond.And("location__icontains", location)
+	}
+	if v := strings.TrimSpace(f.StartDate); v != "" {
+		if t, err := time.ParseInLocation("2006-01-02", v, time.Local); err == nil {
+			cond = cond.And("created_at__gte", t)
+		}
+	}
+	if v := strings.TrimSpace(f.EndDate); v != "" {
+		if t, err := time.ParseInLocation("2006-01-02", v, time.Local); err == nil {
+			cond = cond.And("created_at__lt", t.AddDate(0, 0, 1))
+		}
+	}
+	return cond
+}
 
 type CampaignsController struct {
 	BaseController
@@ -84,17 +140,8 @@ func (c *CampaignsController) List() {
 		return
 	}
 	page, pageSize := c.ParsePagination()
-	qs := services.GetOrm().QueryTable(new(models.Campaign)).
-		Filter("user_id", user.ID)
-	if keyword := strings.TrimSpace(c.GetQuery("keyword")); keyword != "" {
-		qs = qs.Filter("name__icontains", keyword)
-	}
-	if platform := c.GetQuery("platform"); platform != "" {
-		qs = qs.Filter("platforms__icontains", "\""+platform+"\"")
-	}
-	if status := c.GetQuery("status"); status != "" {
-		qs = qs.Filter("status", status)
-	}
+	cond := buildCampaignCond(user.ID, queryCampaignFilter(c, ""))
+	qs := services.GetOrm().QueryTable(new(models.Campaign)).SetCond(cond)
 	count, err := qs.Count()
 	if err != nil {
 		c.WriteError(http.StatusInternalServerError, "查询活动失败")
@@ -255,28 +302,28 @@ func (c *CampaignsController) Options() {
 		c.WriteError(http.StatusUnauthorized, "无法验证凭据")
 		return
 	}
+	page, pageSize := c.ParsePagination()
+	cond := buildCampaignCond(user.ID, queryCampaignFilter(c, ""))
+	qs := services.GetOrm().QueryTable(new(models.Campaign)).SetCond(cond)
+	count, err := qs.Count()
+	if err != nil {
+		c.WriteError(http.StatusInternalServerError, "查询活动失败")
+		return
+	}
 	var campaigns []models.Campaign
-	_, err := services.GetOrm().QueryTable(new(models.Campaign)).
-		Filter("user_id", user.ID).
-		Filter("status", models.CampaignStatusActive).
-		OrderBy("-created_at").
-		All(&campaigns)
+	_, err = qs.OrderBy("-created_at").Limit(pageSize).Offset((page - 1) * pageSize).All(&campaigns)
 	if err != nil {
 		c.WriteError(http.StatusInternalServerError, "查询活动失败")
 		return
 	}
 	items := make([]map[string]interface{}, 0, len(campaigns))
 	for i := range campaigns {
-		platforms := []string{}
-		if campaigns[i].Platforms != "" {
-			_ = json.Unmarshal([]byte(campaigns[i].Platforms), &platforms)
-		}
-		items = append(items, map[string]interface{}{
-			"id":        campaigns[i].ID,
-			"name":      campaigns[i].Name,
-			"location":  campaigns[i].Location,
-			"platforms": platforms,
-		})
+		items = append(items, campaignMap(&campaigns[i]))
 	}
-	c.OK(items)
+	c.OK(map[string]interface{}{
+		"items":     items,
+		"total":     count,
+		"page":      page,
+		"page_size": pageSize,
+	})
 }

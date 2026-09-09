@@ -1,28 +1,52 @@
 <template>
   <a-avatar
-    :size="sizeMap[size || 'md']"
+    class="platform-icon"
     :style="{
-      background: platformConfig[platform]?.gradient,
+      background: platformConfig[props.platform]?.gradient,
       boxShadow: '0 1px 3px rgba(0,0,0,0.16)',
       fontWeight: 600,
-      fontSize: size === 'lg' ? '15px' : size === 'sm' ? '10px' : '12px',
+      width: platformIconSize,
+      height: platformIconSize,
+      fontSize: platformIconSize,
     }"
     :title="platformConfig[platform]?.name || platform"
   >
-    {{ platformConfig[platform]?.letter || '?' }}
+    <span class="platform-icon-text">{{ platformConfig[platform]?.letter || '?' }}</span>
   </a-avatar>
 </template>
 
 <script setup lang="ts">
+import { computed, withDefaults } from 'vue'
 import type { PlatformIconType } from '@/components/shared/PlatformIcon.ts'
+import { isNumber } from 'lodash-es'
 
-defineProps<{
+type PlatformIconProps = {
   platform: PlatformIconType
-  size?: 'sm' | 'md' | 'lg'
-}>()
+  size?: 'sm' | 'md' | 'lg' | number | `${string}px`
+}
 
-const platformConfig: Record<PlatformIconType, { name: string; gradient: string; letter: string }> =
-  {
+const props = withDefaults(defineProps<PlatformIconProps>(), {
+  size: 'sm',
+})
+const platformIconSize = computed(() => {
+  switch (props.size) {
+    case 'sm':
+      return `10px`
+    case 'md':
+      return `12px`
+    case 'lg':
+      return `15px`
+  }
+  if (isNumber(props.size)) {
+    return `${props.size}px`
+  }
+  return props.size
+})
+
+const platformConfig = computed<
+  Record<PlatformIconType, { name: string; gradient: string; letter: string }>
+>(() => {
+  return {
     wechat_mp: {
       name: '微信公众号',
       gradient: 'linear-gradient(135deg, #2DC100 0%, #07C160 100%)',
@@ -54,10 +78,27 @@ const platformConfig: Record<PlatformIconType, { name: string; gradient: string;
       letter: '微',
     },
   }
-
-const sizeMap = {
-  sm: 24,
-  md: 32,
-  lg: 44,
-}
+})
 </script>
+
+<style lang="scss" scoped>
+.platform-icon {
+  :deep(.arco-avatar) {
+    line-height: 0;
+  }
+  :deep(.arco-avatar-text) {
+    line-height: 0;
+    width: 0;
+    height: 0;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%) scale(1) !important;
+  }
+  .platform-icon-text {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%) scale(0.6);
+  }
+}
+</style>

@@ -44,7 +44,7 @@ func registerRoutes() {
 	web.Router("/api/contents/ai-generations/export", contents, "get:ExportGenerations")
 	web.Router("/api/contents/ai-generate", contents, "post:AIGenerate")
 	web.Router("/api/contents/ai-generate-stream", contents, "post:AIGenerateStream")
-	web.Router("/api/contents/:id", contents, "get:Get;put:Update;delete:Delete")
+	web.Router("/api/contents/:content_id", contents, "get:Get;put:Update;delete:Delete")
 
 	campaigns := &controllers.CampaignsController{}
 	web.Router("/api/campaigns/options", campaigns, "get:Options")

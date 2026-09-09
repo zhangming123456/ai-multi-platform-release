@@ -21,6 +21,7 @@ type Content struct {
 	Status            string    `orm:"column(status);size(20);default(draft)" json:"status"`
 	MediaURLs         string    `orm:"column(media_urls);type(text);null" json:"media_urls"`
 	CampaignID        string    `orm:"column(campaign_id);size(36);null;index" json:"campaign_id"`
+	EventMeta         string    `orm:"column(event_meta);type(text);null" json:"event_meta"`
 	AIGenerated       bool      `orm:"column(ai_generated);default(false)" json:"ai_generated"`
 	OriginalContentID string    `orm:"column(original_content_id);size(36);null" json:"original_content_id"`
 	CreatedAt         time.Time `orm:"column(created_at);auto_now_add;type(datetime)" json:"created_at"`
