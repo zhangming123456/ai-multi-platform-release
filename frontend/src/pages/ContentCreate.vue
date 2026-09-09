@@ -95,13 +95,6 @@
                 </a-tabs>
               </div>
               <div v-if="currentVariants.length" class="space-y-4 pt-2">
-                <div v-if="currentVariants.length > 1" class="version-preview-bar">
-                  <a-radio-group v-model="activeVersionIndex" size="small" type="button">
-                    <a-radio v-for="(_, vi) in currentVariants" :key="vi" :value="vi">
-                      版本 {{ vi + 1 }}
-                    </a-radio>
-                  </a-radio-group>
-                </div>
                 <div v-if="currentVariant">
                   <a-typography-text
                     type="secondary"
@@ -272,25 +265,25 @@
               </div>
             </div>
 
-            <div class="combo-hint" :class="{ 'combo-hint--over': comboExceeded }">
-              {{ comboSnippet }}
+            <div class="combo-hint">
+              <span
+                class="combo-hint__text"
+                :class="{ 'combo-hint__text--warn': needsComboConfirm }"
+              >
+                {{ comboSnippet }}
+              </span>
+              <span class="combo-hint__switch">
+                <span class="combo-hint__switch-label">全量</span>
+                <a-switch type="line" v-model="batchMode" size="small" />
+                <span class="combo-hint__switch-label">分批</span>
+              </span>
             </div>
 
             <div v-if="hasFiles" class="compress-bar">
               <span class="compress-bar__label">图片压缩</span>
               <a-select
-                v-model="compressMaxWidth"
-                size="small"
-                class="compress-bar__select"
-                @change="onCompressChange"
-              >
-                <a-option :value="1280">最大宽度 1280</a-option>
-                <a-option :value="1920">最大宽度 1920</a-option>
-                <a-option :value="2560">最大宽度 2560</a-option>
-              </a-select>
-              <a-select
                 v-model="compressQuality"
-                size="small"
+                size="mini"
                 class="compress-bar__select"
                 @change="onCompressChange"
               >
@@ -345,7 +338,35 @@
                       </a-select>
                       <IconRobot class="model-select-icon" :size="18" />
                     </span>
+                    <a-popconfirm
+                      v-if="needsComboConfirm"
+                      v-model:popup-visible="confirmVisible"
+                      :content-style="{
+                        maxWidth: `300px`,
+                      }"
+                      position="tr"
+                      type="warning"
+                      ok-text="继续生成"
+                      cancel-text="取消"
+                      @ok="onComboConfirmOk"
+                      @cancel="onComboConfirmCancel"
+                    >
+                      <template #content>
+                        将生成
+                        {{ comboTotal }} 篇（单批全量），数量较多、耗时可能较长，是否继续生成？
+                      </template>
+                      <button
+                        type="button"
+                        class="send-btn"
+                        :disabled="isGenerating"
+                        @click="generate"
+                      >
+                        <IconArrowUp v-if="!isGenerating" :size="18" />
+                        <IconLoading v-else :size="16" spin />
+                      </button>
+                    </a-popconfirm>
                     <button
+                      v-else
                       type="button"
                       class="send-btn"
                       :disabled="isGenerating"
@@ -797,13 +818,13 @@ const toolbarOptions = computed(() => {
     {
       value: 'pick-material',
       label: '从素材库选择',
-      icon: IconFolder,
+      icon: IconFolder as never,
       onClick: openMaterialPicker,
     },
     [
       {
         label: '形式',
-        icon: IconFolder,
+        icon: IconFolder as never,
         // showSearch: true,
         multiple: true,
         isCheck: (option) => (unref(selectedContentForms) as any[]).includes(option.value ?? null),
@@ -1257,12 +1278,7 @@ function compressImage(file: File): Promise<File> {
     reader.onload = (e) => {
       const img = new Image()
       img.onload = () => {
-        let { width, height } = img
-        const maxWidth = compressMaxWidth.value
-        if (width > maxWidth) {
-          height = (height * maxWidth) / width
-          width = maxWidth
-        }
+        const { width, height } = img
         const canvas = document.createElement('canvas')
         canvas.width = width
         canvas.height = height
@@ -1428,6 +1444,9 @@ watch(streamingText, async () => {
   }
 })
 
+const batchMode = ref(false)
+const confirmVisible = ref(false)
+const versionNum = ref('2')
 const comboPlatformCount = computed(() => selectedPlatforms.value.length)
 const comboFormCount = computed(() => selectedContentForms.value.length)
 const comboVersionCount = computed(() => Number(versionNum.value) || 1)
@@ -1435,13 +1454,23 @@ const comboTotal = computed(
   () => comboPlatformCount.value * comboFormCount.value * comboVersionCount.value,
 )
 const comboTasks = computed(() => comboPlatformCount.value * comboFormCount.value)
+const comboBatchCount = computed(() => Math.ceil(comboTasks.value / 3))
 const comboExceeded = computed(() => comboTotal.value > 6)
-const comboSnippet = computed(
-  () => `将生成 ${comboTotal.value} 篇（约 ${Math.ceil(comboTasks.value / 3)} 批）`,
-)
+const needsComboConfirm = computed(() => !batchMode.value && comboExceeded.value)
+const comboSnippet = computed(() => {
+  if (batchMode.value) {
+    return `将生成 ${comboTotal.value} 篇（约 ${comboBatchCount.value} 批）`
+  }
+  if (comboExceeded.value) {
+    return `将生成 ${comboTotal.value} 篇（单批全量），数量较多、耗时可能较长`
+  }
+  return `将生成 ${comboTotal.value} 篇（单批全量）`
+})
+watch(needsComboConfirm, (need) => {
+  if (!need) confirmVisible.value = false
+})
 
 const generatedVariants = ref<Record<string, VariantItem[]>>({})
-const versionNum = ref('2')
 
 const previewPlatforms = computed(() =>
   unref(platformChoices).filter((p) => selectedPlatforms.value.includes(p.value as string)),
@@ -1533,17 +1562,34 @@ async function generate() {
     Message.error('请至少选择一种内容形式')
     return
   }
-  if (comboExceeded.value) {
-    pushLog('err', '组合数量超出上限（平台×形式×版本需 ≤ 6），已取消生成')
-    Message.error('组合数量超出上限（平台×形式×版本需 ≤ 6），请减少平台/形式/版本')
-    return
-  }
   if (hasFiles.value && !store.selectedModelSupportsFiles) {
     pushLog('err', '当前模型不支持文件上传，请切换到支持视觉/图片/视频的模型')
     Message.error('当前模型不支持文件上传，请切换到支持视觉/图片/视频的模型')
     return
   }
+  if (needsComboConfirm.value) {
+    confirmVisible.value = true
+    return
+  }
+  await doGenerate()
+}
 
+function onComboConfirmOk() {
+  confirmVisible.value = false
+  doGenerate()
+}
+
+function onComboConfirmCancel() {
+  confirmVisible.value = false
+}
+
+async function doGenerate() {
+  if (!store.activePlan) {
+    pushLog('err', '未检测到可用的模型配置，请先配置模型')
+    router.push('/settings/token-plan')
+    return
+  }
+  const plan = store.activePlan
   const useEventMode = creationMode.value === 'event'
   if (useEventMode && !selectedCampaign.value) {
     if (!eventForm.name.trim() || !eventForm.description.trim()) {
@@ -1573,7 +1619,6 @@ async function generate() {
   streamingPlatform.value = selectedPlatforms.value[0] || ''
 
   const startedAt = performance.now()
-  const plan = store.activePlan
   const modelId = store.selectedModelId || store.activeModelList[0]?.id || ''
   const { topic, keywords } = parsedPrompt.value
   const inputDesc = topic
@@ -1605,6 +1650,7 @@ async function generate() {
     model_id: modelId,
     generate_version: Number(versionNum.value),
     content_forms: [...selectedContentForms.value],
+    batch_mode: batchMode.value,
     ...(keywordsArray && keywordsArray.length > 0 ? { keywords: keywordsArray } : {}),
     ...(filesPayload && filesPayload.length > 0 ? { files: filesPayload } : {}),
   }
@@ -1761,12 +1807,12 @@ async function generate() {
       const resultPlatform = previewPlatforms.value.find((p) =>
         Object.keys(variants).some((k) => k.startsWith(`${p.value}::`)),
       )
-      activePreview.value = resultPlatform?.value || selectedPlatforms.value[0] || ''
+      activePreview.value = String(resultPlatform?.value || selectedPlatforms.value[0] || '')
       const resultForms = contentFormChoices.filter((c) => {
         const list = variants[`${activePreview.value}::${c.value}`]
         return !!list && list.some(Boolean)
       })
-      activeForm.value = resultForms[0]?.value || selectedContentForms.value[0] || 'post'
+      activeForm.value = String(resultForms[0]?.value || selectedContentForms.value[0] || 'post')
       activeVersionIndex.value = 0
       const total = Math.round(performance.now() - startedAt)
       pushLog('ok', `生成完成 · ${totalCount} 篇 · 总耗时 ${(total / 1000).toFixed(1)}s`)
@@ -2595,14 +2641,36 @@ async function copyContent() {
 }
 
 .combo-hint {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   font-size: 11px;
   color: #7c7c84;
   padding-left: 1px;
 }
 
-.combo-hint--over {
-  color: #ff6b5e;
+.combo-hint__text {
+  flex: 1;
+  min-width: 0;
+}
+
+.combo-hint__text--warn {
+  color: #ff7d1a;
   font-weight: 500;
+}
+
+.combo-hint__switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 12px;
+  white-space: nowrap;
+}
+
+.combo-hint__switch-label {
+  color: #8a8a92;
+  cursor: pointer;
+  user-select: none;
 }
 
 .version-select-bar {
@@ -2773,27 +2841,20 @@ async function copyContent() {
 }
 
 :global(.arco-select-dropdown:has(.provider-opt) .arco-select-option) {
-  background: #2c2c2e;
-  color: #f2f2f7;
+  background-color: #2c2c2e;
+  color: #aeaeb2;
 }
 
-:global(.arco-select-dropdown:has(.provider-opt) .arco-select-option:hover) {
-  background: #3a3a3c;
+:global(.arco-select-dropdown:has(.provider-opt) .arco-select-option.arco-select-option-selected),
+:global(.arco-select-dropdown:has(.provider-opt) .arco-select-option.arco-select-option-active) {
+  background-color: #3a3a3c !important;
+  color: #ffffff !important;
+}
+:global(.arco-select-dropdown:has(.provider-opt) .provider-opt__name) {
   color: #ffffff;
 }
-
-:global(.arco-select-dropdown:has(.provider-opt) .arco-select-option-selected),
-:global(.arco-select-dropdown:has(.provider-opt) .arco-select-option-active) {
-  background: #3a3a3c;
-  color: #ffffff;
-}
-
 :global(.arco-select-dropdown:has(.provider-opt) .provider-opt__bracket) {
   color: #4098ff;
-}
-
-:global(.arco-select-dropdown:has(.provider-opt) .provider-opt__model) {
-  color: #aeaeb2;
 }
 
 :global(.platform-dropdown) {
@@ -2831,10 +2892,10 @@ async function copyContent() {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
+  width: 28px;
+  height: 28px;
   border: none;
-  border-radius: 50%;
+  border-radius: 5px;
   background: #007aff;
   color: #ffffff;
   cursor: pointer;

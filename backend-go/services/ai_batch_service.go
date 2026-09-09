@@ -41,6 +41,7 @@ type BatchRequest struct {
 	Files           []UploadedFile
 	CampaignContext string
 	CampaignName    string
+	BatchMode       bool
 }
 
 var contentFormSpec = map[string]string{
@@ -502,12 +503,16 @@ func GenerateContentBatchStream(r BatchRequest) (<-chan AIStreamEvent, error) {
 				batches = append(batches, v)
 			}
 		}
-		for start := 0; start < len(shared); start += batchMaxTaskPerCall {
-			end := start + batchMaxTaskPerCall
-			if end > len(shared) {
-				end = len(shared)
+		if r.BatchMode {
+			for start := 0; start < len(shared); start += batchMaxTaskPerCall {
+				end := start + batchMaxTaskPerCall
+				if end > len(shared) {
+					end = len(shared)
+				}
+				batches = append(batches, shared[start:end])
 			}
-			batches = append(batches, shared[start:end])
+		} else if len(shared) > 0 {
+			batches = append(batches, shared)
 		}
 		batchTotal := len(batches)
 		if batchTotal > 1 {
@@ -636,6 +641,7 @@ func GenerateContentBatchStream(r BatchRequest) (<-chan AIStreamEvent, error) {
 							}
 							if tc.Function.Arguments != "" {
 								toolArgs += tc.Function.Arguments
+								events <- AIStreamEvent{Event: "chunk", Text: tc.Function.Arguments}
 							}
 						}
 					}

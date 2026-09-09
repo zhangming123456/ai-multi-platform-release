@@ -16,7 +16,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, withDefaults } from 'vue'
+import { computed } from 'vue'
 import type { PlatformIconType } from '@/components/shared/PlatformIcon.ts'
 import { isNumber } from 'lodash-es'
 

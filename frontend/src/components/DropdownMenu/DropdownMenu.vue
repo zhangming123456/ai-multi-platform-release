@@ -170,7 +170,11 @@ import { IconPlus, IconSearch, IconRight, IconCheck } from '@arco-design/web-vue
 import { debounce, isArray, isBoolean, isFunction, isString, mergeWith, uniqueId } from 'lodash-es'
 import { isPromise } from '@arco-design/web-vue/es/_utils/is'
 
-import { type DropdownMenuProps, type Option } from '@/components/DropdownMenu/types'
+import {
+  type DropdownMenuProps,
+  type DropdownMenuOptions,
+  type Option,
+} from '@/components/DropdownMenu/types'
 
 const props = withDefaults(defineProps<DropdownMenuProps>(), {
   visible: false,
@@ -364,7 +368,7 @@ function handleChildrenRequest(keyword: string | undefined, option: Option, inde
       option.request!.empty = false
       option.request!.loading = true
       p.then((result) => {
-        let list: Option[] = result.data ?? []
+        let list: DropdownMenuOptions = result.data ?? []
         if (!isEmptyString(option.keyword)) {
           option.request!.keyword = list
         } else {

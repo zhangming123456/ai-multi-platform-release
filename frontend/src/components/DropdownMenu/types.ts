@@ -26,8 +26,8 @@ export type Option = {
     page?: number
     pageSize?: number
     total?: number
-    keyword: Option[]
-    data: Option[]
+    keyword: DropdownMenuOptions
+    data: DropdownMenuOptions
   }
   triggerProps?: Partial<TriggerProps>
   onClick?: (
@@ -65,7 +65,7 @@ export type DropdownMenuChildren = (
     >
 
 export type DropdownMenuOption = Option
-export type DropdownMenuOptions = Partial<Option>[] | Partial<Option>[][]
+export type DropdownMenuOptions = Array<Partial<Option> | Partial<Option>[]>
 
 export interface DropdownMenuProps {
   disabled?: boolean
@@ -73,5 +73,5 @@ export interface DropdownMenuProps {
   iconSize?: string | number
   loadingText?: string
   emptyText?: string
-  options: Partial<Option>[] | Partial<Option>[][]
+  options: DropdownMenuOptions
 }

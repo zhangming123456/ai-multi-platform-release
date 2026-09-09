@@ -59,9 +59,8 @@ type aiGenerateStreamRequest struct {
 	ContentForms    []string                `json:"content_forms"`
 	EventContext    *services.EventContext  `json:"event_context"`
 	GenerateVersion int                     `json:"generate_version"`
+	BatchMode       bool                    `json:"batch_mode"`
 }
-
-const maxCombosPerRequest = 6
 
 var contentFormLabels = map[string]string{
 	"post":           "图文笔记/推文",
@@ -521,10 +520,6 @@ func (c *ContentsController) AIGenerateStream() {
 	if vNum > 3 {
 		vNum = 3
 	}
-	if len(req.Platforms)*len(forms)*vNum > maxCombosPerRequest {
-		c.WriteError(http.StatusBadRequest, "组合数量超出上限（平台×内容形式×版本需 ≤ 6），请减少平台/形式/版本后再试")
-		return
-	}
 	if req.EventContext != nil && strings.TrimSpace(req.EventContext.Name) == "" {
 		c.WriteError(http.StatusBadRequest, "临时活动信息缺少活动名称")
 		return
@@ -577,6 +572,7 @@ func (c *ContentsController) AIGenerateStream() {
 		Files:           allFiles,
 		CampaignContext: contextText,
 		CampaignName:    eventName,
+		BatchMode:       req.BatchMode,
 	})
 	if err != nil {
 		write("error", map[string]interface{}{
