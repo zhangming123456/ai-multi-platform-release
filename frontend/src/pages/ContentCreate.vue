@@ -636,6 +636,7 @@ import { isString } from 'lodash-es'
 const router = useRouter()
 const store = useTokenPlanStore()
 
+// 日志记录
 type LogLevel = 'info' | 'req' | 'ok' | 'err'
 
 interface LogEntry {
