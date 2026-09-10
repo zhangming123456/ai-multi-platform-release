@@ -281,16 +281,20 @@
 
             <div v-if="hasFiles" class="compress-bar">
               <span class="compress-bar__label">图片压缩</span>
-              <a-select
+              <a-slider
                 v-model="compressQuality"
-                size="mini"
-                class="compress-bar__select"
-                @change="onCompressChange"
-              >
-                <a-option :value="0.6">质量 60%</a-option>
-                <a-option :value="0.8">质量 80%</a-option>
-                <a-option :value="0.9">质量 90%</a-option>
-              </a-select>
+                :show-text="false"
+                :max="1"
+                :step="0.1"
+                :format-tooltip="(value: number) => `${Math.round(value * 100)}%`"
+                :marks="compressQualityMarks"
+                @change="compressQualityChange as any"
+                size="small"
+                color="#007AFF"
+                class="compress-bar__progress"
+              />
+            </div>
+            <div v-if="hasFiles" class="compress-bar">
               <span class="compress-bar__hint">压缩后单张 ≤ 500KB</span>
             </div>
 
@@ -631,7 +635,7 @@ import api, { getApiErrorDetail } from '@/utils/api'
 import { formatDateTime } from '@/utils/time'
 import type { Campaign, Material, Paginated } from '@/types'
 import type { PlatformIconType } from '@/components/shared/PlatformIcon.ts'
-import { isString } from 'lodash-es'
+import { debounce, isString } from 'lodash-es'
 
 const router = useRouter()
 const store = useTokenPlanStore()
@@ -1259,14 +1263,21 @@ const promptPlaceholder = computed(() =>
     : '输入创作需求，使用 #标签 添加关键词，例如：写一篇小红书文案 #穿搭 #夏季',
 )
 
-const compressMaxWidth = ref(1920)
 const compressQuality = ref(0.8)
 
-function onCompressChange() {
-  pushLog(
-    'info',
-    `图片压缩参数已更新：最大宽度 ${compressMaxWidth.value}px · 质量 ${Math.round(compressQuality.value * 100)}%`,
-  )
+const compressQualityMarks = [90, 50, 20].reduce(
+  (prev, value) => {
+    const step = value / 100
+    prev[step] = `${value}%`
+    return prev
+  },
+  {} as Record<number, string>,
+)
+
+const compressQualityChange = debounce(setCompressQuality, 300)
+
+function setCompressQuality(value: number) {
+  pushLog('info', `图片压缩参数已更新：质量 ${Math.round(value * 100)}%`)
 }
 
 function compressImage(file: File): Promise<File> {
@@ -2711,8 +2722,15 @@ async function copyContent() {
   flex-shrink: 0;
 }
 
-.compress-bar__select {
-  width: 150px;
+.compress-bar__progress {
+  flex: 1;
+  flex-shrink: 0;
+  margin: 0;
+}
+
+.compress-bar__levels {
+  display: flex;
+  gap: 4px;
   flex-shrink: 0;
 }
 
