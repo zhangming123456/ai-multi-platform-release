@@ -140,12 +140,10 @@
           >
             <template #default="{ visible }">
               <div class="flex items-center gap-1">
-                <template v-if="visible">
-                  <button type="button" :disabled="uploadBtnDisabled" class="aia-toolbar-btn">
-                    <component :is="toolbarIcon" :size="16" />
-                  </button>
-                </template>
-                <a-tooltip v-else position="top" :disabled="visible">
+                <!-- 触发元素必须保持固定结构：菜单展开时只禁用 tooltip。
+                     不可用 v-if/v-else 切换包裹元素，否则会在浮层过渡过程中卸载
+                     正在显示的 tooltip，导致 transition 递归更新 -->
+                <a-tooltip position="top" :disabled="visible">
                   <template #content>
                     <p style="max-width: 120px">
                       <span>{{ uploadBtnTooltip }}</span>
@@ -266,7 +264,10 @@ const MAX_SIZE_BY_TYPE: Record<AttachmentFileType, number> = {
 
 const props = withDefaults(
   defineProps<{
-    modelValue: string
+    modelValue?: string
+    // 可选：改用「读取函数」提供文本。父组件模板因此不必读取文本，
+    // 逐字输入只重渲本组件，不会带动父组件整棵模板重渲；写回仍走 update:modelValue
+    getText?: () => string
     fileList?: string[]
     upload?: (file: File, onProgress?: (percent: number) => void) => Promise<string>
     uploadMode?: 'auto' | 'manual'
@@ -372,7 +373,7 @@ const fileList = computed<string[]>({
   set: (value) => emit('update:fileList', value),
 })
 
-const text = computed(() => props.modelValue ?? '')
+const text = computed(() => (props.getText ? props.getText() : (props.modelValue ?? '')))
 
 function dataUrlType(url: string): AttachmentFileType | null {
   if (url.startsWith('data:image/')) return 'image'

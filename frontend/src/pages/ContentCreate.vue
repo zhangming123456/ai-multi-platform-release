@@ -11,11 +11,7 @@
           <template #icon>
             <IconSettings :size="12" />
           </template>
-          {{
-            store.activePlan
-              ? `${store.activePlan.name} - 剩余 ${store.getRemainingQuota().toLocaleString()} tokens`
-              : '未配置 Token'
-          }}
+          {{ planQuotaText }}
         </a-tag>
       </template>
     </PageHeader>
@@ -37,32 +33,12 @@
             </template>
           </a-empty>
 
-          <template v-else-if="isGenerating">
-            <div v-if="streamingText" class="streaming-view">
-              <div class="streaming-view__header">
-                <PlatformIcon
-                  v-if="streamingPlatform"
-                  :platform="streamingPlatformIcon"
-                  size="sm"
-                />
-                <span v-if="streamingPlatform" class="text-[13px] font-medium">{{
-                  platformLabel(streamingPlatform)
-                }}</span>
-                <span class="streaming-view__badge">AI 生成中</span>
-              </div>
-              <div ref="streamingTextRef" class="streaming-view__text">
-                {{ streamingText }}<span class="streaming-cursor"></span>
-              </div>
-            </div>
-            <a-spin v-else :loading="true" class="w-full py-10">
-              <template #icon><IconStar :size="30" :style="{ color: '#007AFF' }" spin /></template>
-              <div class="text-center">
-                <p class="text-[13px] text-[#86868B]">
-                  正在为 {{ selectedPlatforms.length }} 个平台生成适配文案…
-                </p>
-              </div>
-            </a-spin>
-          </template>
+          <ContentStreamingPreview
+            v-else-if="isGenerating"
+            :stream="stream"
+            :platform-label-text="streamingPlatformLabel"
+            :platform-count="selectedPlatforms.length"
+          />
 
           <template v-else-if="hasGenerated">
             <div class="preview-result">
@@ -110,11 +86,7 @@
                   >
                     正文（底部含推荐话题标签）
                   </a-typography-text>
-                  <a-textarea
-                    :model-value="bodyWithTags(currentVariant)"
-                    read-only
-                    :auto-size="true"
-                  />
+                  <a-textarea :model-value="currentBodyWithTags" read-only :auto-size="true" />
                 </div>
               </div>
               <a-empty
@@ -140,51 +112,7 @@
         </a-card>
 
         <div class="content-left">
-          <div class="log-terminal animate-fade-up">
-            <div class="log-terminal__bar">
-              <div class="flex items-center gap-2">
-                <span class="log-dot log-dot--r"></span>
-                <span class="log-dot log-dot--y"></span>
-                <span class="log-dot log-dot--g"></span>
-                <IconCode :size="14" class="ml-2" style="color: #8e8e93" />
-                <span class="log-terminal__title">API 调用日志</span>
-                <span v-if="isGenerating" class="log-live">
-                  <span class="log-live__pulse"></span>
-                  实时监听中
-                </span>
-                <span v-else-if="logs.length > 0" class="log-idle">空闲</span>
-              </div>
-              <div class="flex items-center gap-1">
-                <span class="log-terminal__count">{{ logs.length }} 条</span>
-                <button class="log-terminal__btn" title="清空日志" @click="clearLogs">
-                  <IconDelete :size="13" />
-                </button>
-              </div>
-            </div>
-
-            <div class="log-terminal__body-wrap">
-              <div ref="logPanelRef" class="log-terminal__body">
-                <div v-if="logs.length === 0" class="log-terminal__empty">
-                  <span class="log-terminal__prompt">➜</span>
-                  暂无调用记录，点击「AI 生成内容」后这里将实时输出接口日志
-                </div>
-                <div
-                  v-for="entry in logs"
-                  :key="entry.id"
-                  class="log-line"
-                  :class="`log-line--${entry.level}`"
-                >
-                  <span class="log-line__time">{{ entry.time }}</span>
-                  <span class="log-line__level">{{ levelText(entry.level) }}</span>
-                  <span class="log-line__msg">{{ entry.message }}</span>
-                </div>
-                <div v-if="isGenerating" class="log-line log-line--cursor">
-                  <span class="log-terminal__prompt">➜</span>
-                  <span class="log-cursor"></span>
-                </div>
-              </div>
-            </div>
-          </div>
+          <ContentLogTerminal :logs="logs" :is-generating="isGenerating" @clear="clearLogs" />
 
           <div class="chat-input-section">
             <div class="event-block">
@@ -302,7 +230,8 @@
               <a-form-item field="content" :rules="contentRules" class="!mb-0">
                 <AttachmentInputArea
                   ref="createAreaRef"
-                  v-model="createForm.promptText"
+                  :get-text="getPromptText"
+                  @update:model-value="setPromptText"
                   v-model:file-list="createForm.fileUrls"
                   theme="dark"
                   :file-types="['image', 'video']"
@@ -414,20 +343,20 @@
             <a-spin :loading="campaignLoading" class="w-full flex-1">
               <div v-if="campaignList.length" class="campaign-picker__list">
                 <div
-                  v-for="c in campaignList"
-                  :key="c.id"
+                  v-for="row in campaignRows"
+                  :key="row.id"
                   class="campaign-row"
-                  :class="{ 'campaign-row--selected': campaignPickedId === c.id }"
-                  @click="campaignPickedId = c.id"
+                  :class="{ 'campaign-row--selected': campaignPickedId === row.id }"
+                  @click="campaignPickedId = row.id"
                 >
                   <span class="campaign-row__radio">
-                    <span v-if="campaignPickedId === c.id" class="campaign-row__radio-dot"></span>
+                    <span v-if="campaignPickedId === row.id" class="campaign-row__radio-dot"></span>
                   </span>
                   <a-avatar
-                    v-if="campaignMedia(c).length"
+                    v-if="row.hasCover"
                     shape="square"
                     :size="44"
-                    :image-url="campaignMedia(c)[0]"
+                    :image-url="row.cover"
                     class="campaign-row__media"
                   />
                   <div v-else class="campaign-row__media campaign-row__media--empty">
@@ -435,27 +364,25 @@
                   </div>
                   <div class="campaign-row__info">
                     <div class="campaign-row__head">
-                      <span class="campaign-row__name">{{ c.name }}</span>
-                      <span v-if="c.location" class="campaign-row__loc">{{ c.location }}</span>
+                      <span class="campaign-row__name">{{ row.name }}</span>
+                      <span v-if="row.location" class="campaign-row__loc">{{ row.location }}</span>
                       <a-tag
-                        :color="c.status === 'active' ? 'green' : 'gray'"
+                        :color="row.status === 'active' ? 'green' : 'gray'"
                         size="small"
                         class="campaign-row__status"
                       >
-                        {{ c.status === 'active' ? '进行中' : '已归档' }}
+                        {{ row.status === 'active' ? '进行中' : '已归档' }}
                       </a-tag>
                     </div>
                     <div class="campaign-row__platforms">
-                      <template v-for="p in campaignPlatforms(c)" :key="p">
+                      <template v-for="p in row.platforms" :key="p">
                         <PlatformIcon :platform="p" size="sm" />
                       </template>
-                      <span v-if="!campaignPlatforms(c).length" class="text-[#c9cdd4]"
-                        >未设置平台</span
-                      >
+                      <span v-if="!row.platforms.length" class="text-[#c9cdd4]">未设置平台</span>
                     </div>
-                    <div class="campaign-row__desc">{{ c.description || '暂无描述' }}</div>
+                    <div class="campaign-row__desc">{{ row.description || '暂无描述' }}</div>
                   </div>
-                  <span class="campaign-row__time">{{ formatDateTime(c.created_at) }}</span>
+                  <span class="campaign-row__time">{{ row.timeText }}</span>
                 </div>
               </div>
               <div v-else-if="!campaignLoading" class="campaign-picker__empty">
@@ -604,7 +531,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, reactive, onMounted, onUnmounted, nextTick, watch, unref, h } from 'vue'
+import { ref, computed, reactive, onMounted, onUnmounted, watch, unref, h } from 'vue'
 import { useRouter } from 'vue-router'
 import { Message } from '@arco-design/web-vue'
 import type { FormInstance } from '@arco-design/web-vue'
@@ -614,8 +541,6 @@ import {
   IconCopy,
   IconSave,
   IconSettings,
-  IconCode,
-  IconDelete,
   IconArrowUp,
   IconLoading,
   IconStar,
@@ -629,6 +554,8 @@ import {
 import PageHeader from '@/components/layout/PageHeader.vue'
 import PlatformIcon from '@/components/shared/PlatformIcon.vue'
 import AttachmentInputArea from '@/components/AttachmentInputArea.vue'
+import ContentLogTerminal from '@/components/ContentLogTerminal.vue'
+import ContentStreamingPreview from '@/components/ContentStreamingPreview.vue'
 import { useTokenPlanStore, parseModelField } from '@/stores/tokenPlan'
 import { urlFileName } from '@/composables/useUrlExtractor'
 import api, { getApiErrorDetail } from '@/utils/api'
@@ -639,6 +566,12 @@ import { debounce, isString } from 'lodash-es'
 
 const router = useRouter()
 const store = useTokenPlanStore()
+
+const planQuotaText = computed(() =>
+  store.activePlan
+    ? `${store.activePlan.name} - 剩余 ${store.getRemainingQuota().toLocaleString()} tokens`
+    : '未配置 Token',
+)
 
 // 日志记录
 type LogLevel = 'info' | 'req' | 'ok' | 'err'
@@ -657,8 +590,6 @@ interface VariantItem {
 }
 
 const logs = ref<LogEntry[]>([])
-const logPanelRef = ref<HTMLElement | null>(null)
-const streamingTextRef = ref<HTMLElement | null>(null)
 let logSeq = 0
 
 function pushLog(level: LogLevel, message: string) {
@@ -681,35 +612,12 @@ function clearLogs() {
   logs.value = []
 }
 
-watch(
-  () => logs.value.length,
-  async () => {
-    await nextTick()
-    if (logPanelRef.value) {
-      logPanelRef.value.scrollTop = logPanelRef.value.scrollHeight
-    }
-  },
-)
-
 function platformLabel(value: string) {
   return unref(platformChoices).find((p) => p.value === value)?.label || value
 }
 
 function contentFormLabel(value: string) {
   return contentFormChoices.find((f) => f.value === value)?.label || value
-}
-
-function levelText(level: LogLevel) {
-  switch (level) {
-    case 'req':
-      return 'REQ '
-    case 'ok':
-      return 'OK  '
-    case 'err':
-      return 'ERR '
-    default:
-      return 'INFO'
-  }
 }
 
 const selectedPlatforms = ref<string[]>(['xiaohongshu'])
@@ -782,6 +690,26 @@ const campaignStatusFilter = ref('active')
 const campaignLocationFilter = ref('')
 const campaignDateRange = ref<[string, string] | undefined>(undefined)
 const campaignPickedId = ref('')
+
+// 活动行的展示派生数据（封面/平台/时间）只随列表变化计算一次，
+// 避免每次渲染都对每行重复过滤数组与做 dayjs 时区换算
+const campaignRows = computed(() =>
+  campaignList.value.map((c) => {
+    const media = campaignMedia(c)
+    const platforms = campaignPlatforms(c)
+    return {
+      id: c.id,
+      name: c.name,
+      location: c.location,
+      status: c.status,
+      description: c.description,
+      cover: media[0] || '',
+      hasCover: media.length > 0,
+      platforms,
+      timeText: formatDateTime(c.created_at),
+    }
+  }),
+)
 
 const platformChoices = computed<Partial<DropdownMenuOption>[]>(() => {
   return [
@@ -1125,18 +1053,30 @@ function onEmptyCreateTemp() {
 }
 
 const isGenerating = ref(false)
-const streamingText = ref('')
-const streamingPlatform = ref('')
-const streamingPlatformIcon = computed(() => streamingPlatform.value as PlatformIconType)
+// 流式状态放在响应式容器中传给子组件：父组件渲染时不读取其内部字段，
+// 因此逐 chunk 的更新只会重渲 ContentStreamingPreview，不会重跑整页 render
+const stream = reactive({ text: '', platform: '' })
+const streamingPlatformLabel = computed(() => {
+  const label = platformLabel(stream.platform)
+  return typeof label === 'string' ? label : stream.platform
+})
 const MAX_UPLOAD_FILES = 10
 const hasFiles = ref(false)
 
 const createFormRef = ref<FormInstance>()
 const createForm = reactive({
   model: '',
-  promptText: '',
   fileUrls: [] as string[],
 })
+// 创作输入文本改由「读取函数 + update 事件」接入输入组件：父组件模板不读取该值，
+// 因此逐字输入只重渲 AttachmentInputArea，不会重跑整页 render
+const promptText = ref('')
+function getPromptText() {
+  return promptText.value
+}
+function setPromptText(value: string) {
+  promptText.value = value
+}
 
 const modelRules = [{ required: true, message: '请选择 AI 模型' }]
 
@@ -1197,7 +1137,7 @@ onUnmounted(() => {
 })
 
 const parsedPrompt = computed(() => {
-  const text = createForm.promptText
+  const text = promptText.value
   const keywords: string[] = []
   const topic = text
     .replace(/#[\p{L}\p{N}_\u4e00-\u9fa5]+/gu, (match) => {
@@ -1249,12 +1189,9 @@ watch(
   { immediate: true },
 )
 
-watch(
-  () => createForm.promptText,
-  () => {
-    void createFormRef.value?.validateField('content').catch(() => {})
-  },
-)
+watch(promptText, () => {
+  void createFormRef.value?.validateField('content').catch(() => {})
+})
 
 const inputHint = computed(() => (creationMode.value === 'event' ? '补充卖点/切入角度' : ''))
 const promptPlaceholder = computed(() =>
@@ -1449,13 +1386,6 @@ const activePreview = ref('')
 const activeForm = ref('post')
 const activeVersionIndex = ref(0)
 
-watch(streamingText, async () => {
-  await nextTick()
-  if (streamingTextRef.value) {
-    streamingTextRef.value.scrollTop = streamingTextRef.value.scrollHeight
-  }
-})
-
 const batchMode = ref(false)
 const confirmVisible = ref(false)
 const versionNum = ref('2')
@@ -1499,12 +1429,16 @@ const currentVariants = computed(
   () => generatedVariants.value[`${activePreview.value}::${activeForm.value}`] || [],
 )
 const currentVariant = computed(() => currentVariants.value[activeVersionIndex.value])
+// 预计算正文（含话题标签），避免模板中每次渲染都重新拼接字符串
+const currentBodyWithTags = computed(() =>
+  currentVariant.value ? bodyWithTags(currentVariant.value) : '',
+)
 
 function resetGenerationState() {
   hasGenerated.value = false
   generatedVariants.value = {}
-  streamingText.value = ''
-  streamingPlatform.value = ''
+  stream.text = ''
+  stream.platform = ''
   activeVersionIndex.value = 0
   activePreview.value = selectedPlatforms.value[0] || ''
   activeForm.value = selectedContentForms.value[0] || 'post'
@@ -1628,7 +1562,7 @@ async function doGenerate() {
   resetGenerationState()
   activePreview.value = selectedPlatforms.value[0] || ''
   activeForm.value = selectedContentForms.value[0] || 'post'
-  streamingPlatform.value = selectedPlatforms.value[0] || ''
+  stream.platform = selectedPlatforms.value[0] || ''
 
   const startedAt = performance.now()
   const modelId = store.selectedModelId || store.activeModelList[0]?.id || ''
@@ -1750,13 +1684,13 @@ async function doGenerate() {
             pushLog(payloadEvent.level || 'info', payloadEvent.message || '')
             break
           case 'chunk':
-            if (payloadEvent.platform && streamingPlatform.value !== payloadEvent.platform) {
-              streamingPlatform.value = payloadEvent.platform
-              streamingText.value = ''
-            } else if (!streamingPlatform.value) {
-              streamingPlatform.value = activePreview.value || selectedPlatforms.value[0] || ''
+            if (payloadEvent.platform && stream.platform !== payloadEvent.platform) {
+              stream.platform = payloadEvent.platform
+              stream.text = ''
+            } else if (!stream.platform) {
+              stream.platform = activePreview.value || selectedPlatforms.value[0] || ''
             }
-            streamingText.value += payloadEvent.text || ''
+            stream.text += payloadEvent.text || ''
             break
           case 'done': {
             const form =
@@ -1783,14 +1717,14 @@ async function doGenerate() {
               'ok',
               `${platformLabel(payloadEvent.platform)} · ${contentFormLabel(form)} 生成完成`,
             )
-            streamingText.value = ''
-            streamingPlatform.value = ''
+            stream.text = ''
+            stream.platform = ''
             break
           }
           case 'error':
             pushLog('err', payloadEvent.message || '生成失败')
-            streamingText.value = ''
-            streamingPlatform.value = ''
+            stream.text = ''
+            stream.platform = ''
             if (payloadEvent.available_plans?.length > 0) {
               const planNames = payloadEvent.available_plans
                 .map(
@@ -1839,8 +1773,8 @@ async function doGenerate() {
     Message.error(err.message || 'AI 生成失败，请重试')
   } finally {
     isGenerating.value = false
-    streamingText.value = ''
-    streamingPlatform.value = ''
+    stream.text = ''
+    stream.platform = ''
   }
 }
 
@@ -1941,26 +1875,6 @@ async function copyContent() {
     0 2px 8px rgba(0, 0, 0, 0.2);
 }
 
-.content-left .log-terminal {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  overflow: hidden;
-}
-
-.content-left .log-terminal__body-wrap {
-  flex: 1;
-  min-height: 0;
-  overflow: hidden;
-}
-
-.content-left .log-terminal__body {
-  height: 100%;
-  min-height: 0;
-  overflow-y: auto;
-}
-
 .content-left .chat-input-section {
   flex-shrink: 1;
   min-height: 0;
@@ -1997,270 +1911,6 @@ async function copyContent() {
 
 .preview-tier:last-of-type {
   margin-bottom: 0;
-}
-
-.streaming-view {
-  padding: 4px 0;
-}
-
-.streaming-view__header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 12px;
-}
-
-.streaming-view__badge {
-  font-size: 10px;
-  color: #007aff;
-  background: rgba(0, 122, 255, 0.1);
-  padding: 2px 8px;
-  border-radius: 4px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-}
-
-.streaming-view__text {
-  white-space: pre-wrap;
-  word-break: break-word;
-  font-size: 14px;
-  line-height: 1.85;
-  color: #1d1d1f;
-  max-height: 420px;
-  overflow-y: auto;
-  padding: 16px 18px;
-  background: #f5f5f7;
-  border-radius: 10px;
-  border: 1px solid rgba(0, 0, 0, 0.04);
-}
-
-.streaming-cursor {
-  display: inline-block;
-  width: 2px;
-  height: 16px;
-  background: #007aff;
-  animation: cursor-blink 0.9s steps(1) infinite;
-  vertical-align: text-bottom;
-  margin-left: 1px;
-  border-radius: 1px;
-}
-
-.log-terminal {
-  border-radius: 12px;
-  overflow: hidden;
-  background: #1d1d1f;
-  box-shadow:
-    0 8px 32px rgba(0, 0, 0, 0.28),
-    0 2px 8px rgba(0, 0, 0, 0.2);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-}
-
-.log-terminal__bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 10px 14px;
-  background: linear-gradient(180deg, #2c2c2e 0%, #252527 100%);
-  user-select: none;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-}
-
-.log-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  display: inline-block;
-}
-.log-dot--r {
-  background: #ff5f57;
-}
-.log-dot--y {
-  background: #febc2e;
-}
-.log-dot--g {
-  background: #28c840;
-}
-
-.log-terminal__title {
-  font-size: 12px;
-  font-weight: 600;
-  color: #d1d1d6;
-  letter-spacing: 0.04em;
-}
-
-.log-live {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 10px;
-  color: #34c759;
-  margin-left: 8px;
-  font-weight: 500;
-}
-
-.log-live__pulse {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #34c759;
-  animation: log-pulse 1.2s ease-in-out infinite;
-}
-
-@keyframes log-pulse {
-  0%,
-  100% {
-    opacity: 1;
-    box-shadow: 0 0 0 0 rgba(52, 199, 89, 0.5);
-  }
-  50% {
-    opacity: 0.6;
-    box-shadow: 0 0 0 4px rgba(52, 199, 89, 0);
-  }
-}
-
-.log-idle {
-  font-size: 10px;
-  color: #636366;
-  margin-left: 8px;
-}
-
-.log-terminal__count {
-  font-size: 11px;
-  color: #636366;
-  font-variant-numeric: tabular-nums;
-  margin-right: 6px;
-}
-
-.log-terminal__btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  border-radius: 6px;
-  border: none;
-  background: transparent;
-  color: #8e8e93;
-  cursor: pointer;
-  transition:
-    background 0.15s ease,
-    color 0.15s ease;
-}
-
-.log-terminal__btn:hover {
-  background: rgba(255, 255, 255, 0.08);
-  color: #ffffff;
-}
-
-.log-terminal__body-wrap {
-  overflow: hidden;
-}
-
-.log-terminal__body {
-  max-height: 100%;
-  overflow-y: auto;
-  padding: 12px 14px;
-  font-family: 'SF Mono', ui-monospace, Menlo, Monaco, 'Cascadia Code', 'Roboto Mono', monospace;
-  font-size: 12px;
-  line-height: 1.7;
-  background:
-    radial-gradient(ellipse 60% 40% at 80% 0%, rgba(0, 122, 255, 0.05), transparent), #1d1d1f;
-}
-
-.log-terminal__empty {
-  color: #48484a;
-  font-size: 12px;
-}
-
-.log-terminal__prompt {
-  color: #34c759;
-  margin-right: 6px;
-}
-
-.log-line {
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-  animation: log-in 0.25s cubic-bezier(0.25, 0.1, 0.25, 1) both;
-  padding: 1px 0;
-}
-
-@keyframes log-in {
-  from {
-    opacity: 0;
-    transform: translateY(4px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.log-line__time {
-  color: #48484a;
-  flex-shrink: 0;
-  font-variant-numeric: tabular-nums;
-}
-
-.log-line__level {
-  flex-shrink: 0;
-  font-weight: 700;
-  font-size: 10px;
-  letter-spacing: 0.08em;
-  padding: 1px 6px;
-  border-radius: 4px;
-  white-space: pre;
-}
-
-.log-line--info .log-line__level {
-  color: #8e8e93;
-  background: rgba(142, 142, 147, 0.12);
-}
-.log-line--info .log-line__msg {
-  color: #aeaeb2;
-}
-
-.log-line--req .log-line__level {
-  color: #ff9f0a;
-  background: rgba(255, 159, 10, 0.12);
-}
-.log-line--req .log-line__msg {
-  color: #ffd60a;
-}
-
-.log-line--ok .log-line__level {
-  color: #30d158;
-  background: rgba(48, 209, 88, 0.12);
-}
-.log-line--ok .log-line__msg {
-  color: #6ee7a0;
-}
-
-.log-line--err .log-line__level {
-  color: #ff453a;
-  background: rgba(255, 69, 58, 0.14);
-}
-.log-line--err .log-line__msg {
-  color: #ff6961;
-}
-
-.log-line__msg {
-  word-break: break-all;
-}
-
-.log-cursor {
-  display: inline-block;
-  width: 7px;
-  height: 14px;
-  background: #34c759;
-  animation: cursor-blink 0.9s steps(1) infinite;
-  vertical-align: middle;
-}
-
-@keyframes cursor-blink {
-  50% {
-    opacity: 0;
-  }
 }
 
 .chat-input-section {
@@ -3130,55 +2780,11 @@ async function copyContent() {
       max-width: 100%;
     }
   }
-  .content-left .log-terminal__body {
-    max-height: 200px;
-  }
-  .streaming-view__text {
-    max-height: 320px;
-    padding: 12px 14px;
-    font-size: 13.5px;
-    line-height: 1.75;
-  }
-  .log-terminal__body {
-    font-size: 11px;
-    padding: 10px 12px;
-  }
-  .log-terminal__bar {
-    padding: 8px 12px;
-  }
-  .log-terminal__title {
-    font-size: 11px;
-  }
-  .log-line {
-    gap: 6px;
-  }
-  .log-line__time {
-    font-size: 10.5px;
-  }
-  .log-line__level {
-    font-size: 9px;
-    padding: 1px 4px;
-  }
 }
 
 @media (max-width: 480px) {
   .content-create-card .arco-card-body {
     padding: 12px 14px !important;
-  }
-  .streaming-view__text {
-    max-height: 260px;
-    padding: 10px 12px;
-    font-size: 13px;
-  }
-  .content-left .log-terminal__body {
-    max-height: 160px;
-  }
-  .streaming-view__header {
-    margin-bottom: 10px;
-  }
-  .streaming-view__badge {
-    font-size: 9.5px;
-    padding: 2px 6px;
   }
   .campaign-picker__search,
   .campaign-picker__platform,

@@ -205,7 +205,6 @@ watch(
 
 function handlePopupVisibleChange(visible: boolean, option?: Option, index?: number) {
   if (option) {
-    console.log(visible, 'handlePopupVisibleChange')
     option.keyword = undefined
     option.request.empty = false
     if (visible) {
@@ -399,16 +398,13 @@ const childRender = computed(() => {
   return (option: Option, _index: number): Option[] => {
     if (!isEmptyString(option.keyword)) {
       const list = option.request.keyword
-      console.log(option.label, option.keyword, list, 'renderChild:1')
       return handleOptions(list, option.request, option)
     }
     if (isFunction(option.children)) {
       const list = option.request.data
-      console.log(option.label, option.keyword, list, 'renderChild:2')
       return handleOptions(list, option.request, option)
     }
     if (isArray(option.children)) {
-      console.log(option.label, option.keyword, option.children, 'renderChild:3')
       return handleOptions(option.children, null, option)
     }
     return []
