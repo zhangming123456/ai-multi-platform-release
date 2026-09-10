@@ -6,18 +6,11 @@ import { renderImage, loadImage } from './render/renderImage'
 import { renderText } from './render/renderText'
 import { renderDraw } from './render/renderDraw'
 import { renderSticker } from './render/renderSticker'
+import type { DragState } from './CanvasEngine.types'
 
 const MIN_SCALE = 0.1
 const MAX_SCALE = 8
 const ZOOM_STEP = 1.5
-
-interface DragState {
-  layerId: string | null
-  startPointerX: number
-  startPointerY: number
-  startLayerX: number
-  startLayerY: number
-}
 
 export class CanvasEngine extends AbstractEngine {
   private layerManager: LayerManager

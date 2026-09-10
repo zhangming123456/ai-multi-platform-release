@@ -1,5 +1,5 @@
 import { ref, computed, type Ref } from 'vue'
-import type { BaseEngine } from '../engine/base/BaseEngine'
+import type { BaseEngine } from '../engine/base/BaseEngine.types'
 import type {
   BaseLayer,
   EditorState,
@@ -8,14 +8,9 @@ import type {
 } from '../ImageEditor.types'
 import { EditorMode } from '../ImageEditor.types'
 import { useHistory } from './useHistory'
-import { cropImage, filterImage, rotateImage, type CropRect, type FilterType } from '../utils/image'
-
-export interface TextLayerOptions {
-  content: string
-  fontSize?: number
-  color?: string
-  bold?: boolean
-}
+import { cropImage, filterImage, rotateImage } from '../utils/image'
+import type { CropRect, FilterType } from '../utils/image.types'
+import type { TextLayerOptions } from './useEditor.types'
 
 export function useEditor() {
   const engine = ref<BaseEngine | null>(null)

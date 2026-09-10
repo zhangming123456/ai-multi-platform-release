@@ -17,10 +17,9 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { createEmojiSticker } from '../utils/image'
+import type { PanelStickerEmits } from './panel-sticker.types'
 
-const emit = defineEmits<{
-  add: [url: string]
-}>()
+const emit = defineEmits<PanelStickerEmits>()
 
 const stickers = [
   '😀',

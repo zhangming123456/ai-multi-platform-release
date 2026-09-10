@@ -33,10 +33,9 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
+import type { PanelCompressEmits } from './panel-compress.types'
 
-const emit = defineEmits<{
-  export: [format: 'jpeg' | 'png', quality: number]
-}>()
+const emit = defineEmits<PanelCompressEmits>()
 
 const format = ref<'jpeg' | 'png'>('jpeg')
 const quality = ref(80)

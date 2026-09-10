@@ -24,16 +24,11 @@
 <script setup lang="ts">
 import { ref, watch, onBeforeUnmount, unref } from 'vue'
 import ImageEditor from './ImageEditor.vue'
+import type { ImageEditorModalEmits, ImageEditorModalProps } from './ImageEditorModal.types'
 
-const props = defineProps<{
-  visible: boolean
-  src: string
-}>()
+const props = defineProps<ImageEditorModalProps>()
 
-const emit = defineEmits<{
-  close: []
-  confirm: [blob: Blob]
-}>()
+const emit = defineEmits<ImageEditorModalEmits>()
 
 const editorRef = ref<InstanceType<typeof ImageEditor>>()
 

@@ -87,3 +87,14 @@ export interface ExportOptions {
   format: 'png' | 'jpeg'
   quality?: number
 }
+
+export interface ImageEditorProps {
+  src: string
+  width?: number | string
+  height?: number | string
+}
+
+export type ImageEditorEmits = {
+  (e: 'export', blob: Blob): void
+  (e: 'cancel'): void
+}

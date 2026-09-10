@@ -1,11 +1,4 @@
-export type FilterType = 'none' | 'grayscale' | 'sepia' | 'invert' | 'pixelate' | 'emboss'
-
-export interface CropRect {
-  x: number
-  y: number
-  width: number
-  height: number
-}
+import type { CropRect, FilterType } from './image.types'
 
 export function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {

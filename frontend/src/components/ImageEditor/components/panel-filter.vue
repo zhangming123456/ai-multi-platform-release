@@ -18,11 +18,10 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
-import type { FilterType } from '../utils/image'
+import type { FilterType } from '../utils/image.types'
+import type { PanelFilterEmits } from './panel-filter.types'
 
-const emit = defineEmits<{
-  apply: [type: FilterType]
-}>()
+const emit = defineEmits<PanelFilterEmits>()
 
 const active = ref<FilterType>('none')
 

@@ -17,7 +17,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { PlatformIconType, PlatformIconProps, PlatformConfigMap } from './PlatformIcon.types'
+import type { PlatformIconProps, PlatformConfigMap } from './PlatformIcon.types'
 import { isNumber } from 'lodash-es'
 
 const props = withDefaults(defineProps<PlatformIconProps>(), {

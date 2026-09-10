@@ -32,22 +32,11 @@
 
 <script setup lang="ts">
 import { reactive, ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
-import type { CropRect } from '../utils/image'
-import type { Viewport } from '../ImageEditor.types'
+import type { PanelCropEmits, PanelCropProps } from './panel-crop.types'
 
-const props = defineProps<{
-  canvasWidth: number
-  canvasHeight: number
-  canvasEl: HTMLCanvasElement
-  viewport: Viewport
-}>()
+const props = defineProps<PanelCropProps>()
 
-const emit = defineEmits<{
-  apply: [rect: CropRect]
-  cancel: []
-  panImage: [dx: number, dy: number]
-  zoomImage: [factor: number]
-}>()
+const emit = defineEmits<PanelCropEmits>()
 
 const handles = ['nw', 'n', 'ne', 'w', 'e', 'sw', 's', 'se'] as const
 const box = reactive({ x: 0, y: 0, w: 0, h: 0 })

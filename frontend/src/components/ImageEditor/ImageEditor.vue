@@ -176,10 +176,11 @@ import {
 } from '@arco-design/web-vue/es/icon'
 import { useEditor } from './composables/useEditor'
 import { createEngine } from './engine'
-import { ENGINE_TYPE, type EngineType } from './config/engine.config'
+import { ENGINE_TYPE } from './config/engine.config'
+import type { EngineType } from './config/engine.config.types'
 import { EditorMode } from './ImageEditor.types'
-import type { BaseLayer } from './ImageEditor.types'
-import type { CropRect, FilterType } from './utils/image'
+import type { BaseLayer, ImageEditorEmits, ImageEditorProps } from './ImageEditor.types'
+import type { CropRect, FilterType } from './utils/image.types'
 import { loadImage } from './utils/image'
 import PanelDraw from './components/panel-draw.vue'
 import PanelText from './components/panel-text.vue'
@@ -189,16 +190,9 @@ import PanelCompress from './components/panel-compress.vue'
 import PanelCrop from './components/panel-crop.vue'
 import { unrefElement } from '@vueuse/core'
 
-const props = defineProps<{
-  src: string
-  width?: number | string
-  height?: number | string
-}>()
+const props = defineProps<ImageEditorProps>()
 
-const emit = defineEmits<{
-  export: [blob: Blob]
-  cancel: []
-}>()
+const emit = defineEmits<ImageEditorEmits>()
 
 const canvasEditRef = ref<HTMLElement>()
 const canvasRef = ref<HTMLCanvasElement>()

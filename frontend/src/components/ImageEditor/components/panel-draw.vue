@@ -26,11 +26,9 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
+import type { PanelDrawEmits } from './panel-draw.types'
 
-const emit = defineEmits<{
-  'style-change': [color: string, width: number]
-  clear: []
-}>()
+const emit = defineEmits<PanelDrawEmits>()
 
 const swatches = [
   '#1d1d1f',

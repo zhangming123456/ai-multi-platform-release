@@ -41,16 +41,11 @@
 
 <script setup lang="ts">
 import { ref, watch } from 'vue'
-import type { BaseLayer } from '../ImageEditor.types'
+import type { PanelTextEmits, PanelTextProps } from './panel-text.types'
 
-const props = defineProps<{
-  editLayer?: BaseLayer | null
-}>()
+const props = defineProps<PanelTextProps>()
 
-const emit = defineEmits<{
-  add: [options: { content: string; fontSize: number; color: string; bold: boolean }]
-  update: [id: string, options: { content: string; fontSize: number; color: string; bold: boolean }]
-}>()
+const emit = defineEmits<PanelTextEmits>()
 
 const swatches = [
   '#1d1d1f',
