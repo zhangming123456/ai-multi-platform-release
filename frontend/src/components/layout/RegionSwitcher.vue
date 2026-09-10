@@ -6,7 +6,7 @@
     class="region-select"
     :trigger-props="{ autoFitPopupWidth: true }"
     @change="
-      (value: string | number | boolean | Record<string, any> | undefined) => {
+      (value: RegionSelectValue) => {
         if (typeof value === 'string') switchRegion(value)
       }
     "
@@ -31,6 +31,7 @@
 <script setup lang="ts">
 import { IconLanguage } from '@arco-design/web-vue/es/icon'
 import { useRegionStore } from '@/stores/region'
+import type { RegionSelectValue } from './RegionSwitcher.types'
 
 const { selectedTz, regions, switchRegion } = useRegionStore()
 </script>

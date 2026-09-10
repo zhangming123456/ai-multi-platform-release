@@ -17,13 +17,8 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { PlatformIconType } from '@/components/shared/PlatformIcon.ts'
+import type { PlatformIconType, PlatformIconProps, PlatformConfigMap } from './PlatformIcon.types'
 import { isNumber } from 'lodash-es'
-
-type PlatformIconProps = {
-  platform: PlatformIconType
-  size?: 'sm' | 'md' | 'lg' | number | `${string}px`
-}
 
 const props = withDefaults(defineProps<PlatformIconProps>(), {
   size: 'sm',
@@ -43,9 +38,7 @@ const platformIconSize = computed(() => {
   return props.size
 })
 
-const platformConfig = computed<
-  Record<PlatformIconType, { name: string; gradient: string; letter: string }>
->(() => {
+const platformConfig = computed<PlatformConfigMap>(() => {
   return {
     wechat_mp: {
       name: '微信公众号',

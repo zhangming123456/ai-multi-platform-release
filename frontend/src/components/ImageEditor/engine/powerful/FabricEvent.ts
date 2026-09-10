@@ -1,5 +1,5 @@
 import { Canvas, type FabricObject } from 'fabric'
-import type { BaseLayer } from '../../types'
+import type { BaseLayer } from '../../ImageEditor.types'
 import { fromFabricObject } from './FabricAdapter'
 
 export function bindFabricEvents(

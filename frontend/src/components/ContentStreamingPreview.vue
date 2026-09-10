@@ -24,16 +24,13 @@
 import { computed, onUnmounted, ref, watch } from 'vue'
 import { IconStar } from '@arco-design/web-vue/es/icon'
 import PlatformIcon from '@/components/shared/PlatformIcon.vue'
-import type { PlatformIconType } from '@/components/shared/PlatformIcon.ts'
+import type { PlatformIconType } from '@/components/shared/PlatformIcon.types'
 import { isJsonLike, renderStreamingJsonMarkdown } from '@/utils/streamPreview'
+import type { ContentStreamingPreviewProps } from './ContentStreamingPreview.types'
 
 // stream 以响应式容器传入，父组件渲染时不读取其内部字段，
 // 这样逐 chunk 的更新只重渲本组件，不会带动整页 render
-const props = defineProps<{
-  stream: { text: string; platform: string }
-  platformLabelText: string
-  platformCount: number
-}>()
+const props = defineProps<ContentStreamingPreviewProps>()
 
 const iconType = computed(() => props.stream.platform as PlatformIconType)
 

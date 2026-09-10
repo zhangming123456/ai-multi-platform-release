@@ -26,10 +26,9 @@
 </template>
 
 <script setup lang="ts">
-defineProps<{
-  title: string
-  subtitle?: string
-}>()
+import type { PageHeaderProps } from './PageHeader.types'
+
+defineProps<PageHeaderProps>()
 </script>
 
 <style scoped lang="scss">

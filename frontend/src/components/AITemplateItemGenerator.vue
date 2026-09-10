@@ -181,26 +181,15 @@ import ModelSelect from '@/components/shared/ModelSelect.vue'
 import AttachmentInputArea from '@/components/AttachmentInputArea.vue'
 import { uploadImageFile } from '@/composables/useFileUpload'
 import { getApiErrorDetail } from '@/utils/api'
+import type {
+  AIGeneratedItem,
+  AITemplateItemGeneratorProps,
+  AITemplateItemGeneratorEmits,
+} from './AITemplateItemGenerator.types'
 
-export interface AIGeneratedItem {
-  category: string
-  title: string
-  standard: string
-  standard_images: string[]
-  score_type: 'score' | 'pass_fail'
-  max_score: number
-  score_options: { score: number; label: string }[]
-}
+const props = defineProps<AITemplateItemGeneratorProps>()
 
-const props = defineProps<{
-  visible: boolean
-  existingCategories: string[]
-}>()
-
-const emit = defineEmits<{
-  (e: 'update:visible', value: boolean): void
-  (e: 'confirm', result: { name: string; description: string; items: AIGeneratedItem[] }): void
-}>()
+const emit = defineEmits<AITemplateItemGeneratorEmits>()
 
 const formRef = ref<FormInstance>()
 const formState = reactive({

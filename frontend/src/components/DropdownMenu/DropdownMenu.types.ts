@@ -75,3 +75,21 @@ export interface DropdownMenuProps {
   emptyText?: string
   options: DropdownMenuOptions
 }
+
+export type DropdownMenuEmits = {
+  (e: 'update:visible', value: boolean): void
+  (e: 'option-click', option: Option, index: number, instance?: any): void
+}
+
+export type MenuItem = Option & {
+  index: number
+  childrenNodes?: MenuItem[]
+  keywordNodes?: MenuItem[]
+  dataNodes?: MenuItem[]
+}
+
+export type RequestParams = {
+  valueKey?: string
+  labelKey?: string
+  [k: string]: any
+}

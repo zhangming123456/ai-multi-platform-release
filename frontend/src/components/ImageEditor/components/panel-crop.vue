@@ -33,7 +33,7 @@
 <script setup lang="ts">
 import { reactive, ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import type { CropRect } from '../utils/image'
-import type { Viewport } from '../types'
+import type { Viewport } from '../ImageEditor.types'
 
 const props = defineProps<{
   canvasWidth: number

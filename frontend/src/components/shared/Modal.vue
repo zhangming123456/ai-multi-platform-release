@@ -14,16 +14,11 @@
 </template>
 
 <script setup lang="ts">
-defineProps<{
-  visible: boolean
-  title: string
-  width?: string | number
-}>()
+import type { ModalProps, ModalEmits } from './Modal.types'
 
-const emit = defineEmits<{
-  'update:visible': [value: boolean]
-  close: []
-}>()
+defineProps<ModalProps>()
+
+const emit = defineEmits<ModalEmits>()
 
 function handleCancel() {
   emit('update:visible', false)

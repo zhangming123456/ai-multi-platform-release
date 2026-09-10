@@ -7,14 +7,11 @@
 </template>
 
 <script setup lang="ts">
-defineProps<{
-  options: { key: string; label: string }[]
-  modelValue: string
-}>()
+import type { SegmentedControlProps, SegmentedControlEmits } from './SegmentedControl.types'
 
-const emit = defineEmits<{
-  'update:modelValue': [value: string]
-}>()
+defineProps<SegmentedControlProps>()
+
+const emit = defineEmits<SegmentedControlEmits>()
 
 function handleChange(value: string | number | boolean) {
   emit('update:modelValue', value as string)

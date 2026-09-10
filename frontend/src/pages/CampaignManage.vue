@@ -203,7 +203,7 @@ import {
 } from '@arco-design/web-vue/es/icon'
 import PageHeader from '@/components/layout/PageHeader.vue'
 import PlatformIcon from '@/components/shared/PlatformIcon.vue'
-import type { PlatformIconType } from '@/components/shared/PlatformIcon.ts'
+import type { PlatformIconType } from '@/components/shared/PlatformIcon.types'
 import { formatDateTime } from '@/utils/time'
 import type { Paginated, Campaign } from '@/types'
 import api, { getApiErrorDetail } from '@/utils/api'

@@ -1,4 +1,4 @@
-import type { BaseLayer } from '../../../types'
+import type { BaseLayer } from '../../../ImageEditor.types'
 
 export function renderText(ctx: CanvasRenderingContext2D, layer: BaseLayer): void {
   if (!layer.text) return

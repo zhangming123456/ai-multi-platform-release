@@ -41,7 +41,7 @@
 
 <script setup lang="ts">
 import { ref, watch } from 'vue'
-import type { BaseLayer } from '../types'
+import type { BaseLayer } from '../ImageEditor.types'
 
 const props = defineProps<{
   editLayer?: BaseLayer | null

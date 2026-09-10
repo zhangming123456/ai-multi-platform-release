@@ -245,38 +245,18 @@ import {
   IconClose,
 } from '@arco-design/web-vue/es/icon'
 import api, { getApiErrorDetail } from '@/utils/api'
+import type {
+  InheritanceData,
+  PermissionGroup,
+  PermissionGroupKey,
+  RoleInheritanceTreeEmits,
+  RoleInheritanceTreeProps,
+  RoleRef,
+} from './RoleInheritanceTree.types'
 
-interface RoleRef {
-  id: string
-  name: string
-  display_name: string
-  role_type: string
-  is_super_admin: boolean
-  is_builtin: boolean
-}
+const props = defineProps<RoleInheritanceTreeProps>()
 
-interface InheritanceNode {
-  role: RoleRef
-  direct_permissions: Record<string, string>
-  level: number
-}
-
-interface InheritanceData {
-  role: RoleRef
-  direct_permissions: Record<string, string>
-  ancestor_chain: InheritanceNode[]
-  descendant_tree: InheritanceNode[]
-}
-
-const props = defineProps<{
-  roleId: string
-  roleName: string
-  roleDisplayName: string
-}>()
-
-const emit = defineEmits<{
-  (e: 'close'): void
-}>()
+const emit = defineEmits<RoleInheritanceTreeEmits>()
 
 const loading = ref(false)
 const data = ref<InheritanceData | null>(null)
@@ -308,10 +288,8 @@ function isExpanded(nodeId: string): boolean {
   return expandedNodes.value.has(nodeId)
 }
 
-function groupedPermissions(
-  perms: Record<string, string>,
-): { resource: string; keys: { key: string; name: string }[] }[] {
-  const groups: Record<string, { key: string; name: string }[]> = {}
+function groupedPermissions(perms: Record<string, string>): PermissionGroup[] {
+  const groups: Record<string, PermissionGroupKey[]> = {}
   for (const [key, name] of Object.entries(perms)) {
     const resource = key.split(':')[0]
     if (!groups[resource]) groups[resource] = []

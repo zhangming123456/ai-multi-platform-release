@@ -1,4 +1,4 @@
-import type { BaseLayer } from '../../../types'
+import type { BaseLayer } from '../../../ImageEditor.types'
 
 export function renderDraw(ctx: CanvasRenderingContext2D, layer: BaseLayer): void {
   if (!layer.draw || layer.draw.points.length < 2) return

@@ -221,32 +221,19 @@ import {
   urlFileName,
 } from '@/composables/useUrlExtractor'
 import { isArray, isString } from 'lodash-es'
-import type { Option } from '@/components/DropdownMenu/types.ts'
+import type { Option } from '@/components/DropdownMenu/DropdownMenu.types'
+import type {
+  AttachmentFileType,
+  PendingItem,
+  DisplayItem,
+  AttachmentInputAreaProps,
+  AttachmentInputAreaEmits,
+} from './AttachmentInputArea.types'
 
 const DropdownMenu = defineAsyncComponent(() => import('./DropdownMenu/DropdownMenu.vue'))
 const ImageEditorModal = defineAsyncComponent(
   () => import('@/components/ImageEditor/ImageEditorModal.vue'),
 )
-
-type AttachmentFileType = 'image' | 'video' | 'file'
-
-interface PendingItem {
-  key: string
-  file: File
-  type: AttachmentFileType
-  name: string
-  size: number
-}
-
-interface DisplayItem {
-  key: string
-  type: AttachmentFileType
-  url?: string
-  file?: File
-  pending: boolean
-  name: string
-  size: number
-}
 
 const DEFAULT_PLACEHOLDER = '填写内容...'
 
@@ -262,67 +249,31 @@ const MAX_SIZE_BY_TYPE: Record<AttachmentFileType, number> = {
   file: 20 * 1024 * 1024,
 }
 
-const props = withDefaults(
-  defineProps<{
-    modelValue?: string
-    // 可选：改用「读取函数」提供文本。父组件模板因此不必读取文本，
-    // 逐字输入只重渲本组件，不会带动父组件整棵模板重渲；写回仍走 update:modelValue
-    getText?: () => string
-    fileList?: string[]
-    upload?: (file: File, onProgress?: (percent: number) => void) => Promise<string>
-    uploadMode?: 'auto' | 'manual'
-    fileTypes?: AttachmentFileType[]
-    maxCount?: number
-    disabled?: boolean
-    bordered?: boolean
-    compact?: boolean
-    placeholder?: string
-    hint?: string
-    maxLength?: number
-    showWordLimit?: boolean
-    minRows?: number
-    maxRows?: number
-    showTextarea?: boolean
-    showImages?: boolean
-    extractUrls?: boolean
-    accept?: string
-    enterBehavior?: 'newline' | 'send'
-    theme?: 'light' | 'dark'
-    materialPicker?: boolean
-    toolbarOptions?: any[]
-  }>(),
-  {
-    fileList: undefined,
-    uploadMode: 'manual',
-    fileTypes: () => ['image'],
-    maxCount: 0,
-    disabled: false,
-    bordered: true,
-    compact: false,
-    placeholder: DEFAULT_PLACEHOLDER,
-    hint: '',
-    maxLength: 0,
-    showWordLimit: true,
-    minRows: 2,
-    maxRows: 5,
-    showTextarea: true,
-    showImages: true,
-    extractUrls: true,
-    enterBehavior: 'newline',
-    theme: 'light',
-    materialPicker: false,
-    upload: undefined,
-    accept: undefined,
-  },
-)
+const props = withDefaults(defineProps<AttachmentInputAreaProps>(), {
+  fileList: undefined,
+  uploadMode: 'manual',
+  fileTypes: () => ['image'],
+  maxCount: 0,
+  disabled: false,
+  bordered: true,
+  compact: false,
+  placeholder: DEFAULT_PLACEHOLDER,
+  hint: '',
+  maxLength: 0,
+  showWordLimit: true,
+  minRows: 2,
+  maxRows: 5,
+  showTextarea: true,
+  showImages: true,
+  extractUrls: true,
+  enterBehavior: 'newline',
+  theme: 'light',
+  materialPicker: false,
+  upload: undefined,
+  accept: undefined,
+})
 
-const emit = defineEmits<{
-  (e: 'update:modelValue', value: string): void
-  (e: 'update:fileList', value: string[]): void
-  (e: 'enter'): void
-  (e: 'change', payload: { total: number; pending: number }): void
-  (e: 'option-click', option?: Option, index?: number): void
-}>()
+const emit = defineEmits<AttachmentInputAreaEmits>()
 
 const toolbarOptions = computed(() => {
   const options =

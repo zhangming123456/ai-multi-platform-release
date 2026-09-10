@@ -1,7 +1,12 @@
 import { ref, computed, type Ref } from 'vue'
 import type { BaseEngine } from '../engine/base/BaseEngine'
-import type { BaseLayer, EditorState, EngineCapabilities, ExportOptions } from '../types'
-import { EditorMode } from '../types'
+import type {
+  BaseLayer,
+  EditorState,
+  EngineCapabilities,
+  ExportOptions,
+} from '../ImageEditor.types'
+import { EditorMode } from '../ImageEditor.types'
 import { useHistory } from './useHistory'
 import { cropImage, filterImage, rotateImage, type CropRect, type FilterType } from '../utils/image'
 

@@ -163,7 +163,7 @@
         :role-permission-map="rolePermissionMap"
         :permission-map="permissionMap"
         :permissions="permissions"
-        @toggle-permission="(k: string, m: 'read' | 'write') => $emit('togglePermission', k, m)"
+        @toggle-permission="(k: string, m: PermMode) => $emit('togglePermission', k, m)"
         @toggle-resource-read="(r: Resource) => $emit('toggleResourceRead', r)"
         @toggle-resource-write="(r: Resource) => $emit('toggleResourceWrite', r)"
       />
@@ -174,63 +174,17 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { IconNav, IconCode, IconCheck, IconLock } from '@arco-design/web-vue/es/icon'
+import type {
+  PermMode,
+  Permission,
+  Resource,
+  ResourcePermissionCardEmits,
+  ResourcePermissionCardProps,
+} from './ResourcePermissionCard.types'
 
-interface Role {
-  id: string
-  name: string
-  display_name: string
-  description: string | null
-  role_type: string
-  is_super_admin: boolean
-  is_builtin: boolean
-}
+const props = defineProps<ResourcePermissionCardProps>()
 
-interface Resource {
-  id: string
-  key: string
-  name: string
-  description: string | null
-  parent_id: string | null
-  is_active: boolean
-  children: Resource[]
-}
-
-interface Permission {
-  id: string
-  key: string
-  operation: string
-  is_active: boolean
-  resource: {
-    id: string
-    key: string
-    name: string
-  }
-}
-
-interface RolePermission {
-  id: string
-  key: string
-  operation: string
-  resource_id: string
-  resource_key: string
-  resource_name: string
-  grant_type: 'direct' | 'inherited'
-}
-
-const props = defineProps<{
-  resource: Resource
-  depth: number
-  selectedRole: Role | null
-  rolePermissionMap: Map<string, RolePermission>
-  permissionMap: Map<string, Permission>
-  permissions: Permission[]
-}>()
-
-const emit = defineEmits<{
-  (e: 'togglePermission', key: string, mode: 'read' | 'write'): void
-  (e: 'toggleResourceRead', resource: Resource): void
-  (e: 'toggleResourceWrite', resource: Resource): void
-}>()
+const emit = defineEmits<ResourcePermissionCardEmits>()
 
 const READ_OPS = new Set(['read', 'execute'])
 const WRITE_OPS = new Set(['create', 'update', 'delete', 'approve', 'reject', 'execute'])
@@ -285,7 +239,7 @@ function descendantPermissions(): Permission[] {
   return props.permissions.filter((p) => ids.includes(p.resource.id) && p.is_active)
 }
 
-function allSelected(mode: 'read' | 'write'): boolean {
+function allSelected(mode: PermMode): boolean {
   const relevant = descendantPermissions().filter((p) =>
     mode === 'read' ? READ_OPS.has(p.operation) : WRITE_OPS.has(p.operation),
   )
@@ -293,7 +247,7 @@ function allSelected(mode: 'read' | 'write'): boolean {
   return relevant.every((p) => (mode === 'read' ? hasRead(p.key) : hasWrite(p.key)))
 }
 
-function partialSelected(mode: 'read' | 'write'): boolean {
+function partialSelected(mode: PermMode): boolean {
   const relevant = descendantPermissions().filter((p) =>
     mode === 'read' ? READ_OPS.has(p.operation) : WRITE_OPS.has(p.operation),
   )

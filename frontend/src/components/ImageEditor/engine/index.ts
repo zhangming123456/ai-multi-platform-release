@@ -1,5 +1,6 @@
-import type { BaseEngine } from './base/BaseEngine'
-import { ENGINE_TYPE, type EngineType } from '../config/engine.config'
+import type { BaseEngine } from './base/BaseEngine.types'
+import { ENGINE_TYPE } from '../config/engine.config'
+import type { EngineType } from '../config/engine.config.types'
 
 export async function createEngine(
   canvasEl: HTMLCanvasElement,
@@ -20,5 +21,5 @@ export async function createEngine(
   return engine
 }
 
-export type { BaseEngine } from './base/BaseEngine'
+export type { BaseEngine } from './base/BaseEngine.types'
 export { AbstractEngine } from './base/BaseEngine'

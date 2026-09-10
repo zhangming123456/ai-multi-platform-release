@@ -1,4 +1,4 @@
-import type { BaseLayer } from '../../../types'
+import type { BaseLayer } from '../../../ImageEditor.types'
 
 export function renderImage(
   ctx: CanvasRenderingContext2D,

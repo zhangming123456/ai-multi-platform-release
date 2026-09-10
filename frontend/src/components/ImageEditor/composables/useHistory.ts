@@ -1,5 +1,5 @@
 import { ref, toRaw, type Ref } from 'vue'
-import type { BaseLayer } from '../types'
+import type { BaseLayer } from '../ImageEditor.types'
 
 function cloneLayers(layers: BaseLayer[]): BaseLayer[] {
   return JSON.parse(JSON.stringify(toRaw(layers)))

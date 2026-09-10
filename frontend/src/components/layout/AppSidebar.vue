@@ -101,6 +101,14 @@ import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { usePermissionStore } from '@/stores/permission'
 import type { PermContext } from '@/utils/permExpression'
+import type {
+  AppSidebarProps,
+  AppSidebarEmits,
+  SidebarGroupConfig,
+  MenuEntry,
+  MenuGroup,
+  MenuItem,
+} from './AppSidebar.types'
 import {
   IconHome,
   IconFile,
@@ -134,13 +142,6 @@ const iconRegistry: Record<string, Component> = {
   edit: IconEdit,
 }
 
-interface SidebarGroupConfig {
-  name: string
-  icon: string
-  order: number
-  wrapGroup: boolean
-}
-
 const SIDEBAR_GROUPS: Record<string, SidebarGroupConfig> = {
   top: { name: '', icon: '', order: 0, wrapGroup: false },
   content: { name: '内容管理', icon: 'file', order: 1, wrapGroup: true },
@@ -152,35 +153,13 @@ const SIDEBAR_GROUPS: Record<string, SidebarGroupConfig> = {
   system: { name: '系统管理', icon: 'tool', order: 7, wrapGroup: true },
 }
 
-interface MenuEntry {
-  key: string
-  name: string
-  path: string
-  icon?: Component
-  permKey?: string
-}
-
-interface MenuGroup {
-  key: string
-  name: string
-  icon?: Component
-  children: MenuEntry[]
-}
-
-type MenuItem = MenuEntry | MenuGroup
-
 function isGroup(item: MenuItem): item is MenuGroup {
   return 'children' in item
 }
 
-defineProps<{
-  collapsed: boolean
-}>()
+defineProps<AppSidebarProps>()
 
-const emit = defineEmits<{
-  toggle: []
-  closeMobile: []
-}>()
+const emit = defineEmits<AppSidebarEmits>()
 
 const route = useRoute()
 const router = useRouter()

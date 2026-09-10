@@ -26,34 +26,16 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, unref } from 'vue'
 import { useTokenPlanStore, parseModelField } from '@/stores/tokenPlan'
+import type { ModelOption, ModelSelectProps, ModelSelectEmits } from './ModelSelect.types'
 
-export interface ModelSelectValue {
-  planId: string
-  modelId: string
-  hasVision: boolean
-}
+const props = withDefaults(defineProps<ModelSelectProps>(), {
+  modelValue: '',
+  autoSelect: true,
+  requireVision: true,
+  size: 'medium',
+})
 
-interface ModelOption {
-  key: string
-  planName: string
-  modelId: string
-  hasVision: boolean
-}
-
-const props = withDefaults(
-  defineProps<{
-    modelValue?: string
-    autoSelect?: boolean
-    requireVision?: boolean
-    size?: 'mini' | 'small' | 'medium' | 'large'
-  }>(),
-  { modelValue: '', autoSelect: true, requireVision: true, size: 'medium' },
-)
-
-const emit = defineEmits<{
-  (e: 'update:modelValue', value: string): void
-  (e: 'change', value: ModelSelectValue): void
-}>()
+const emit = defineEmits<ModelSelectEmits>()
 
 const tokenPlanStore = useTokenPlanStore()
 

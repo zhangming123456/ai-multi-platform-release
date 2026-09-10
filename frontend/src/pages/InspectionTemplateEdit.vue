@@ -749,9 +749,8 @@ import {
 } from '@arco-design/web-vue/es/icon'
 import PageHeader from '@/components/layout/PageHeader.vue'
 import AttachmentInputArea from '@/components/AttachmentInputArea.vue'
-import AITemplateItemGenerator, {
-  type AIGeneratedItem,
-} from '@/components/AITemplateItemGenerator.vue'
+import AITemplateItemGenerator from '@/components/AITemplateItemGenerator.vue'
+import type { AIGeneratedItem } from '@/components/AITemplateItemGenerator.types'
 import { uploadImageFile } from '@/composables/useFileUpload'
 import type { InspectionTemplate, InspectionMaterial, Paginated } from '@/types'
 import api, { getApiErrorDetail } from '@/utils/api'

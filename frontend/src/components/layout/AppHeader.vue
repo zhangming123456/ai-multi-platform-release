@@ -100,7 +100,7 @@
             :bordered="false"
             class="w-full"
             @change="
-              (value: string | number | boolean | Record<string, any> | undefined) => {
+              (value: SelectChangeValue) => {
                 if (typeof value === 'string') switchRegion(value)
               }
             "
@@ -129,21 +129,23 @@ import { useRoute } from 'vue-router'
 import { IconMenuFold, IconMenuUnfold, IconMenu, IconLanguage } from '@arco-design/web-vue/es/icon'
 import { useRegionStore } from '@/stores/region'
 import NotificationBell from '@/components/NotificationBell.vue'
+import type {
+  AppHeaderProps,
+  AppHeaderEmits,
+  BreadcrumbItem,
+  SelectChangeValue,
+} from './AppHeader.types'
 
-defineProps<{
-  collapsed: boolean
-}>()
+defineProps<AppHeaderProps>()
 
-const emit = defineEmits<{
-  toggleSidebar: []
-}>()
+const emit = defineEmits<AppHeaderEmits>()
 
 const route = useRoute()
 const { selectedTz, regions, switchRegion } = useRegionStore()
 
 // 面包屑标题直接同步路由 meta.title，避免静态映射与路由配置不一致
 const breadcrumbs = computed(() => {
-  const items: { label: string; path: string }[] = [{ label: 'Matrix', path: '/' }]
+  const items: BreadcrumbItem[] = [{ label: 'Matrix', path: '/' }]
   if (route.path !== '/') {
     const title = (route.meta.title as string | undefined) || '页面'
     items.push({ label: title, path: route.path })

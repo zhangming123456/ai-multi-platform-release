@@ -50,17 +50,15 @@
 <script setup lang="ts">
 import { onUnmounted, ref, watch } from 'vue'
 import { IconCode, IconDelete } from '@arco-design/web-vue/es/icon'
+import type {
+  LogLevel,
+  ContentLogTerminalProps,
+  ContentLogTerminalEmits,
+} from './ContentLogTerminal.types'
 
-type LogLevel = 'info' | 'req' | 'ok' | 'err'
+const props = defineProps<ContentLogTerminalProps>()
 
-const props = defineProps<{
-  logs: { id: string; time: string; level: LogLevel; message: string }[]
-  isGenerating: boolean
-}>()
-
-const emit = defineEmits<{
-  (e: 'clear'): void
-}>()
+const emit = defineEmits<ContentLogTerminalEmits>()
 
 const panelEl = ref<HTMLElement | null>(null)
 

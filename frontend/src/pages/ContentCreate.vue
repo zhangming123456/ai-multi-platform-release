@@ -535,7 +535,10 @@ import { ref, computed, reactive, onMounted, onUnmounted, watch, unref, h } from
 import { useRouter } from 'vue-router'
 import { Message } from '@arco-design/web-vue'
 import type { FormInstance } from '@arco-design/web-vue'
-import { type DropdownMenuOption, type DropdownMenuOptions } from '@/components/DropdownMenu/types'
+import {
+  type DropdownMenuOption,
+  type DropdownMenuOptions,
+} from '@/components/DropdownMenu/DropdownMenu.types'
 
 import {
   IconCopy,
@@ -561,7 +564,7 @@ import { urlFileName } from '@/composables/useUrlExtractor'
 import api, { getApiErrorDetail } from '@/utils/api'
 import { formatDateTime } from '@/utils/time'
 import type { Campaign, Material, Paginated } from '@/types'
-import type { PlatformIconType } from '@/components/shared/PlatformIcon.ts'
+import type { PlatformIconType } from '@/components/shared/PlatformIcon.types'
 import { debounce, isString } from 'lodash-es'
 
 const router = useRouter()

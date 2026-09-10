@@ -1,4 +1,4 @@
-import type { BaseLayer } from '../../types'
+import type { BaseLayer } from '../../ImageEditor.types'
 
 export class LayerManager {
   private layers: Map<string, BaseLayer> = new Map()

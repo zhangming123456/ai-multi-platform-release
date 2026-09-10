@@ -4,9 +4,8 @@ import {
   Path as FabricPath,
   type FabricObject,
 } from 'fabric'
-import type { BaseLayer } from '../../types'
-
-type TaggedObject = FabricObject & { dataLayerType?: BaseLayer['type']; dataSrc?: string }
+import type { BaseLayer } from '../../ImageEditor.types'
+import type { TaggedObject } from './FabricAdapter.types'
 
 function tag(obj: FabricObject, layer: BaseLayer): void {
   const tagged = obj as TaggedObject

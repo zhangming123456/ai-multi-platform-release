@@ -334,3 +334,73 @@ const sidebarRoutes = router.getRoutes().filter((r) => r.meta.sidebarType && r.m
   - `max-width: 480px`：手机端组件尺寸缩减（按钮/输入/卡片/模态/表单/标签等）
   - `max-width: 248px`：超窄屏（侧边栏折叠态）精细化字号/间距调整（覆盖几乎所有 Arco 组件）
 - **基础样式**：`-apple-system` 字体栈、`box-sizing: border-box`、自定义滚动条、`::selection` 选区配色
+
+## 类型定义规范
+
+**所有 TypeScript 类型声明必须抽取到独立的类型文件中，禁止在 `.vue` / `.ts` 逻辑文件内联声明。**
+
+### 命名与放置
+
+- 类型文件与所服务的模块**同目录**，文件名为「模块主文件名 + `.types.ts`」，大小写与主文件保持一致
+- 一个模块对应一个类型文件；仅跨模块共用的类型才放全局 `src/types/index.ts`
+
+```
+components/DropdownMenu/
+├── DropdownMenu.vue
+└── DropdownMenu.types.ts        ← 该组件的全部类型
+
+pages/
+├── ContentCreate.vue
+└── ContentCreate.types.ts
+```
+
+### 必须抽取的内容
+
+- 组件 `Props` / `Emits` / 插槽（Slots）类型，禁止在 `defineProps<{ ... }>()` / `defineEmits<{ ... }>()` 中内联对象字面量类型
+- 业务数据模型，以及接口请求 / 响应类型
+- 联合类型、字面量类型、泛型类型与类型守卫签名
+- 用于类型推导的 `as const` 常量映射
+
+### 无需抽取的内容
+
+- 直接使用内置 / 第三方 / 已抽取类型的**类型标注**与泛型实参，如 `ref<string[]>()`、`Record<string, number>`、`computed<Foo>(...)`
+- 函数体内的局部推导（不含显式自定义类型声明）
+- 第三方库类型扩展（`declare module 'xxx'`），放 `src/env.d.ts` 或 `src/types/*.d.ts`
+
+### 约束
+
+- 项目开启 `erasableSyntaxOnly`，**禁止使用 `enum` / `namespace`**；枚举语义统一用「字面量联合类型 + `as const` 常量对象」表达
+- 纯类型导入统一使用 `import type { ... } from './Xxx.types'`，避免引入运行时副作用与循环依赖
+- 类型文件只包含类型与常量声明，不包含副作用逻辑
+
+### 示例
+
+```ts
+// ContentCreate.types.ts
+export interface VariantItem {
+  title: string
+  body: string
+  hashtags: string[]
+}
+
+export interface CreateForm {
+  topic: string
+  platforms: string[]
+}
+
+export type LogLevel = 'req' | 'ok' | 'err' | 'info'
+```
+
+```ts
+// ContentCreate.vue
+import type { VariantItem, CreateForm, LogLevel } from './ContentCreate.types'
+```
+
+### 自查清单
+
+- 新增 / 修改的 `.vue`、`.ts` 中是否残留 `interface` / `type` 声明？
+- 组件 `Props` / `Emits` 是否已改用 `.types.ts` 中的具名类型？
+- 类型文件是否为 `<模块名>.types.ts` 且与模块同目录？
+- `npx vue-tsc -b` 是否通过？
+
+> 本规范自生效起适用于**新增与修改**的代码；存量内联类型暂不强制整改。

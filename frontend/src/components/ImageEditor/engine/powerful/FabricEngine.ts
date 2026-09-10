@@ -1,6 +1,6 @@
 import { Canvas, Point, Path as FabricPath, PencilBrush, type FabricObject } from 'fabric'
 import { AbstractEngine } from '../base/BaseEngine'
-import type { BaseLayer, EditorMode, EngineCapabilities, Viewport } from '../../types'
+import type { BaseLayer, EditorMode, EngineCapabilities, Viewport } from '../../ImageEditor.types'
 import { toFabricObject } from './FabricAdapter'
 import { bindFabricEvents } from './FabricEvent'
 

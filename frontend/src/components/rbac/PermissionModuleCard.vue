@@ -66,33 +66,14 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import type {
+  ModuleItem,
+  PermissionModuleCardEmits,
+  PermissionModuleCardProps,
+} from './PermissionModuleCard.types'
 
-interface ModuleItem {
-  id: string
-  title: string
-  subtitle: string
-  readKey?: string
-  writeKeys: string[]
-}
-
-interface Props {
-  title: string
-  count: number
-  items: ModuleItem[]
-  effectiveKeys: Set<string>
-  inheritedKeys: Set<string>
-  readonly?: boolean
-}
-
-const props = defineProps<Props>()
-const emit = defineEmits<{
-  (e: 'toggle-read', key: string): void
-  (e: 'toggle-write', keys: string[]): void
-  (e: 'select-all-read'): void
-  (e: 'deselect-all-read', keys: string[]): void
-  (e: 'select-all-write'): void
-  (e: 'deselect-all-write', keys: string[]): void
-}>()
+const props = defineProps<PermissionModuleCardProps>()
+const emit = defineEmits<PermissionModuleCardEmits>()
 
 function hasRead(item: ModuleItem): boolean {
   if (!item.readKey) return false

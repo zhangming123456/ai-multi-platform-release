@@ -24,17 +24,10 @@
 </template>
 
 <script setup lang="ts">
-import type { Component } from 'vue'
 import { IconArrowRise, IconArrowFall } from '@arco-design/web-vue/es/icon'
+import type { StatCardProps } from './StatCard.types'
 
-defineProps<{
-  title: string
-  value: number
-  trend: string
-  icon: Component
-  color: string
-  delay?: number
-}>()
+defineProps<StatCardProps>()
 </script>
 
 <style scoped lang="scss">

@@ -1,6 +1,6 @@
 import { AbstractEngine } from '../base/BaseEngine'
-import type { BaseLayer, EngineCapabilities, Viewport } from '../../types'
-import { EditorMode } from '../../types'
+import type { BaseLayer, EngineCapabilities, Viewport } from '../../ImageEditor.types'
+import { EditorMode } from '../../ImageEditor.types'
 import { LayerManager } from './LayerManager'
 import { renderImage, loadImage } from './render/renderImage'
 import { renderText } from './render/renderText'

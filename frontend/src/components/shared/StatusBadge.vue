@@ -12,23 +12,9 @@
 </template>
 
 <script setup lang="ts">
-defineProps<{
-  status:
-    | 'active'
-    | 'inactive'
-    | 'error'
-    | 'pending'
-    | 'publishing'
-    | 'published'
-    | 'failed'
-    | 'draft'
-    | 'review'
-    | 'approved'
-    | 'ready'
-    | 'pending_review'
-    | 'rejected'
-    | 'archived'
-}>()
+import type { StatusBadgeProps } from './StatusBadge.types'
+
+defineProps<StatusBadgeProps>()
 
 const statusColorMap: Record<string, string> = {
   active: 'green',
