@@ -54,6 +54,15 @@ func registerRoutes() {
 	dashboard := &controllers.DashboardController{}
 	web.Router("/api/dashboard/stats", dashboard, "get:Stats")
 
+	holidays := &controllers.HolidaysController{}
+	web.Router("/api/holidays", holidays, "get:List")
+
+	holidaySources := &controllers.HolidaySourcesController{}
+	web.Router("/api/holiday-sources", holidaySources, "get:List;post:Create")
+	web.Router("/api/holiday-sources/refresh-all", holidaySources, "post:RefreshAll")
+	web.Router("/api/holiday-sources/:id", holidaySources, "put:Update;delete:Delete")
+	web.Router("/api/holiday-sources/:id/refresh", holidaySources, "post:Refresh")
+
 	modelConfigs := &controllers.ModelConfigsController{}
 	web.Router("/api/model-configs/", modelConfigs, "get:List;post:Create")
 	web.Router("/api/model-configs/reorder", modelConfigs, "put:Reorder")
@@ -218,11 +227,15 @@ func main() {
 	if err := services.SeedInspectionMaterialsBulk(); err != nil {
 		log.Fatalf("批量初始化检查项素材失败: %v", err)
 	}
+	if err := services.EnsureDefaultHolidaySource(); err != nil {
+		log.Printf("初始化默认节假日订阅源失败: %v", err)
+	}
 
 	web.SetStaticPath("/uploads", services.GetUploadDir())
 	web.InsertFilter("*", web.BeforeRouter, corsFilter)
 	web.InsertFilter("*", web.BeforeRouter, middleware.AuthRequired)
 
 	registerRoutes()
+	services.StartHolidayRefreshScheduler()
 	web.Run()
 }

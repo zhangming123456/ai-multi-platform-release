@@ -41,5 +41,7 @@ func InitModels() {
 		new(InspectionTaskLog),
 		new(StyleTemplate),
 		new(PromptTemplate),
+		new(HolidaySource),
+		new(HolidayEvent),
 	)
 }

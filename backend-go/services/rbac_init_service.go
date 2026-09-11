@@ -106,6 +106,8 @@ var RBACResources = []resourceDef{
 	{Key: "campaign:create:write", Name: "创建活动", Description: "创建新的营销活动"},
 	{Key: "campaign:update:write", Name: "编辑活动", Description: "编辑活动信息"},
 	{Key: "campaign:delete:write", Name: "删除活动", Description: "删除或归档营销活动"},
+	{Key: "holiday_source:read", Name: "日历订阅源", Description: "查看节假日日历订阅源列表"},
+	{Key: "holiday_source:write", Name: "维护日历订阅源", Description: "新增、编辑、删除日历订阅源并手动刷新"},
 }
 
 func AllPermissionKeys() []string {
@@ -157,6 +159,7 @@ var defaultRolePermissions = map[string][]string{
 		"material:update:write", "material:delete:write",
 		"campaign:read", "campaign:create:write",
 		"campaign:update:write", "campaign:delete:write",
+		"holiday_source:read", "holiday_source:write",
 	},
 	"operator": []string{
 		"dashboard:read", "platforms:read", "content:read", "publish:read",

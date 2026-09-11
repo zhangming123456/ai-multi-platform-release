@@ -151,6 +151,7 @@ const SIDEBAR_GROUPS: Record<string, SidebarGroupConfig> = {
   platforms: { name: '平台管理', icon: 'apps', order: 5, wrapGroup: false },
   rbac: { name: '权限管理', icon: 'safe', order: 6, wrapGroup: true },
   system: { name: '系统管理', icon: 'tool', order: 7, wrapGroup: true },
+  dev: { name: '开发', icon: 'code', order: 8, wrapGroup: true },
 }
 
 function isGroup(item: MenuItem): item is MenuGroup {

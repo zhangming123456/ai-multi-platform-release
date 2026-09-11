@@ -7,7 +7,15 @@ import { usePermissionStore } from '@/stores/permission'
 declare module 'vue-router' {
   interface RouteMeta {
     sidebarType?:
-      'top' | 'content' | 'review' | 'inspection' | 'platforms' | 'rbac' | 'system' | 'material'
+      | 'top'
+      | 'content'
+      | 'review'
+      | 'inspection'
+      | 'platforms'
+      | 'rbac'
+      | 'system'
+      | 'material'
+      | 'dev'
     sidebarOrder?: number
     icon?: string
   }
@@ -470,6 +478,30 @@ const router = createRouter({
             sidebarType: 'system',
             sidebarOrder: 3,
             icon: 'tool',
+          },
+        },
+        {
+          path: 'settings/holiday-sources',
+          name: 'HolidaySources',
+          component: () => import('@/pages/HolidaySources.vue'),
+          meta: {
+            title: '日历订阅源',
+            permKey: 'holiday_source:read',
+            sidebarType: 'system',
+            sidebarOrder: 4,
+            icon: 'tool',
+          },
+        },
+        {
+          path: 'dev/condition-test',
+          name: 'ConditionTest',
+          component: () => import('@/pages/ConditionTest.vue'),
+          meta: {
+            title: '条件组件测试',
+            skipPermCheck: true,
+            sidebarType: 'dev',
+            sidebarOrder: 0,
+            icon: 'code',
           },
         },
       ],
