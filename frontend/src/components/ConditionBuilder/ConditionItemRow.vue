@@ -16,6 +16,11 @@
         :filter-option="filterFieldOption"
         :strict="false"
         :disabled="disabled"
+        :trigger-props="{
+          contentStyle: {
+            minWidth: 'max-content',
+          },
+        }"
         allow-clear
         placeholder="输入变量名"
         @update:model-value="onFieldChange"
@@ -31,6 +36,15 @@
               <span class="cir-suggest__type">{{
                 valueTypeLabel(suggestType(optionValue(data)))
               }}</span>
+              <span v-if="fieldWarning(optionValue(data))" class="cir-suggest__warn">
+                {{ fieldWarning(optionValue(data)) }}
+              </span>
+              <span v-if="groupLabelOf(optionValue(data))" class="cir-suggest__group">
+                {{ groupLabelOf(optionValue(data)) }}
+              </span>
+              <span v-if="fieldQueryable(optionValue(data)) === false" class="cir-suggest__demo">
+                不可查询
+              </span>
               <span v-if="fieldDisabled(optionValue(data))" class="cir-suggest__lock">禁用</span>
             </div>
             <div v-if="fieldHint(optionValue(data))" class="cir-suggest__desc">
@@ -40,11 +54,34 @@
         </template>
       </a-auto-complete>
 
+      <a-tooltip
+        v-if="fieldDemo"
+        content="该变量暂无对应真实列，生成的 SQL 会跳过此条件"
+        position="tr"
+      >
+        <span class="cir-demo">演示</span>
+      </a-tooltip>
+
+      <a-tooltip
+        v-if="fieldInactive"
+        content="该变量不属于当前可用变量组，已保留原配置"
+        position="tr"
+      >
+        <span class="cir-stale">
+          <IconExclamationCircle :size="14" />
+        </span>
+      </a-tooltip>
+
       <a-select
         class="cre-form__control cir-operator"
         :model-value="item.operator"
         :options="operatorOptions"
         :disabled="disabled"
+        :trigger-props="{
+          contentStyle: {
+            minWidth: 'max-content',
+          },
+        }"
         @update:model-value="onOperatorChange"
       />
 
@@ -63,6 +100,18 @@
         <span class="cir-warn">
           <IconExclamationCircle :size="14" />
         </span>
+      </a-tooltip>
+
+      <a-tooltip content="把当前条件变成条件组，并自动追加一个空条件（且）" position="tr">
+        <a-button
+          class="cir-wrap"
+          type="text"
+          size="mini"
+          :disabled="disabled"
+          @click="wrapToGroup"
+        >
+          + 并且满足
+        </a-button>
       </a-tooltip>
 
       <a-button
@@ -85,6 +134,7 @@ import { Message } from '@arco-design/web-vue'
 import type { SelectOptionData } from '@arco-design/web-vue'
 import { IconDelete, IconExclamationCircle } from '@arco-design/web-vue/es/icon'
 import type {
+  ConditionFieldGroup,
   ConditionFieldOption,
   ConditionItem,
   ConditionItemRowEmits,
@@ -97,7 +147,9 @@ import ConditionConnector from './ConditionConnector.vue'
 import ConditionValueControl from './ConditionValueControl.vue'
 import {
   CONDITION_BOOLEAN_OPTIONS,
+  CONDITION_OPERATORS,
   CONDITION_VALUE_TYPE_LABELS,
+  conditionFieldGroupMap,
   conditionFieldLabel,
   conditionOperatorsForType,
   conditionOperatorNeedsValue,
@@ -106,12 +158,15 @@ import {
   resolveConditionOperator,
 } from './conditionOperator'
 import {
+  conditionRuleFieldEffectMap,
   conditionRuleFieldLockMap,
   conditionRuleValueDisabled,
   conditionRuleValueLimits,
+  conditionRuleWarning,
 } from './conditionRules'
 
 const props = withDefaults(defineProps<ConditionItemRowProps>(), {
+  fieldGroups: () => [],
   disabled: false,
   logicEditable: true,
 })
@@ -120,6 +175,14 @@ const emit = defineEmits<ConditionItemRowEmits>()
 
 const field = computed<ConditionFieldOption | undefined>(() =>
   props.fieldOptions.find((option) => option.value === props.item.field),
+)
+
+const fieldInactive = computed(() => Boolean(props.item.field) && !field.value)
+
+const fieldDemo = computed(() => field.value?.queryable === false)
+
+const fieldGroupMap = computed<Map<string, ConditionFieldGroup>>(() =>
+  conditionFieldGroupMap(props.fieldGroups),
 )
 
 const fieldType = computed<ConditionValueType>(() => resolveConditionFieldType(field.value))
@@ -132,6 +195,13 @@ const optionValues = computed<string[]>(() => {
 })
 
 const fieldLocks = computed(() => conditionRuleFieldLockMap(props.ruleContext))
+
+const fieldEffects = computed(() => conditionRuleFieldEffectMap(props.ruleContext))
+
+function fieldWarning(fieldValue: string): string {
+  const effect = fieldEffects.value.get(fieldValue)
+  return effect ? conditionRuleWarning(effect.effect) : ''
+}
 
 const valueLimits = computed(() => conditionRuleValueLimits(props.ruleContext, props.item.field))
 
@@ -159,12 +229,12 @@ function valueDisabled(value: string): boolean {
   return conditionRuleValueDisabled(valueLimits.value, value, fieldOf(props.item.field))
 }
 
-const operatorOptions = computed<SelectOptionData[]>(() =>
-  conditionOperatorsForType(fieldType.value).map((operator) => ({
-    value: operator.value,
-    label: operator.label,
-  })),
-)
+const operatorOptions = computed<SelectOptionData[]>(() => {
+  const operators = fieldInactive.value
+    ? CONDITION_OPERATORS
+    : conditionOperatorsForType(fieldType.value)
+  return operators.map((operator) => ({ value: operator.value, label: operator.label }))
+})
 
 const disabledValues = computed<string[]>(() =>
   optionValues.value.filter((value) => valueDisabled(value)),
@@ -219,6 +289,10 @@ function removeSelf(): void {
   emit('command', { type: 'remove-item', path: props.path, index: props.index })
 }
 
+function wrapToGroup(): void {
+  emit('command', { type: 'wrap-item', path: props.path, index: props.index })
+}
+
 function fieldOf(fieldValue: string): ConditionFieldOption | undefined {
   return props.fieldOptions.find((option) => option.value === fieldValue)
 }
@@ -230,6 +304,14 @@ function valueTypeLabel(type?: ConditionValueType): string {
 function suggestLabel(fieldValue: string): string {
   const option = fieldOf(fieldValue)
   return option ? conditionFieldLabel(option) : fieldValue
+}
+
+function groupLabelOf(fieldValue: string): string {
+  return fieldGroupMap.value.get(fieldValue)?.label ?? ''
+}
+
+function fieldQueryable(fieldValue: string): boolean | undefined {
+  return fieldOf(fieldValue)?.queryable
 }
 
 function suggestType(fieldValue: string): ConditionValueType | undefined {
@@ -277,6 +359,17 @@ function filterFieldOption(inputValue: string, option: SelectOptionData): boolea
   flex: 0 0 auto;
 }
 
+.cir-wrap {
+  flex: 0 0 auto;
+  padding: 0 6px;
+  font-size: 12px;
+  color: #5856d6;
+}
+
+.cir-wrap:hover {
+  color: #007aff;
+}
+
 .cir-suggest {
   display: flex;
   flex-direction: column;
@@ -308,6 +401,30 @@ function filterFieldOption(inputValue: string, option: SelectOptionData): boolea
   padding: 1px 6px;
 }
 
+.cir-suggest__group {
+  font-size: 11px;
+  color: #5856d6;
+  background: rgba(88, 86, 214, 0.1);
+  border-radius: 4px;
+  padding: 1px 6px;
+}
+
+.cir-suggest__warn {
+  font-size: 11px;
+  color: #d46b08;
+  background: rgba(255, 149, 0, 0.16);
+  border-radius: 4px;
+  padding: 1px 6px;
+}
+
+.cir-suggest__demo {
+  font-size: 11px;
+  color: #b7791f;
+  background: rgba(255, 193, 7, 0.16);
+  border-radius: 4px;
+  padding: 1px 6px;
+}
+
 .cir-suggest__desc {
   font-size: 11px;
   color: #86868b;
@@ -329,6 +446,24 @@ function filterFieldOption(inputValue: string, option: SelectOptionData): boolea
   display: inline-flex;
   align-items: center;
   color: #ff9500;
+  cursor: help;
+}
+
+.cir-stale {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  color: #ff9500;
+  cursor: help;
+}
+
+.cir-demo {
+  flex: 0 0 auto;
+  font-size: 11px;
+  color: #b7791f;
+  background: rgba(255, 193, 7, 0.16);
+  border-radius: 4px;
+  padding: 1px 6px;
   cursor: help;
 }
 </style>

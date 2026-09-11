@@ -1,8 +1,10 @@
 <template>
-  <div class="cge" :class="isRoot ? 'cge--root' : 'cge--nested'">
-    <div class="cge-header">
+  <div class="cge" :class="containerClass">
+    <div v-if="!flat" class="cge-header">
       <span v-if="isRoot" class="cge-header__label">条件组合</span>
-      <span v-else class="cge-header__badge">条件组</span>
+      <span v-else class="cge-header__badge" :class="{ 'cge-header__badge--scoped': lockGroup }">
+        {{ groupTitle || '条件组' }}
+      </span>
 
       <span v-if="isRoot" class="cge-header__hint">
         每行左侧可切换 且 / 或（且 优先级高于 或）
@@ -11,6 +13,9 @@
       <div class="cge-header__spacer" />
 
       <slot v-if="isRoot" name="header-actions" />
+      <span v-else-if="lockGroup" class="cge-header__lock">
+        {{ fieldOptions.length }} 个可用变量
+      </span>
       <template v-else>
         <a-button type="text" size="mini" class="cge-header__action" @click="requestUngroup">
           {{ ungroupText }}
@@ -27,21 +32,74 @@
       </template>
     </div>
 
-    <div class="cge-body" :class="{ 'cge-body--connected': group.children.length > 1 }">
-      <template v-for="(child, index) in group.children" :key="child.id">
-        <div v-if="isConditionGroup(child)" class="cge-node">
+    <div class="cge-body" :class="{ 'cge-body--connected': renderNodes.length > 1 }">
+      <template v-for="node in renderNodes" :key="node.child.id">
+        <div v-if="node.kind === 'scoped'" class="cge-node cge-node--scoped">
           <ConditionConnector
-            :index="index"
-            :logic="child.logic"
+            :index="node.index"
+            :logic="node.child.logic"
             :disabled="disabled"
             :editable="logicEditable"
-            @update:logic="onNodeLogicChange(index, $event)"
+            @update:logic="onNodeLogicChange(node.index, $event)"
           />
           <ConditionGroupEditor
-            :group="asConditionGroup(child)"
-            :path="childPath(index)"
+            :group="asConditionGroup(node.child)"
+            :path="childPath(node.index)"
+            :depth="depth + 1"
+            :field-options="node.scoped?.fields ?? []"
+            :field-groups="node.scoped ? [node.scoped] : []"
+            :scoped-groups="[]"
+            :group-title="node.scoped?.label ?? ''"
+            :lock-group="true"
+            :rule-context="ruleContext"
+            :disabled="disabled"
+            :logic-editable="logicEditable"
+            :max-depth="maxDepth"
+            :max-items="maxItems"
+            :add-text="addText"
+            :add-group-text="addGroupText"
+            :clear-text="clearText"
+            :empty-text="emptyText"
+            :ungroup-text="ungroupText"
+            @command="emitCommand"
+          />
+        </div>
+        <ConditionGroupEditor
+          v-else-if="node.kind === 'flat'"
+          :group="asConditionGroup(node.child)"
+          :path="childPath(node.index)"
+          :depth="depth + 1"
+          :field-options="node.scoped?.fields ?? []"
+          :field-groups="node.scoped ? [node.scoped] : []"
+          :scoped-groups="[]"
+          :flat="true"
+          :rule-context="ruleContext"
+          :disabled="disabled"
+          :logic-editable="logicEditable"
+          :max-depth="maxDepth"
+          :max-items="maxItems"
+          :add-text="addText"
+          :add-group-text="addGroupText"
+          :clear-text="clearText"
+          :empty-text="emptyText"
+          :ungroup-text="ungroupText"
+          @command="emitCommand"
+        />
+        <div v-else-if="node.kind === 'group'" class="cge-node">
+          <ConditionConnector
+            :index="node.index"
+            :logic="node.child.logic"
+            :disabled="disabled"
+            :editable="logicEditable"
+            @update:logic="onNodeLogicChange(node.index, $event)"
+          />
+          <ConditionGroupEditor
+            :group="asConditionGroup(node.child)"
+            :path="childPath(node.index)"
             :depth="depth + 1"
             :field-options="fieldOptions"
+            :field-groups="fieldGroups"
+            :scoped-groups="[]"
             :rule-context="ruleContext"
             :disabled="disabled"
             :logic-editable="logicEditable"
@@ -57,10 +115,11 @@
         </div>
         <ConditionItemRow
           v-else
-          :item="asConditionItem(child)"
+          :item="asConditionItem(node.child)"
           :path="path"
-          :index="index"
+          :index="node.index"
           :field-options="fieldOptions"
+          :field-groups="fieldGroups"
           :rule-context="ruleContext"
           :disabled="disabled"
           :logic-editable="logicEditable"
@@ -68,11 +127,12 @@
         />
       </template>
 
-      <div v-if="!group.children.length" class="cge-empty">{{ emptyText }}</div>
+      <div v-if="!renderNodes.length" class="cge-empty">{{ emptyText }}</div>
     </div>
 
-    <div class="cge-footer">
+    <div v-if="showFooter" class="cge-footer">
       <a-button
+        v-if="showAddItem"
         type="text"
         size="small"
         class="cge-footer__add"
@@ -83,7 +143,7 @@
         {{ addText }}
       </a-button>
       <a-button
-        v-if="canAddGroup"
+        v-if="showAddGroup && canAddGroup"
         type="text"
         size="small"
         class="cge-footer__add-group"
@@ -95,7 +155,7 @@
       </a-button>
       <div class="cge-footer__spacer" />
       <a-button
-        v-if="isRoot && group.children.length"
+        v-if="showClear"
         type="text"
         size="small"
         class="cge-footer__clear"
@@ -115,6 +175,7 @@ import ConditionConnector from './ConditionConnector.vue'
 import ConditionItemRow from './ConditionItemRow.vue'
 import type {
   ConditionCommand,
+  ConditionFieldGroup,
   ConditionGroup,
   ConditionGroupEditorEmits,
   ConditionGroupEditorProps,
@@ -130,6 +191,10 @@ const props = withDefaults(defineProps<ConditionGroupEditorProps>(), {
   maxDepth: CONDITION_MAX_DEPTH,
   maxItems: 0,
   isRoot: false,
+  scopedGroups: () => [],
+  groupTitle: '',
+  lockGroup: false,
+  flat: false,
   addText: '添加条件',
   addGroupText: '添加子条件组',
   clearText: '清空',
@@ -139,8 +204,70 @@ const props = withDefaults(defineProps<ConditionGroupEditorProps>(), {
 
 const emit = defineEmits<ConditionGroupEditorEmits>()
 
-const canAddGroup = computed(() => props.depth < props.maxDepth)
+interface RenderNode {
+  child: ConditionNode
+  index: number
+  kind: 'item' | 'group' | 'scoped' | 'flat'
+  scoped?: ConditionFieldGroup
+}
 
+const containerClass = computed<string[]>(() => {
+  if (props.isRoot) return ['cge--root']
+  if (props.flat) return ['cge--flat']
+  return props.lockGroup ? ['cge--nested', 'cge--scoped'] : ['cge--nested']
+})
+
+const scopedIndex = computed<Map<string, ConditionFieldGroup>>(() => {
+  const map = new Map<string, ConditionFieldGroup>()
+  for (const group of props.scopedGroups) map.set(group.key, group)
+  return map
+})
+
+const activeScopedCount = computed(
+  () => props.scopedGroups.filter((group) => group.active !== false).length,
+)
+
+const flatScoped = computed(() => activeScopedCount.value === 1)
+
+const renderNodes = computed<RenderNode[]>(() => {
+  const nodes: RenderNode[] = []
+  props.group.children.forEach((child, index) => {
+    if (!isConditionGroup(child)) {
+      nodes.push({ child, index, kind: 'item' })
+      return
+    }
+    const scoped = child.scope ? scopedIndex.value.get(child.scope) : undefined
+    if (scoped) {
+      if (scoped.active === false) return
+      nodes.push({ child, index, kind: flatScoped.value ? 'flat' : 'scoped', scoped })
+      return
+    }
+    nodes.push({ child, index, kind: 'group' })
+  })
+  return nodes
+})
+
+const scopedRenderCount = computed(
+  () => renderNodes.value.filter((node) => node.kind === 'scoped').length,
+)
+
+const scopedFeatureEnabled = computed(() => props.scopedGroups.length > 0)
+
+const showAddItem = computed(() => !(props.isRoot && scopedRenderCount.value >= 2))
+
+const showAddGroup = computed(
+  () => showAddItem.value && !(props.isRoot && scopedFeatureEnabled.value),
+)
+
+const showClear = computed(() =>
+  props.isRoot
+    ? scopedRenderCount.value === 0 && props.group.children.length > 0
+    : props.lockGroup && props.group.children.length > 0,
+)
+
+const showFooter = computed(() => !props.flat && (showAddItem.value || showClear.value))
+
+const canAddGroup = computed(() => props.depth < props.maxDepth)
 const atMaxItems = computed(
   () => props.maxItems > 0 && props.group.children.length >= props.maxItems,
 )
@@ -190,6 +317,15 @@ function requestUngroup(): void {
   background: #fbfbfd;
 }
 
+.cge--scoped {
+  border-left-color: #00b96b;
+  background: #f7fcf9;
+}
+
+.cge--flat {
+  min-width: 0;
+}
+
 .cge-header {
   display: flex;
   align-items: center;
@@ -210,6 +346,16 @@ function requestUngroup(): void {
   background: rgba(88, 86, 214, 0.1);
   border-radius: 6px;
   padding: 2px 8px;
+}
+
+.cge-header__badge--scoped {
+  color: #0f766e;
+  background: rgba(0, 185, 107, 0.12);
+}
+
+.cge-header__lock {
+  font-size: 11px;
+  color: #86868b;
 }
 
 .cge-header__hint {

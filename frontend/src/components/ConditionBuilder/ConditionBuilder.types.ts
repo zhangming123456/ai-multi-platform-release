@@ -19,6 +19,15 @@ export interface ConditionFieldOption {
   type?: ConditionValueType
   description?: string
   options?: ConditionFieldOptionValue[]
+  queryable?: boolean
+}
+
+export interface ConditionFieldGroup {
+  key: string
+  label: string
+  description?: string
+  active?: boolean
+  fields: ConditionFieldOption[]
 }
 
 export interface ConditionItem {
@@ -34,6 +43,7 @@ export interface ConditionGroup {
   id: string
   nodeType: 'group'
   logic: ConditionLogic
+  scope?: string
   children: ConditionNode[]
 }
 
@@ -67,6 +77,29 @@ export interface ConditionSqlResult {
   hasConditions: boolean
   where: string
   params: unknown[]
+  skipped: string[]
+}
+
+export interface ConditionSqlColumnMap {
+  variable: string
+  table: string
+  column: string
+  queryable: boolean
+}
+
+export interface ConditionSqlOptions {
+  table?: string
+  columns?: string[]
+  orderBy?: string
+  limit?: number
+  columnMap?: ConditionSqlColumnMap[]
+}
+
+export interface ConditionSqlStatement {
+  hasConditions: boolean
+  sql: string
+  params: unknown[]
+  skipped: string[]
 }
 
 export type ConditionCommand =
@@ -78,10 +111,14 @@ export type ConditionCommand =
   | { type: 'ungroup-group'; path: number[] }
   | { type: 'update-item'; path: number[]; index: number; patch: Partial<ConditionItem> }
   | { type: 'remove-item'; path: number[]; index: number }
+  | { type: 'wrap-item'; path: number[]; index: number }
 
 export interface ConditionBuilderProps {
   modelValue?: ConditionGroup
   fieldOptions?: ConditionFieldOption[]
+  fieldGroups?: ConditionFieldGroup[]
+  scopedGroups?: ConditionFieldGroup[]
+  ruleFieldOptions?: ConditionFieldOption[]
   rules?: ConditionRule[]
   disabled?: boolean
   maxItems?: number
@@ -104,6 +141,11 @@ export interface ConditionGroupEditorProps {
   path: number[]
   depth: number
   fieldOptions: ConditionFieldOption[]
+  fieldGroups?: ConditionFieldGroup[]
+  scopedGroups?: ConditionFieldGroup[]
+  groupTitle?: string
+  lockGroup?: boolean
+  flat?: boolean
   ruleContext?: ConditionRuleContext
   disabled?: boolean
   logicEditable?: boolean
@@ -126,6 +168,7 @@ export interface ConditionItemRowProps {
   path: number[]
   index: number
   fieldOptions: ConditionFieldOption[]
+  fieldGroups?: ConditionFieldGroup[]
   ruleContext?: ConditionRuleContext
   disabled?: boolean
   logicEditable?: boolean
@@ -208,14 +251,25 @@ export interface ConditionRuleViolation {
   itemIds: string[]
 }
 
+export type ConditionRuleEffect = 'effective' | 'partial' | 'ineffective'
+
+export interface ConditionRuleFieldEffect {
+  field: string
+  ruleId: string
+  ruleName: string
+  effect: ConditionRuleEffect
+}
+
 export interface ConditionRuleContext {
   activeRuleIds: string[]
+  ruleEffects: Record<string, ConditionRuleEffect>
+  fieldEffects: ConditionRuleFieldEffect[]
   fieldLocks: ConditionRuleFieldLock[]
   valueLimits: ConditionRuleValueLimit[]
   violations: ConditionRuleViolation[]
 }
 
-export type ConditionRuleState = 'idle' | 'active' | 'violation'
+export type ConditionRuleState = 'idle' | 'active' | 'partial' | 'ineffective' | 'violation'
 
 export interface ConditionRuleDraftTarget {
   field: string
@@ -242,6 +296,8 @@ export interface ConditionRuleDraft {
 export interface ConditionRuleEditorProps {
   rules?: ConditionRule[]
   fieldOptions?: ConditionFieldOption[]
+  fieldGroups?: ConditionFieldGroup[]
+  fieldEffects?: ConditionRuleFieldEffect[]
   ruleStates?: Record<string, ConditionRuleState>
   disabled?: boolean
 }
@@ -261,5 +317,47 @@ export interface ConditionValueControlProps {
 }
 
 export type ConditionValueControlEmits = {
+  (e: 'update:modelValue', value: string): void
+}
+
+export interface ConditionSchemaField {
+  name: string
+  type: string
+  desc: string
+}
+
+export interface ConditionOperatorDoc {
+  value: string
+  label: string
+  symbol: string
+  types: string
+  needsValue: boolean
+  sql: string
+}
+
+export type ConditionDocTabKey = 'schema' | 'operator' | 'condition' | 'rule' | 'sql'
+
+export interface ConditionDocDrawerProps {
+  visible: boolean
+  activeTab: ConditionDocTabKey
+  schemaFields?: ConditionSchemaField[]
+  operatorDocs?: ConditionOperatorDoc[]
+}
+
+export type ConditionDocDrawerEmits = {
+  (e: 'update:visible', value: boolean): void
+  (e: 'update:activeTab', value: ConditionDocTabKey): void
+}
+
+export interface ConditionJsonInputProps {
+  modelValue: string
+  fieldOptions?: ConditionFieldOption[]
+  fieldGroups?: ConditionFieldGroup[]
+  placeholder?: string
+  height?: number
+  error?: boolean
+}
+
+export type ConditionJsonInputEmits = {
   (e: 'update:modelValue', value: string): void
 }

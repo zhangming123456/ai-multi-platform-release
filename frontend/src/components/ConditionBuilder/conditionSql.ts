@@ -4,7 +4,10 @@ import type {
   ConditionItem,
   ConditionNode,
   ConditionOperator,
+  ConditionSqlColumnMap,
+  ConditionSqlOptions,
   ConditionSqlResult,
+  ConditionSqlStatement,
   ConditionValueType,
 } from './ConditionBuilder.types'
 import {
@@ -12,6 +15,13 @@ import {
   resolveConditionFieldType,
   splitConditionValues,
 } from './conditionOperator'
+import {
+  CONDITION_SQL_LIMIT,
+  CONDITION_SQL_ORDER_BY,
+  CONDITION_SQL_TABLE,
+  conditionSqlColumnIndex,
+  conditionSqlSelectColumns,
+} from './conditionSqlMapping'
 
 export const CONDITION_SQL_PLACEHOLDER = '?'
 
@@ -43,12 +53,28 @@ function toSqlParam(value: string, type: ConditionValueType): unknown {
   return value
 }
 
+function resolveSqlColumn(
+  variable: string,
+  columnIndex: Map<string, ConditionSqlColumnMap>,
+  skipped: string[],
+): string | null {
+  const entry = columnIndex.get(variable)
+  if (!entry || !entry.queryable || !entry.column) {
+    if (!skipped.includes(variable)) skipped.push(variable)
+    return null
+  }
+  return entry.column
+}
+
 function itemSqlFragment(
   item: ConditionItem,
   fieldMap: Map<string, ConditionFieldOption>,
+  columnIndex: Map<string, ConditionSqlColumnMap>,
+  skipped: string[],
 ): SqlFragment | null {
   if (!item.field) return null
-  const column = item.field
+  const column = resolveSqlColumn(item.field, columnIndex, skipped)
+  if (!column) return null
   const type = resolveConditionFieldType(fieldMap.get(item.field))
 
   if (item.operator === 'is_null') {
@@ -99,15 +125,19 @@ function mergeSqlFragments(fragments: SqlFragment[], joiner: string): SqlFragmen
 function nodeSqlFragment(
   node: ConditionNode,
   fieldMap: Map<string, ConditionFieldOption>,
+  columnIndex: Map<string, ConditionSqlColumnMap>,
+  skipped: string[],
 ): SqlFragment | null {
-  if (!isConditionGroup(node)) return itemSqlFragment(node, fieldMap)
-  const inner = groupSqlFragment(node, fieldMap)
+  if (!isConditionGroup(node)) return itemSqlFragment(node, fieldMap, columnIndex, skipped)
+  const inner = groupSqlFragment(node, fieldMap, columnIndex, skipped)
   return inner ? { text: `(${inner.text})`, params: inner.params } : null
 }
 
 function groupSqlFragment(
   group: ConditionGroup,
   fieldMap: Map<string, ConditionFieldOption>,
+  columnIndex: Map<string, ConditionSqlColumnMap>,
+  skipped: string[],
 ): SqlFragment | null {
   const segments: SqlFragment[] = []
   let current: SqlFragment[] = []
@@ -117,7 +147,7 @@ function groupSqlFragment(
       if (current.length) segments.push(mergeSqlFragments(current, ' AND '))
       current = []
     }
-    const fragment = nodeSqlFragment(child, fieldMap)
+    const fragment = nodeSqlFragment(child, fieldMap, columnIndex, skipped)
     if (fragment) current.push(fragment)
   })
 
@@ -129,14 +159,55 @@ function groupSqlFragment(
 export function buildConditionWhere(
   group: ConditionGroup,
   fieldOptions: ConditionFieldOption[] = [],
+  columnMap?: ConditionSqlColumnMap[],
 ): ConditionSqlResult {
   const fieldMap = new Map(fieldOptions.map((field) => [field.value, field]))
-  const fragment = groupSqlFragment(group, fieldMap)
+  const columnIndex = conditionSqlColumnIndex(columnMap)
+  const skipped: string[] = []
+  const fragment = groupSqlFragment(group, fieldMap, columnIndex, skipped)
 
-  if (!fragment) return { hasConditions: false, where: '', params: [] }
-  return { hasConditions: true, where: fragment.text, params: fragment.params }
+  if (!fragment) return { hasConditions: false, where: '', params: [], skipped }
+  return { hasConditions: true, where: fragment.text, params: fragment.params, skipped }
 }
 
 export function formatConditionSql(result: ConditionSqlResult): string {
   return result.hasConditions ? `WHERE ${result.where}` : ''
+}
+
+function indentLines(text: string, pad: string): string {
+  return text
+    .split('\n')
+    .map((line) => (line ? `${pad}${line}` : line))
+    .join('\n')
+}
+
+export function buildConditionStatement(
+  group: ConditionGroup,
+  fieldOptions: ConditionFieldOption[] = [],
+  options: ConditionSqlOptions = {},
+): ConditionSqlStatement {
+  const where = buildConditionWhere(group, fieldOptions, options.columnMap)
+  const table = options.table ?? CONDITION_SQL_TABLE
+  const columns =
+    options.columns && options.columns.length
+      ? options.columns
+      : conditionSqlSelectColumns(
+          fieldOptions.map((field) => field.value),
+          options.columnMap,
+        )
+  const orderBy = options.orderBy ?? CONDITION_SQL_ORDER_BY
+  const limit = options.limit ?? CONDITION_SQL_LIMIT
+
+  const select = columns.length ? `SELECT\n${indentLines(columns.join(',\n'), '  ')}` : 'SELECT *'
+  const lines = [select, `FROM ${table}`]
+  if (where.hasConditions) lines.push(`WHERE ${where.where}`)
+  if (orderBy) lines.push(`ORDER BY ${orderBy}`)
+  if (limit > 0) lines.push(`LIMIT ${limit}`)
+
+  return {
+    hasConditions: where.hasConditions,
+    sql: lines.join('\n'),
+    params: where.params,
+    skipped: where.skipped,
+  }
 }

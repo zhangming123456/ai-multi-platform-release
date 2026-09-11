@@ -7,6 +7,8 @@ import type {
   ConditionRuleBase,
   ConditionRuleContext,
   ConditionRuleDraft,
+  ConditionRuleEffect,
+  ConditionRuleFieldEffect,
   ConditionRuleFieldLock,
   ConditionRuleSelector,
   ConditionRuleState,
@@ -31,7 +33,21 @@ export const CONDITION_RULE_TYPE_LABELS: Record<ConditionRuleType, string> = {
 export const CONDITION_RULE_STATE_LABELS: Record<ConditionRuleState, string> = {
   idle: '未触发',
   active: '命中',
+  partial: '部分未生效',
+  ineffective: '未生效',
   violation: '冲突',
+}
+
+export const CONDITION_RULE_WARNING_LABELS: Record<
+  Exclude<ConditionRuleEffect, 'effective'>,
+  string
+> = {
+  partial: '激活部分未生效',
+  ineffective: '激活未生效',
+}
+
+export function conditionRuleWarning(effect: ConditionRuleEffect): string {
+  return effect === 'effective' ? '' : CONDITION_RULE_WARNING_LABELS[effect]
 }
 
 let conditionRuleSeed = 0
@@ -66,13 +82,33 @@ export function resolveConditionRules(
   group: ConditionGroup,
   rules: ConditionRule[] = [],
   fieldOptions: ConditionFieldOption[] = [],
+  availableFields?: string[],
 ): ConditionRuleContext {
   const items = collectConditionItems(group)
   const fieldMap = new Map(fieldOptions.map((field) => [field.value, field]))
+  const available = new Set(availableFields ?? fieldOptions.map((field) => field.value))
   const activeRuleIds: string[] = []
+  const ruleEffects: Record<string, ConditionRuleEffect> = {}
+  const fieldEffects: ConditionRuleFieldEffect[] = []
   const fieldLocks: ConditionRuleFieldLock[] = []
   const valueLimits: ConditionRuleValueLimit[] = []
   const violations: ConditionRuleViolation[] = []
+
+  const markEffect = (rule: ConditionRule, fields: string[]): void => {
+    const targets = Array.from(new Set(fields.filter(Boolean)))
+    const missed = targets.filter((field) => !available.has(field))
+    const effect: ConditionRuleEffect =
+      targets.length === 0 || missed.length === 0
+        ? 'effective'
+        : missed.length === targets.length
+          ? 'ineffective'
+          : 'partial'
+    ruleEffects[rule.id] = effect
+    if (effect === 'effective') return
+    for (const field of targets) {
+      fieldEffects.push({ field, ruleId: rule.id, ruleName: rule.name, effect })
+    }
+  }
 
   for (const rule of rules) {
     if (rule.isActive === false) continue
@@ -83,6 +119,10 @@ export function resolveConditionRules(
       if (matched.length === 0) continue
 
       activeRuleIds.push(rule.id)
+      markEffect(
+        rule,
+        members.filter((selector) => !matched.includes(selector)).map((selector) => selector.field),
+      )
 
       if (matched.length > 1) {
         violations.push({
@@ -121,6 +161,10 @@ export function resolveConditionRules(
       const satisfied = matchingItems(items, rule.when).length > 0
       if (satisfied) {
         activeRuleIds.push(rule.id)
+        markEffect(
+          rule,
+          rule.targets.map((selector) => selector.field),
+        )
         continue
       }
 
@@ -154,6 +198,7 @@ export function resolveConditionRules(
     if (!triggered) continue
 
     activeRuleIds.push(rule.id)
+    markEffect(rule, [rule.field])
 
     const limit: ConditionRuleValueLimit = {
       field: rule.field,
@@ -180,7 +225,7 @@ export function resolveConditionRules(
     }
   }
 
-  return { activeRuleIds, fieldLocks, valueLimits, violations }
+  return { activeRuleIds, ruleEffects, fieldEffects, fieldLocks, valueLimits, violations }
 }
 
 function conditionRuleValueSatisfied(
@@ -292,7 +337,8 @@ export function conditionRuleSummary(
       .map((value) => field?.options?.find((option) => option.value === value)?.label ?? value)
       .join(' / ')
     const operator = getConditionOperator(rule.operator)
-    const parts = [`当 ${when} 时，${name}`]
+    const hasTrigger = Boolean(rule.when.operator || rule.when.value)
+    const parts = [hasTrigger ? `当 ${when} 时，${name}` : name]
     if (operator) parts.push(operator.label)
     if ((operator?.needsValue ?? true) && values) parts.push(values)
     return parts.join(' ')
@@ -311,8 +357,27 @@ export function conditionRuleState(
   ruleId: string,
 ): ConditionRuleState {
   if (context.violations.some((violation) => violation.ruleId === ruleId)) return 'violation'
+  const effect = context.ruleEffects[ruleId]
+  if (effect === 'ineffective') return 'ineffective'
+  if (effect === 'partial') return 'partial'
   if (context.activeRuleIds.includes(ruleId)) return 'active'
   return 'idle'
+}
+
+export function conditionRuleFieldEffectIndex(
+  effects: ConditionRuleFieldEffect[] = [],
+): Map<string, ConditionRuleFieldEffect> {
+  const map = new Map<string, ConditionRuleFieldEffect>()
+  for (const effect of effects) {
+    if (!map.has(effect.field)) map.set(effect.field, effect)
+  }
+  return map
+}
+
+export function conditionRuleFieldEffectMap(
+  context?: ConditionRuleContext,
+): Map<string, ConditionRuleFieldEffect> {
+  return conditionRuleFieldEffectIndex(context?.fieldEffects ?? [])
 }
 
 export function createConditionRuleDraft(

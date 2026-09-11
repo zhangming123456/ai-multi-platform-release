@@ -241,6 +241,7 @@ import ConditionValueControl from './ConditionValueControl.vue'
 import {
   conditionOperatorNeedsValue,
   conditionOperatorsForType,
+  groupConditionFields,
   resolveConditionFieldType,
   splitConditionValues,
 } from './conditionOperator'
@@ -248,15 +249,20 @@ import {
   CONDITION_RULE_STATE_LABELS,
   CONDITION_RULE_TYPE_LABELS,
   CONDITION_RULE_TYPE_OPTIONS,
+  CONDITION_RULE_WARNING_LABELS,
+  conditionRuleFieldEffectIndex,
   conditionRuleFromDraft,
   conditionRuleSummary,
   conditionRuleToDraft,
+  conditionRuleWarning,
   createConditionRuleDraft,
 } from './conditionRules'
 
 const props = withDefaults(defineProps<ConditionRuleEditorProps>(), {
   rules: () => [],
   fieldOptions: () => [],
+  fieldGroups: () => [],
+  fieldEffects: () => [],
   ruleStates: () => ({}),
   disabled: false,
 })
@@ -269,12 +275,31 @@ const formVisible = ref(false)
 
 const draft = reactive<ConditionRuleDraft>(createConditionRuleDraft())
 
-const fieldSelectOptions = computed<SelectOptionData[]>(() =>
-  props.fieldOptions.map((field) => ({
-    value: field.value,
-    label: field.label ?? field.value,
-  })),
-)
+const fieldEffects = computed(() => conditionRuleFieldEffectIndex(props.fieldEffects))
+
+function fieldLabel(field: ConditionFieldOption): string {
+  const label = field.label ?? field.value
+  const effect = fieldEffects.value.get(field.value)?.effect ?? 'effective'
+  const warning = conditionRuleWarning(effect)
+  return warning ? `${label} · ${warning}` : label
+}
+
+const fieldSelectOptions = computed<SelectOptionData[]>(() => {
+  if (!props.fieldGroups.length) {
+    return props.fieldOptions.map((field) => ({
+      value: field.value,
+      label: fieldLabel(field),
+    }))
+  }
+  return groupConditionFields(props.fieldOptions, props.fieldGroups).map((group) => ({
+    isGroup: true,
+    label: group.label,
+    options: group.fields.map((field) => ({
+      value: field.value,
+      label: fieldLabel(field),
+    })),
+  }))
+})
 
 const linkageValueText = computed(() => draft.linkageValues.join(', '))
 
@@ -331,6 +356,8 @@ function typeColor(type: ConditionRuleType): string {
 }
 
 function stateLabel(state: ConditionRuleState): string {
+  if (state === 'ineffective') return CONDITION_RULE_WARNING_LABELS.ineffective
+  if (state === 'partial') return CONDITION_RULE_WARNING_LABELS.partial
   return CONDITION_RULE_STATE_LABELS[state]
 }
 
@@ -507,6 +534,12 @@ function toggleActive(rule: ConditionRule, value: boolean): void {
 .cre-item__state--violation {
   color: #ff3b30;
   background: rgba(255, 59, 48, 0.1);
+}
+
+.cre-item__state--partial,
+.cre-item__state--ineffective {
+  color: #d46b08;
+  background: rgba(255, 149, 0, 0.16);
 }
 
 .cre-item__spacer {

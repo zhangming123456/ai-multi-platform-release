@@ -50,7 +50,7 @@
                         {{ upcomingText }}
                       </span>
                     </template>
-                    <HolidayCalendar embedded :week-start="1" @loaded="handleHolidayLoaded" />
+                    <HolidayCalendar embedded :week-start="0" @loaded="handleHolidayLoaded" />
                   </a-card>
                 </a-col>
                 <a-col :flex="1">

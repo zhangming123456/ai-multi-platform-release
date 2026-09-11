@@ -1,5 +1,6 @@
 import type {
   ConditionEvaluation,
+  ConditionFieldGroup,
   ConditionFieldOption,
   ConditionFieldOptionValue,
   ConditionGroup,
@@ -83,6 +84,77 @@ export function isConditionGroup(node: ConditionNode): node is ConditionGroup {
 
 export function conditionFieldLabel(field: ConditionFieldOption): string {
   return field.label ?? field.value
+}
+
+export function flattenFieldGroups(groups: ConditionFieldGroup[] = []): ConditionFieldOption[] {
+  const seen = new Set<string>()
+  const fields: ConditionFieldOption[] = []
+  for (const group of groups) {
+    for (const field of group.fields) {
+      if (seen.has(field.value)) continue
+      seen.add(field.value)
+      fields.push(field)
+    }
+  }
+  return fields
+}
+
+export interface ConditionFieldGroupView {
+  key: string
+  label: string
+  description: string
+  fields: ConditionFieldOption[]
+}
+
+export function groupConditionFields(
+  fieldOptions: ConditionFieldOption[] = [],
+  fieldGroups: ConditionFieldGroup[] = [],
+): ConditionFieldGroupView[] {
+  if (!fieldGroups.length) {
+    return fieldOptions.length
+      ? [{ key: '__all__', label: '', description: '', fields: fieldOptions }]
+      : []
+  }
+
+  const fieldMap = new Map(fieldOptions.map((field) => [field.value, field]))
+  const used = new Set<string>()
+  const views: ConditionFieldGroupView[] = []
+
+  for (const group of fieldGroups) {
+    const fields: ConditionFieldOption[] = []
+    for (const field of group.fields) {
+      if (used.has(field.value)) continue
+      used.add(field.value)
+      fields.push(fieldMap.get(field.value) ?? field)
+    }
+    if (fields.length) {
+      views.push({
+        key: group.key,
+        label: group.label,
+        description: group.description ?? '',
+        fields,
+      })
+    }
+  }
+
+  const rest = fieldOptions.filter((field) => !used.has(field.value))
+  if (rest.length) {
+    views.push({ key: '__rest__', label: '未分组变量', description: '', fields: rest })
+  }
+
+  return views
+}
+
+export function conditionFieldGroupMap(
+  fieldGroups: ConditionFieldGroup[] = [],
+): Map<string, ConditionFieldGroup> {
+  const map = new Map<string, ConditionFieldGroup>()
+  for (const group of fieldGroups) {
+    for (const field of group.fields) {
+      if (!map.has(field.value)) map.set(field.value, group)
+    }
+  }
+  return map
 }
 
 export function resolveConditionFieldType(field?: ConditionFieldOption): ConditionValueType {
@@ -183,6 +255,41 @@ export function createConditionGroup(children?: ConditionNode[]): ConditionGroup
   }
 }
 
+export function createScopedConditionGroup(
+  scope: string,
+  children: ConditionNode[] = [],
+): ConditionGroup {
+  return {
+    id: createConditionId('scope'),
+    nodeType: 'group',
+    logic: 'and',
+    scope,
+    children,
+  }
+}
+
+export function pruneInactiveScopedGroups(
+  group: ConditionGroup,
+  isActive: (scope: string) => boolean,
+): ConditionGroup {
+  let changed = false
+  const children: ConditionNode[] = []
+  for (const child of group.children) {
+    if (isConditionGroup(child)) {
+      if (child.scope && !isActive(child.scope)) {
+        changed = true
+        continue
+      }
+      const next = pruneInactiveScopedGroups(child, isActive)
+      if (next !== child) changed = true
+      children.push(next)
+      continue
+    }
+    children.push(child)
+  }
+  return changed ? { ...group, children } : group
+}
+
 export function cloneConditionGroup(group: ConditionGroup): ConditionGroup {
   return {
     ...group,
@@ -234,6 +341,53 @@ export function removeNodeAt(group: ConditionGroup, path: number[]): ConditionGr
     ...target,
     children: target.children.filter((_, current) => current !== index),
   }))
+}
+
+function collapseSingleChildGroup(
+  group: ConditionGroup,
+  collapsible: (target: ConditionGroup) => boolean,
+): ConditionGroup | ConditionNode {
+  if (group.children.length !== 1) return group
+  if (!collapsible(group)) return group
+  const child = group.children[0]
+  return { ...child, logic: group.logic }
+}
+
+function removeNodeCollapsing(
+  group: ConditionGroup,
+  path: number[],
+  index: number,
+  collapsible: (target: ConditionGroup) => boolean,
+  isRootNode: boolean,
+): ConditionGroup | ConditionNode {
+  if (path.length === 0) {
+    const children = group.children.filter((_, current) => current !== index)
+    const next: ConditionGroup = { ...group, children }
+    return isRootNode ? next : collapseSingleChildGroup(next, collapsible)
+  }
+
+  const childIndex = path[0]
+  const child = group.children[childIndex]
+  if (!child || !isConditionGroup(child)) return group
+
+  const replaced = removeNodeCollapsing(child, path.slice(1), index, collapsible, false)
+  const children = group.children.slice()
+  children[childIndex] = replaced
+  const next: ConditionGroup = { ...group, children }
+  return isRootNode ? next : collapseSingleChildGroup(next, collapsible)
+}
+
+export function removeNodeWithCollapse(
+  group: ConditionGroup,
+  path: number[],
+  index: number,
+  collapsible: (target: ConditionGroup) => boolean,
+): ConditionGroup {
+  if (path.length === 0) {
+    return { ...group, children: group.children.filter((_, current) => current !== index) }
+  }
+  const next = removeNodeCollapsing(group, path, index, collapsible, true)
+  return isConditionGroup(next) ? next : group
 }
 
 export function ungroupNodeAt(group: ConditionGroup, path: number[]): ConditionGroup {

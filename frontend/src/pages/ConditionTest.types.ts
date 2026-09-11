@@ -1,6 +1,14 @@
-import type { ConditionGroup } from '@/components/ConditionBuilder/ConditionBuilder.types'
+import type {
+  ConditionEvaluation,
+  ConditionGroup,
+} from '@/components/ConditionBuilder/ConditionBuilder.types'
 
-export type { ConditionRuleState } from '@/components/ConditionBuilder/ConditionBuilder.types'
+export type {
+  ConditionDocTabKey,
+  ConditionOperatorDoc,
+  ConditionRuleState,
+  ConditionSchemaField,
+} from '@/components/ConditionBuilder/ConditionBuilder.types'
 
 export interface ConditionPreset {
   key: string
@@ -14,8 +22,8 @@ export interface ConditionDataPreset {
   data: Record<string, unknown>
 }
 
-export interface ConditionSchemaField {
-  name: string
-  type: string
-  desc: string
+export interface ConditionDataResult {
+  key: string
+  label: string
+  evaluation: ConditionEvaluation
 }
