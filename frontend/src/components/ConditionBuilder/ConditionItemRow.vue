@@ -5,17 +5,18 @@
       :logic="item.logic"
       :disabled="disabled"
       :editable="logicEditable"
+      :logic-mode="logicMode"
       @update:logic="onLogicChange"
     />
 
     <div class="cir-row__fields">
       <a-auto-complete
-        class="cre-form__control cir-field"
-        :model-value="item.field"
+        class="cre-form__control cir-field flex-1"
+        :model-value="fieldText"
         :data="fieldSuggestData"
         :filter-option="filterFieldOption"
         :strict="false"
-        :disabled="disabled"
+        :disabled="fieldInputDisabled"
         :trigger-props="{
           contentStyle: {
             minWidth: 'max-content',
@@ -23,7 +24,7 @@
         }"
         allow-clear
         placeholder="输入变量名"
-        @update:model-value="onFieldChange"
+        @update:model-value="onFieldInput"
       >
         <template #option="{ data }">
           <div
@@ -54,13 +55,13 @@
         </template>
       </a-auto-complete>
 
-      <a-tooltip
-        v-if="fieldDemo"
-        content="该变量暂无对应真实列，生成的 SQL 会跳过此条件"
-        position="tr"
-      >
-        <span class="cir-demo">演示</span>
-      </a-tooltip>
+      <!--      <a-tooltip-->
+      <!--        v-if="fieldDemo"-->
+      <!--        content="该变量暂无对应真实列，生成的 SQL 会跳过此条件"-->
+      <!--        position="tr"-->
+      <!--      >-->
+      <!--        <span class="cir-demo">演示</span>-->
+      <!--      </a-tooltip>-->
 
       <a-tooltip
         v-if="fieldInactive"
@@ -72,8 +73,14 @@
         </span>
       </a-tooltip>
 
+      <a-tooltip v-if="lockedFieldMismatch" :content="lockedFieldTip" position="tr">
+        <span class="cir-lock">
+          <IconLock :size="14" />
+        </span>
+      </a-tooltip>
+
       <a-select
-        class="cre-form__control cir-operator"
+        class="cre-form__control cir-operator flex-1"
         :model-value="item.operator"
         :options="operatorOptions"
         :disabled="disabled"
@@ -85,11 +92,26 @@
         @update:model-value="onOperatorChange"
       />
 
-      <div class="cre-form__control cir-value">
+      <a-select
+        v-if="granularityOptions.length"
+        class="cre-form__control cir-granularity flex-1"
+        :model-value="activeGranularity"
+        :options="granularityOptions"
+        :disabled="disabled"
+        :trigger-props="{
+          contentStyle: {
+            minWidth: 'max-content',
+          },
+        }"
+        @update:model-value="onGranularityChange"
+      />
+
+      <div class="cre-form__control cir-value flex-2">
         <ConditionValueControl
           :model-value="item.value"
           :field="field"
           :operator="item.operator"
+          :granularity="activeGranularity"
           :disabled="disabled"
           :disabled-values="disabledValues"
           @update:model-value="onValueChange"
@@ -102,12 +124,12 @@
         </span>
       </a-tooltip>
 
-      <a-tooltip content="把当前条件变成条件组，并自动追加一个空条件（且）" position="tr">
+      <a-tooltip :content="wrapTip" position="tr">
         <a-button
           class="cir-wrap"
           type="text"
           size="mini"
-          :disabled="disabled"
+          :disabled="wrapDisabled"
           @click="wrapToGroup"
         >
           + 并且满足
@@ -129,10 +151,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { Message } from '@arco-design/web-vue'
 import type { SelectOptionData } from '@arco-design/web-vue'
-import { IconDelete, IconExclamationCircle } from '@arco-design/web-vue/es/icon'
+import { IconDelete, IconExclamationCircle, IconLock } from '@arco-design/web-vue/es/icon'
 import type {
   ConditionFieldGroup,
   ConditionFieldOption,
@@ -141,21 +163,28 @@ import type {
   ConditionItemRowProps,
   ConditionLogic,
   ConditionOperator,
+  ConditionValueGranularity,
   ConditionValueType,
 } from './ConditionBuilder.types'
 import ConditionConnector from './ConditionConnector.vue'
 import ConditionValueControl from './ConditionValueControl.vue'
 import {
   CONDITION_BOOLEAN_OPTIONS,
+  CONDITION_GRANULARITY_LABELS,
+  CONDITION_MAX_DEPTH,
   CONDITION_OPERATORS,
   CONDITION_VALUE_TYPE_LABELS,
   conditionFieldGroupMap,
   conditionFieldLabel,
+  conditionGranularityOptions,
   conditionOperatorsForType,
   conditionOperatorNeedsValue,
   conditionValueAllowedForField,
+  convertConditionValue,
   resolveConditionFieldType,
+  resolveConditionGranularity,
   resolveConditionOperator,
+  resolveGranularityForType,
 } from './conditionOperator'
 import {
   conditionRuleFieldEffectMap,
@@ -167,11 +196,23 @@ import {
 
 const props = withDefaults(defineProps<ConditionItemRowProps>(), {
   fieldGroups: () => [],
+  lockedField: '',
   disabled: false,
   logicEditable: true,
+  logicMode: 'mixed',
+  canAddGroup: true,
+  maxDepth: CONDITION_MAX_DEPTH,
 })
 
 const emit = defineEmits<ConditionItemRowEmits>()
+
+const wrapDisabled = computed(() => props.disabled || !props.canAddGroup)
+
+const wrapTip = computed(() =>
+  props.canAddGroup
+    ? '把当前条件变成条件组，并自动追加一个空条件（且）'
+    : `子条件组最多嵌套 ${props.maxDepth} 层，已达上限`,
+)
 
 const field = computed<ConditionFieldOption | undefined>(() =>
   props.fieldOptions.find((option) => option.value === props.item.field),
@@ -179,7 +220,39 @@ const field = computed<ConditionFieldOption | undefined>(() =>
 
 const fieldInactive = computed(() => Boolean(props.item.field) && !field.value)
 
-const fieldDemo = computed(() => field.value?.queryable === false)
+const lockedFieldLabel = computed(() => {
+  if (!props.lockedField) return ''
+  const option = fieldOf(props.lockedField)
+  return option ? conditionFieldLabel(option) : props.lockedField
+})
+
+const lockedFieldTip = computed(
+  () =>
+    `同一条件组内已有 2 条及以上「${lockedFieldLabel.value}」，本组变量锁定为「${lockedFieldLabel.value}」，不可修改；可删除该条件`,
+)
+
+const lockedFieldMismatch = computed(
+  () =>
+    Boolean(props.lockedField) &&
+    Boolean(props.item.field) &&
+    props.item.field !== props.lockedField,
+)
+
+const fieldInputDisabled = computed(
+  () => props.disabled || (Boolean(props.lockedField) && Boolean(props.item.field)),
+)
+
+const fieldText = ref('')
+
+watch(
+  () => props.item.field,
+  (next) => {
+    fieldText.value = displayFieldText(next)
+  },
+  { immediate: true },
+)
+
+// const fieldDemo = computed(() => field.value?.queryable === false)
 
 const fieldGroupMap = computed<Map<string, ConditionFieldGroup>>(() =>
   conditionFieldGroupMap(props.fieldGroups),
@@ -236,18 +309,32 @@ const operatorOptions = computed<SelectOptionData[]>(() => {
   return operators.map((operator) => ({ value: operator.value, label: operator.label }))
 })
 
+const granularityOptions = computed<{ value: ConditionValueGranularity; label: string }[]>(() =>
+  conditionGranularityOptions(field.value).map((value) => ({
+    value,
+    label: CONDITION_GRANULARITY_LABELS[value],
+  })),
+)
+
+const activeGranularity = computed<ConditionValueGranularity>(() =>
+  resolveConditionGranularity(props.item, field.value),
+)
+
 const disabledValues = computed<string[]>(() =>
   optionValues.value.filter((value) => valueDisabled(value)),
 )
 
-const fieldSuggestData = computed<SelectOptionData[]>(() =>
-  props.fieldOptions.map((option) => ({
+const fieldSuggestData = computed<SelectOptionData[]>(() => {
+  const options = props.lockedField
+    ? props.fieldOptions.filter((option) => option.value === props.lockedField)
+    : props.fieldOptions
+  return options.map((option) => ({
     value: option.value,
-    label: option.value,
+    label: conditionFieldLabel(option),
     description: option.description ?? '',
     disabled: fieldDisabled(option.value),
-  })),
-)
+  }))
+})
 
 function toValueText(value: unknown): string {
   if (value === undefined || value === null) return ''
@@ -262,23 +349,71 @@ function onLogicChange(logic: ConditionLogic): void {
   emit('command', { type: 'set-logic', path: [...props.path, props.index], logic })
 }
 
-function onFieldChange(value: string): void {
-  const lock = fieldLocks.value.get(value)
+function displayFieldText(fieldValue: string): string {
+  const option = fieldOf(fieldValue)
+  return option ? conditionFieldLabel(option) : fieldValue
+}
+
+function matchFieldOption(text: string): ConditionFieldOption | undefined {
+  const query = text.trim().toLowerCase()
+  if (!query) return undefined
+  return props.fieldOptions.find((option) => {
+    const label = conditionFieldLabel(option).trim().toLowerCase()
+    return option.value.toLowerCase() === query || label === query
+  })
+}
+
+function applyField(fieldValue: string): boolean {
+  if (props.lockedField && fieldValue !== props.lockedField) {
+    Message.warning(lockedFieldTip.value)
+    return false
+  }
+  const lock = fieldLocks.value.get(fieldValue)
   if (lock) {
     Message.warning(lock.reason)
+    return false
+  }
+  const nextField = fieldOf(fieldValue)
+  const operator = resolveConditionOperator({ ...props.item, field: fieldValue }, nextField)
+  const granularity = conditionGranularityOptions(nextField).length
+    ? props.item.granularity
+    : undefined
+  const allowed = conditionValueAllowedForField(props.item.value, nextField)
+  const nextValue = allowed
+    ? convertConditionValue(
+        props.item.value,
+        resolveGranularityForType(resolveConditionFieldType(nextField), granularity),
+      )
+    : ''
+  send({ field: fieldValue, operator, value: nextValue, granularity })
+  return true
+}
+
+function onFieldInput(value: unknown): void {
+  const text = toValueText(value)
+  const matched = matchFieldOption(text)
+  if (matched) {
+    fieldText.value = applyField(matched.value)
+      ? conditionFieldLabel(matched)
+      : displayFieldText(props.item.field)
     return
   }
-  const nextField = props.fieldOptions.find((option) => option.value === value)
-  const operator = resolveConditionOperator({ ...props.item, field: value }, nextField)
-  const nextValue = conditionValueAllowedForField(props.item.value, nextField)
-    ? props.item.value
-    : ''
-  send({ field: value, operator, value: nextValue })
+  fieldText.value = text
+  if (!applyField(text)) fieldText.value = displayFieldText(props.item.field)
 }
 
 function onOperatorChange(value: unknown): void {
   const operator = String(value ?? 'eq') as ConditionOperator
   send({ operator, value: conditionOperatorNeedsValue(operator) ? props.item.value : '' })
+}
+
+function onGranularityChange(value: unknown): void {
+  const granularity = String(value ?? '') as ConditionValueGranularity
+  if (!granularity || granularity === activeGranularity.value) return
+  send({
+    granularity: granularity === 'datetime' ? undefined : granularity,
+    value: convertConditionValue(props.item.value, granularity),
+  })
 }
 
 function onValueChange(value: unknown): void {
@@ -290,7 +425,12 @@ function removeSelf(): void {
 }
 
 function wrapToGroup(): void {
-  emit('command', { type: 'wrap-item', path: props.path, index: props.index })
+  emit('command', {
+    type: 'wrap-item',
+    path: props.path,
+    index: props.index,
+    field: props.lockedField || undefined,
+  })
 }
 
 function fieldOf(fieldValue: string): ConditionFieldOption | undefined {
@@ -349,9 +489,14 @@ function filterFieldOption(inputValue: string, option: SelectOptionData): boolea
   gap: 8px;
   min-width: 0;
   :deep(.cre-form__control) {
-    flex: 1;
     width: max-content;
-    min-width: 120px;
+    min-width: 50px;
+    &:not(.cir-value) {
+      max-width: 100px;
+    }
+    &.cir-value {
+      max-width: 280px;
+    }
   }
 }
 
@@ -454,6 +599,14 @@ function filterFieldOption(inputValue: string, option: SelectOptionData): boolea
   display: inline-flex;
   align-items: center;
   color: #ff9500;
+  cursor: help;
+}
+
+.cir-lock {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  color: #d46b08;
   cursor: help;
 }
 

@@ -119,9 +119,29 @@
                   全选
                 </a-button>
               </div>
-              <span class="text-[12px] text-[#86868B]">
-                {{ selectedFieldGroupKeys.length }} / {{ fieldGroupPresets.length }} 组
-              </span>
+              <div class="flex items-center gap-3">
+                <div class="flex items-center gap-2">
+                  <span class="text-[12px] text-[#86868B]">连接模式</span>
+                  <a-radio-group v-model="logicMode" type="button" size="mini">
+                    <a-radio value="mixed">混合</a-radio>
+                    <a-radio value="uniform">全且或</a-radio>
+                  </a-radio-group>
+                </div>
+                <div class="flex items-center gap-2">
+                  <span class="text-[12px] text-[#86868B]">嵌套上限</span>
+                  <a-input-number
+                    v-model="maxDepth"
+                    :min="1"
+                    :max="6"
+                    size="mini"
+                    style="width: 76px"
+                  />
+                  <span class="text-[12px] text-[#86868B]">层</span>
+                </div>
+                <span class="text-[12px] text-[#86868B]">
+                  {{ selectedFieldGroupKeys.length }} / {{ fieldGroupPresets.length }} 组
+                </span>
+              </div>
             </div>
 
             <ConditionBuilder
@@ -132,7 +152,8 @@
               :rule-field-options="allFieldOptions"
               :rules="rules"
               :max-items="8"
-              :max-depth="3"
+              :max-depth="maxDepth"
+              :logic-mode="logicMode"
             />
 
             <div class="mt-5">
@@ -185,7 +206,10 @@
             <pre class="json-output json-output--fixed">{{ modelJson }}</pre>
           </div>
 
-          <div class="bg-white/80 backdrop-blur-xl rounded-2xl border border-black/[0.05] p-5">
+          <div
+            ref="resultsRef"
+            class="bg-white/80 backdrop-blur-xl rounded-2xl border border-black/[0.05] p-5"
+          >
             <h3 class="text-[15px] font-semibold text-[#1D1D1F] m-0 mb-3">表达式与校验</h3>
 
             <div class="text-[12px] text-[#86868B] mb-1">生成表达式</div>
@@ -205,7 +229,11 @@
               <a-empty description="暂无可校验的测试数据" />
             </div>
             <div v-else class="data-results">
-              <div v-for="result in dataResults" :key="result.key" class="data-result">
+              <div
+                v-for="(result, resultIndex) in dataResults"
+                :key="result.key"
+                class="data-result"
+              >
                 <div class="data-result__head">
                   <span v-if="result.label" class="data-result__label">{{ result.label }}</span>
                   <a-tag
@@ -218,6 +246,7 @@
                 </div>
                 <div class="result-table">
                   <div class="result-row result-row--head">
+                    <span>逻辑</span>
                     <span>变量</span>
                     <span>运算符</span>
                     <span>期望值</span>
@@ -229,12 +258,45 @@
                     :key="row.item.id"
                     class="result-row"
                   >
-                    <span class="truncate" :style="{ paddingLeft: `${(row.depth - 1) * 16}px` }">
-                      <span v-if="row.depth > 1" class="result-depth">└ </span>{{ row.fieldLabel }}
+                    <span class="result-logic" :class="{ 'result-logic--first': row.isFirst }">
+                      {{ row.isFirst ? 'IF' : CONDITION_LOGIC_SYMBOL[row.item.logic] }}
                     </span>
+                    <a-tooltip
+                      :content="row.fieldLabel"
+                      :disabled="!overflowKeys.has(`${resultIndex}-${row.item.id}-field`)"
+                    >
+                      <span
+                        class="truncate"
+                        :data-overflow-key="`${resultIndex}-${row.item.id}-field`"
+                        :style="{ paddingLeft: `${(row.depth - 1) * 16}px` }"
+                      >
+                        <span v-if="row.depth > 1" class="result-depth">└ </span
+                        >{{ row.fieldLabel }}
+                      </span>
+                    </a-tooltip>
                     <span>{{ row.operatorLabel }}</span>
-                    <span class="truncate">{{ row.expected || '—' }}</span>
-                    <span class="truncate">{{ row.actual }}</span>
+                    <a-tooltip
+                      :content="row.expected || '—'"
+                      :disabled="!overflowKeys.has(`${resultIndex}-${row.item.id}-expected`)"
+                    >
+                      <span
+                        class="truncate"
+                        :data-overflow-key="`${resultIndex}-${row.item.id}-expected`"
+                      >
+                        {{ row.expected || '—' }}
+                      </span>
+                    </a-tooltip>
+                    <a-tooltip
+                      :content="row.actual"
+                      :disabled="!overflowKeys.has(`${resultIndex}-${row.item.id}-actual`)"
+                    >
+                      <span
+                        class="truncate"
+                        :data-overflow-key="`${resultIndex}-${row.item.id}-actual`"
+                      >
+                        {{ row.actual }}
+                      </span>
+                    </a-tooltip>
                     <span :class="row.passed ? 'result-pass' : 'result-fail'">
                       {{ row.passed ? '通过' : '不通过' }}
                     </span>
@@ -259,10 +321,18 @@
                 <span>说明</span>
               </div>
               <div v-for="row in ruleResultRows" :key="row.id" class="result-row result-row--rule">
-                <span class="truncate">{{ row.name }}</span>
+                <a-tooltip :content="row.name" :disabled="!overflowKeys.has(`${row.id}-name`)">
+                  <span class="truncate" :data-overflow-key="`${row.id}-name`">
+                    {{ row.name }}
+                  </span>
+                </a-tooltip>
                 <span>{{ row.typeLabel }}</span>
                 <span :class="row.stateClass">{{ row.stateLabel }}</span>
-                <span class="truncate">{{ row.detail }}</span>
+                <a-tooltip :content="row.detail" :disabled="!overflowKeys.has(`${row.id}-detail`)">
+                  <span class="truncate" :data-overflow-key="`${row.id}-detail`">
+                    {{ row.detail }}
+                  </span>
+                </a-tooltip>
               </div>
             </div>
             <div v-else class="py-4">
@@ -345,7 +415,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, onUpdated, ref } from 'vue'
 import { Message } from '@arco-design/web-vue'
 import {
   IconBook,
@@ -365,11 +435,14 @@ import type {
   ConditionGroup,
   ConditionItem,
   ConditionLogic,
+  ConditionLogicMode,
   ConditionNode,
   ConditionOperator,
   ConditionRule,
+  ConditionValueGranularity,
 } from '@/components/ConditionBuilder/ConditionBuilder.types'
 import {
+  CONDITION_LOGIC_SYMBOL,
   buildConditionExpression,
   cloneConditionGroup,
   collectConditionGroups,
@@ -583,12 +656,14 @@ const fieldGroupPresets: ConditionFieldGroup[] = [
 
 const selectedFieldGroupKeys = ref<string[]>(fieldGroupPresets.map((group) => group.key))
 
+const maxDepth = ref(3)
+
+const logicMode = ref<ConditionLogicMode>('mixed')
+
+const fieldOptions = computed<ConditionFieldOption[]>(() => flattenFieldGroups(fieldGroups.value))
 const fieldGroups = computed(() =>
   fieldGroupPresets.filter((group) => selectedFieldGroupKeys.value.includes(group.key)),
 )
-
-const fieldOptions = computed<ConditionFieldOption[]>(() => flattenFieldGroups(fieldGroups.value))
-
 const scopedGroups = computed<ConditionFieldGroup[]>(() =>
   fieldGroupPresets.map((group) => ({
     ...group,
@@ -630,15 +705,111 @@ function makeItem(
   operator: ConditionOperator,
   value: string,
   logic: ConditionLogic = 'and',
+  granularity?: ConditionValueGranularity,
 ): ConditionItem {
-  return { id: createConditionId('item'), nodeType: 'item', logic, field, operator, value }
+  return {
+    id: createConditionId('item'),
+    nodeType: 'item',
+    logic,
+    field,
+    operator,
+    value,
+    ...(granularity ? { granularity } : {}),
+  }
 }
 
 function makeGroup(children: ConditionNode[], logic: ConditionLogic = 'and'): ConditionGroup {
   return { id: createConditionId('group'), nodeType: 'group', logic, children }
 }
 
+const nationalDayWindowData: Record<string, unknown>[] = [
+  {
+    title: '国庆露营攻略｜假期出行装备清单',
+    platform: 'xiaohongshu',
+    status: 'draft',
+    published_at: '2026-10-03',
+    publish_slot: '15:30:00',
+    scheduled_at: '2026-10-03 15:30:00',
+  },
+  {
+    title: '国庆返程复盘｜错峰出行体验',
+    platform: 'douyin',
+    status: 'ready',
+    published_at: '2026-10-09',
+    publish_slot: '10:00:00',
+    scheduled_at: '2026-10-09 10:00:00',
+  },
+  {
+    title: '国庆预热｜假期前最后一条种草',
+    platform: 'xiaohongshu',
+    status: 'ready',
+    published_at: '2026-09-25',
+    publish_slot: '15:00:00',
+    scheduled_at: '2026-09-25 15:00:00',
+  },
+  {
+    title: '国庆后首个工作日｜收心内容',
+    platform: 'wechat_mp',
+    status: 'draft',
+    published_at: '2026-10-12',
+    publish_slot: '14:00:00',
+    scheduled_at: '2026-10-12 14:00:00',
+  },
+  {
+    title: '十月下旬日常更新',
+    platform: 'douyin',
+    status: 'draft',
+    published_at: '2026-10-13',
+    publish_slot: '15:00:00',
+    scheduled_at: '2026-10-13 15:00:00',
+  },
+]
+
 const presets: ConditionPreset[] = [
+  {
+    key: 'national-day-window',
+    label:
+      '国庆发布窗口：计划发布时间 仅日期落在 2026-09-26 ~ 2026-10-12（国庆放假 ±5 天）且 仅时间 ≥ 14:00（粒度比较，含 5 条边界样例）',
+    group: makeGroup([
+      createScopedConditionGroup('schedule', [
+        makeItem('scheduled_at', 'gte', '2026-09-26', 'and', 'date'),
+        makeItem('scheduled_at', 'lte', '2026-10-12', 'and', 'date'),
+        makeItem('scheduled_at', 'gte', '14:00:00', 'and', 'time'),
+      ]),
+    ]),
+    data: nationalDayWindowData,
+  },
+  {
+    key: 'full-demo',
+    label:
+      '最完整案例（含演示）：4 组全覆盖 · 平台/标题/(状态或AI生成)/创建时间 + 粉丝·点赞·阅读 + 认证·粉丝层级·地区 + 发布时间·时段',
+    group: makeGroup([
+      createScopedConditionGroup('contents', [
+        makeItem('platform', 'contains', 'xiaohongshu, douyin'),
+        makeItem('title', 'contains', '露营, 攻略'),
+        makeGroup([
+          makeItem('status', 'eq', 'draft'),
+          makeItem('ai_generated', 'eq', 'true', 'or'),
+        ]),
+        makeItem('created_at', 'gte', '2026-08-01 00:00:00'),
+      ]),
+      createScopedConditionGroup('metrics', [
+        makeItem('fans_count', 'gte', '10000'),
+        makeItem('like_count', 'gte', '500'),
+        makeItem('view_count', 'gte', '20000'),
+      ]),
+      createScopedConditionGroup('account', [
+        makeItem('is_verified', 'eq', 'true'),
+        makeItem('follower_tier', 'contains', 'mid, top'),
+        makeItem('region', 'contains', '广东'),
+      ]),
+      createScopedConditionGroup('schedule', [
+        makeItem('published_at', 'gte', '2026-08-01'),
+        makeItem('publish_slot', 'gte', '09:00:00'),
+        makeItem('scheduled_at', 'lte', '2026-10-01 00:00:00'),
+      ]),
+    ]),
+  },
   {
     key: 'real-full',
     label: '真实表完整案例：平台 IN + 标题包含 + 状态 IN + AI 生成 + 时间范围',
@@ -891,8 +1062,22 @@ const schemaFields: ConditionSchemaField[] = [
     type: 'ConditionOperator',
     desc: '比较运算符：eq / ne / gt / gte / lt / lte / contains / not_contains / is_null',
   },
-  { name: 'value', type: 'string', desc: '比较值；多值以逗号分隔；is_null 时为空字符串' },
+  {
+    name: 'value',
+    type: 'string',
+    desc: '比较值；非日期类多值以逗号分隔；日期 / 日期时间 / 时间的「包含 / 不包含」用 起~止（允许单边）；is_null 时为空字符串',
+  },
+  {
+    name: 'granularity',
+    type: 'ConditionValueGranularity',
+    desc: '仅日期时间类型变量可填：date=仅日期、time=仅时间；缺省表示完整日期时间比较',
+  },
   { name: 'children', type: 'ConditionNode[]', desc: '仅 group 节点：子节点数组（最多嵌套 3 层）' },
+  {
+    name: 'groupedByLock',
+    type: 'boolean',
+    desc: '仅 group 节点：true 表示该子组是由变量锁定就地聚合生成的同变量子组（组件自动维护，同变量条目不足 2 条时自动拆平）',
+  },
 ]
 
 const operatorDocs: ConditionOperatorDoc[] = [
@@ -943,7 +1128,7 @@ const operatorDocs: ConditionOperatorDoc[] = [
     symbol: 'IN',
     types: '全部类型',
     needsValue: true,
-    sql: '文本 LIKE ?（OR）；其他 IN (?)',
+    sql: '文本 LIKE ?（OR）；日期类 BETWEEN ? AND ?；其他 IN (?)',
   },
   {
     value: 'not_contains',
@@ -951,7 +1136,7 @@ const operatorDocs: ConditionOperatorDoc[] = [
     symbol: 'NOT IN',
     types: '全部类型',
     needsValue: true,
-    sql: '文本 NOT LIKE ?（AND）；其他 NOT IN (?)',
+    sql: '文本 NOT LIKE ?（AND）；日期类 NOT BETWEEN ? AND ?；其他 NOT IN (?)',
   },
   {
     value: 'is_null',
@@ -1125,6 +1310,7 @@ function applyPreset(preset: ConditionPreset): void {
   group.value = cloneConditionGroup(preset.group)
   const scopes = presetScopes(preset.group)
   selectedFieldGroupKeys.value = Array.from(new Set([...selectedFieldGroupKeys.value, ...scopes]))
+  if (preset.data?.length) dataText.value = serializeRecords(preset.data)
 }
 
 async function copySql(): Promise<void> {
@@ -1197,6 +1383,37 @@ function openDoc(tab: ConditionDocTabKey): void {
   docTab.value = tab
   docVisible.value = true
 }
+
+const resultsRef = ref<HTMLElement | null>(null)
+const overflowKeys = ref<Set<string>>(new Set())
+
+function measureOverflow(): void {
+  const root = resultsRef.value
+  if (!root) return
+  const next = new Set<string>()
+  root.querySelectorAll<HTMLElement>('[data-overflow-key]').forEach((element) => {
+    const key = element.dataset.overflowKey
+    if (key && element.scrollWidth > element.clientWidth + 1) next.add(key)
+  })
+  if (
+    next.size === overflowKeys.value.size &&
+    [...next].every((key) => overflowKeys.value.has(key))
+  ) {
+    return
+  }
+  overflowKeys.value = next
+}
+
+onMounted(() => {
+  measureOverflow()
+  window.addEventListener('resize', measureOverflow)
+})
+
+onUpdated(measureOverflow)
+
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', measureOverflow)
+})
 </script>
 
 <style scoped>
@@ -1278,7 +1495,7 @@ function openDoc(tab: ConditionDocTabKey): void {
 
 .result-row {
   display: grid;
-  grid-template-columns: 1.1fr 1fr 1.2fr 1.2fr 0.7fr;
+  grid-template-columns: 28px 1.1fr 1fr 1.2fr 1.2fr 0.7fr;
   gap: 8px;
   align-items: center;
   padding: 8px 12px;
@@ -1300,6 +1517,24 @@ function openDoc(tab: ConditionDocTabKey): void {
 .result-depth {
   color: #5856d6;
   font-weight: 600;
+}
+
+.result-logic {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 20px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #5856d6;
+  background: rgba(88, 86, 214, 0.1);
+  border-radius: 6px;
+}
+
+.result-logic--first {
+  color: #007aff;
+  background: rgba(0, 122, 255, 0.1);
 }
 
 .result-pass {

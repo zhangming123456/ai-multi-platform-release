@@ -3,7 +3,7 @@
     <ConditionGroupEditor
       :group="currentGroup"
       :path="ROOT_PATH"
-      :depth="1"
+      :depth="0"
       :field-options="fieldOptions"
       :field-groups="fieldGroups"
       :scoped-groups="scopedGroups"
@@ -12,6 +12,7 @@
       :logic-editable="logicEditable"
       :max-depth="maxDepth"
       :max-items="maxItems"
+      :logic-mode="logicMode"
       :is-root="true"
       :add-text="addText"
       :add-group-text="addGroupText"
@@ -66,6 +67,7 @@ import type {
   ConditionCommand,
   ConditionFieldGroup,
   ConditionGroup,
+  ConditionLogic,
   ConditionNode,
   ConditionRuleContext,
   ConditionValueType,
@@ -83,7 +85,10 @@ import {
   patchChildItem,
   patchChildLogic,
   pruneInactiveScopedGroups,
+  regroupLockedConditions,
   removeNodeWithCollapse,
+  setGroupLevelLogic,
+  setGroupTreeLevelLogicFromFirst,
   ungroupNodeAt,
   updateGroupAt,
 } from './conditionOperator'
@@ -100,6 +105,7 @@ const props = withDefaults(defineProps<ConditionBuilderProps>(), {
   maxItems: 0,
   maxDepth: CONDITION_MAX_DEPTH,
   logicEditable: true,
+  logicMode: 'mixed',
   addText: '添加条件',
   addGroupText: '添加子条件组',
   clearText: '清空',
@@ -129,14 +135,89 @@ function isCollapsibleGroup(target: ConditionGroup): boolean {
   return !target.scope
 }
 
+function findScopedGroup(
+  scope: string,
+  groups: ConditionFieldGroup[],
+): ConditionFieldGroup | undefined {
+  return groups.find((entry) => entry.key === scope)
+}
+
+function isRetainedScopedNode(node: ConditionNode): boolean {
+  if (!isConditionGroup(node) || !node.scope) return false
+  const entry = findScopedGroup(node.scope, props.scopedGroups)
+  return !!entry && entry.active === false
+}
+
+let previousActiveKeys: string[] = []
+
+function activeScopedKeys(groups: ConditionFieldGroup[]): string[] {
+  return groups.filter((entry) => entry.active !== false).map((entry) => entry.key)
+}
+
+function shouldPruneUnassigned(groups: ConditionFieldGroup[]): boolean {
+  const activeKeys = activeScopedKeys(groups)
+  const prune = previousActiveKeys.length === 1 && activeKeys.length >= 2
+  previousActiveKeys = activeKeys
+  return prune
+}
+
 function normalizeScopedModel(
   group: ConditionGroup,
   groups: ConditionFieldGroup[],
 ): ConditionGroup {
-  if (!groups.length) return flattenScopedGroups(group)
+  const pruneUnassigned = shouldPruneUnassigned(groups)
+  if (!groups.length) return flattenScopedGroups(group, groups)
   const active = groups.filter((entry) => entry.active !== false)
-  if (active.length <= 1) return flattenScopedGroups(group)
-  return groupScopedModel(group, groups, active)
+  if (active.length <= 1) return flattenScopedGroups(group, groups)
+  const source = pruneUnassigned ? pruneUnassignedConditions(group, groups, active) : group
+  return groupScopedModel(source, groups, active)
+}
+
+function pruneUnassignedConditions(
+  group: ConditionGroup,
+  groups: ConditionFieldGroup[],
+  active: ConditionFieldGroup[],
+): ConditionGroup {
+  const ownerIndex = fieldOwnerIndex(groups)
+  const activeKeys = active.map((entry) => entry.key)
+  const children = pruneUnassignedNodes(group.children, ownerIndex, activeKeys)
+  return children === group.children ? group : { ...group, children }
+}
+
+function pruneUnassignedNodes(
+  nodes: ConditionNode[],
+  ownerIndex: Map<string, string>,
+  activeKeys: string[],
+): ConditionNode[] {
+  const children: ConditionNode[] = []
+  let changed = false
+  for (const node of nodes) {
+    const kept = pruneUnassignedNode(node, ownerIndex, activeKeys)
+    if (kept === null) {
+      changed = true
+      continue
+    }
+    if (kept !== node) changed = true
+    children.push(kept)
+  }
+  return changed ? children : nodes
+}
+
+function pruneUnassignedNode(
+  node: ConditionNode,
+  ownerIndex: Map<string, string>,
+  activeKeys: string[],
+): ConditionNode | null {
+  if (!isConditionGroup(node)) {
+    if (!node.field) return null
+    const owner = ownerIndex.get(node.field)
+    if (!owner || !activeKeys.includes(owner)) return null
+    return node
+  }
+  if (node.scope) return node
+  const children = pruneUnassignedNodes(node.children, ownerIndex, activeKeys)
+  if (!children.length) return null
+  return children === node.children ? node : { ...node, children }
 }
 
 function isBlankItem(node: ConditionNode): boolean {
@@ -155,11 +236,16 @@ function unwrapRestGroup(node: ConditionGroup): ConditionNode[] {
   )
 }
 
-function flattenScopedGroups(group: ConditionGroup): ConditionGroup {
+function flattenScopedGroups(group: ConditionGroup, groups: ConditionFieldGroup[]): ConditionGroup {
   let changed = false
   const children: ConditionNode[] = []
   for (const child of group.children) {
     if (isConditionGroup(child) && child.scope) {
+      const entry = findScopedGroup(child.scope, groups)
+      if (entry && entry.active === false) {
+        children.push(child)
+        continue
+      }
       changed = true
       children.push(...unwrapScopedNode(child))
       continue
@@ -206,6 +292,7 @@ function groupScopedModel(
   const activeKeys = active.map((entry) => entry.key)
   const ownerIndex = fieldOwnerIndex(groups)
   const unscoped: ConditionNode[] = []
+  const retained: ConditionNode[] = []
 
   for (const child of group.children) {
     if (!isConditionGroup(child) || !child.scope) {
@@ -213,6 +300,11 @@ function groupScopedModel(
       continue
     }
     if (activeKeys.includes(child.scope)) continue
+    const entry = findScopedGroup(child.scope, groups)
+    if (entry) {
+      retained.push(child)
+      continue
+    }
     unscoped.push(...unwrapScopedNode(child))
   }
 
@@ -245,14 +337,21 @@ function groupScopedModel(
     }
   })
 
-  const children: ConditionNode[] = [...scoped, ...rest]
+  const children: ConditionNode[] = [...scoped, ...retained, ...rest]
   const stable =
     children.length === group.children.length &&
     children.every((child, index) => child === group.children[index])
   return stable ? group : { ...group, children }
 }
 
-const normalizedGroup = computed(() => normalizeScopedModel(currentGroup.value, props.scopedGroups))
+const normalizedGroup = computed(() =>
+  regroupLockedConditions(
+    normalizeScopedModel(currentGroup.value, props.scopedGroups),
+    props.fieldOptions,
+    props.scopedGroups,
+    props.maxDepth,
+  ),
+)
 
 const ruleGroup = computed(() =>
   pruneInactiveScopedGroups(currentGroup.value, (scope) => isScopedActive(scope)),
@@ -279,9 +378,30 @@ watch(
   { immediate: true },
 )
 
+watch(
+  () => props.logicMode,
+  (mode, previousMode) => {
+    if (mode !== 'uniform' || previousMode === 'uniform') return
+    const current = normalizedGroup.value
+    const next = setGroupTreeLevelLogicFromFirst(current)
+    if (next !== current) commit(next)
+  },
+  { immediate: true },
+)
+
 function commit(next: ConditionGroup): void {
   emit('update:modelValue', next)
   emit('change', next)
+}
+
+function canNestGroup(path: number[]): boolean {
+  return path.length < props.maxDepth
+}
+
+function nextNodeLogic(group: ConditionGroup): ConditionLogic {
+  if (props.logicMode !== 'uniform') return 'and'
+  const previous = [...group.children].reverse().find((child) => !isRetainedScopedNode(child))
+  return previous?.logic ?? group.logic
 }
 
 function handleCommand(command: ConditionCommand): void {
@@ -299,24 +419,43 @@ function handleCommand(command: ConditionCommand): void {
       )
       return
     }
+    case 'set-level-logic':
+      commit(
+        updateGroupAt(group, command.path, (target) => setGroupLevelLogic(target, command.logic)),
+      )
+      return
     case 'add-item':
       commit(
-        updateGroupAt(group, command.path, (target) => ({
-          ...target,
-          children: [...target.children, createConditionItem()],
-        })),
+        updateGroupAt(group, command.path, (target) => {
+          const item = { ...createConditionItem(), logic: nextNodeLogic(target) }
+          return {
+            ...target,
+            children: [...target.children, item],
+          }
+        }),
       )
       return
     case 'add-group':
+      if (!canNestGroup(command.path)) return
       commit(
-        updateGroupAt(group, command.path, (target) => ({
-          ...target,
-          children: [...target.children, createConditionGroup()],
-        })),
+        updateGroupAt(group, command.path, (target) => {
+          const groupNode = command.field
+            ? createConditionGroup([createConditionItem(command.field)])
+            : createConditionGroup()
+          return {
+            ...target,
+            children: [...target.children, { ...groupNode, logic: nextNodeLogic(target) }],
+          }
+        }),
       )
       return
     case 'clear-group':
-      commit(updateGroupAt(group, command.path, (target) => ({ ...target, children: [] })))
+      commit(
+        updateGroupAt(group, command.path, (target) => ({
+          ...target,
+          children: target.children.filter((child) => isRetainedScopedNode(child)),
+        })),
+      )
       return
     case 'remove-group': {
       if (!command.path.length) return
@@ -338,12 +477,16 @@ function handleCommand(command: ConditionCommand): void {
       commit(removeNodeWithCollapse(group, command.path, command.index, isCollapsibleGroup))
       return
     case 'wrap-item':
+      if (!canNestGroup(command.path)) return
       commit(
         updateGroupAt(group, command.path, (target) => {
           const item = target.children[command.index]
           if (!item || isConditionGroup(item)) return target
           const wrapped: ConditionGroup = {
-            ...createConditionGroup([{ ...item, logic: 'and' }, createConditionItem()]),
+            ...createConditionGroup([
+              { ...item, logic: 'and' },
+              createConditionItem(command.field ?? ''),
+            ]),
             logic: item.logic,
           }
           const children = target.children.slice()

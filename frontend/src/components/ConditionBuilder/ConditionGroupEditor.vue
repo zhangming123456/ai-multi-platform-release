@@ -6,8 +6,24 @@
         {{ groupTitle || '条件组' }}
       </span>
 
+      <span v-if="lockedFieldLabel" class="cge-header__locked">
+        <IconLock :size="12" />
+        变量锁定：{{ lockedFieldLabel }}
+      </span>
+
+      <a-tooltip v-if="lockedExpression" position="br">
+        <span class="cge-header__expression">{{ lockedExpression }}</span>
+        <template #content>
+          <div class="cge-expression-tip">{{ lockedExpression }}</div>
+        </template>
+      </a-tooltip>
+
       <span v-if="isRoot" class="cge-header__hint">
-        每行左侧可切换 且 / 或（且 优先级高于 或）
+        {{
+          logicMode === 'uniform'
+            ? '同一层级共用一个 且 / 或（且 优先级高于 或）'
+            : '每行左侧可切换 且 / 或（且 优先级高于 或）'
+        }}
       </span>
 
       <div class="cge-header__spacer" />
@@ -32,7 +48,13 @@
       </template>
     </div>
 
-    <div class="cge-body" :class="{ 'cge-body--connected': renderNodes.length > 1 }">
+    <div
+      class="cge-body"
+      :class="{
+        'cge-body--connected': logicMode === 'mixed' && renderNodes.length > 1,
+        'cge-body--bracket': showLevelLogic,
+      }"
+    >
       <template v-for="node in renderNodes" :key="node.child.id">
         <div v-if="node.kind === 'scoped'" class="cge-node cge-node--scoped">
           <ConditionConnector
@@ -40,6 +62,7 @@
             :logic="node.child.logic"
             :disabled="disabled"
             :editable="logicEditable"
+            :logic-mode="logicMode"
             @update:logic="onNodeLogicChange(node.index, $event)"
           />
           <ConditionGroupEditor
@@ -51,6 +74,8 @@
             :scoped-groups="[]"
             :group-title="node.scoped?.label ?? ''"
             :lock-group="true"
+            :logic-mode="logicMode"
+            :locked-field="effectiveLockedField"
             :rule-context="ruleContext"
             :disabled="disabled"
             :logic-editable="logicEditable"
@@ -73,6 +98,8 @@
           :field-groups="node.scoped ? [node.scoped] : []"
           :scoped-groups="[]"
           :flat="true"
+          :logic-mode="logicMode"
+          :locked-field="effectiveLockedField"
           :rule-context="ruleContext"
           :disabled="disabled"
           :logic-editable="logicEditable"
@@ -91,6 +118,7 @@
             :logic="node.child.logic"
             :disabled="disabled"
             :editable="logicEditable"
+            :logic-mode="logicMode"
             @update:logic="onNodeLogicChange(node.index, $event)"
           />
           <ConditionGroupEditor
@@ -100,6 +128,8 @@
             :field-options="fieldOptions"
             :field-groups="fieldGroups"
             :scoped-groups="[]"
+            :logic-mode="logicMode"
+            :locked-field="effectiveLockedField"
             :rule-context="ruleContext"
             :disabled="disabled"
             :logic-editable="logicEditable"
@@ -120,12 +150,37 @@
           :index="node.index"
           :field-options="fieldOptions"
           :field-groups="fieldGroups"
+          :locked-field="effectiveLockedField"
+          :can-add-group="canAddGroup"
+          :max-depth="maxDepth"
+          :logic-mode="logicMode"
           :rule-context="ruleContext"
           :disabled="disabled"
           :logic-editable="logicEditable"
           @command="emitCommand"
         />
       </template>
+
+      <div v-if="showLevelLogic" class="cge-level-logic">
+        <button
+          type="button"
+          class="cge-level-seg"
+          :class="{ 'cge-level-seg--active': levelLogic === 'and' }"
+          :disabled="disabled"
+          @click="requestLevelLogic('and')"
+        >
+          且
+        </button>
+        <button
+          type="button"
+          class="cge-level-seg"
+          :class="{ 'cge-level-seg--active': levelLogic === 'or' }"
+          :disabled="disabled"
+          @click="requestLevelLogic('or')"
+        >
+          或
+        </button>
+      </div>
 
       <div v-if="!renderNodes.length" class="cge-empty">{{ emptyText }}</div>
     </div>
@@ -137,7 +192,7 @@
         size="small"
         class="cge-footer__add"
         :disabled="disabled || atMaxItems"
-        @click="emitCommand({ type: 'add-item', path })"
+        @click="requestAddItem"
       >
         <template #icon><IconPlus /></template>
         {{ addText }}
@@ -148,7 +203,7 @@
         size="small"
         class="cge-footer__add-group"
         :disabled="disabled"
-        @click="emitCommand({ type: 'add-group', path })"
+        @click="requestAddGroup"
       >
         <template #icon><IconPlus /></template>
         {{ addGroupText }}
@@ -170,7 +225,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import { IconDelete, IconPlus } from '@arco-design/web-vue/es/icon'
+import { IconDelete, IconLock, IconPlus } from '@arco-design/web-vue/es/icon'
 import ConditionConnector from './ConditionConnector.vue'
 import ConditionItemRow from './ConditionItemRow.vue'
 import type {
@@ -183,17 +238,25 @@ import type {
   ConditionLogic,
   ConditionNode,
 } from './ConditionBuilder.types'
-import { CONDITION_MAX_DEPTH, isConditionGroup } from './conditionOperator'
+import {
+  CONDITION_MAX_DEPTH,
+  buildConditionExpression,
+  conditionFieldLabel,
+  isConditionGroup,
+  resolveGroupFieldLock,
+} from './conditionOperator'
 
 const props = withDefaults(defineProps<ConditionGroupEditorProps>(), {
   disabled: false,
   logicEditable: true,
+  logicMode: 'mixed',
   maxDepth: CONDITION_MAX_DEPTH,
   maxItems: 0,
   isRoot: false,
   scopedGroups: () => [],
   groupTitle: '',
   lockGroup: false,
+  lockedField: '',
   flat: false,
   addText: '添加条件',
   addGroupText: '添加子条件组',
@@ -203,6 +266,20 @@ const props = withDefaults(defineProps<ConditionGroupEditorProps>(), {
 })
 
 const emit = defineEmits<ConditionGroupEditorEmits>()
+
+const ownLockedField = computed(() => resolveGroupFieldLock(props.group, props.fieldOptions))
+
+const effectiveLockedField = computed(() => props.lockedField || ownLockedField.value)
+
+const lockedFieldLabel = computed(() => {
+  if (!effectiveLockedField.value) return ''
+  const field = props.fieldOptions.find((entry) => entry.value === effectiveLockedField.value)
+  return field ? conditionFieldLabel(field) : effectiveLockedField.value
+})
+
+const lockedExpression = computed(() =>
+  lockedFieldLabel.value ? buildConditionExpression(props.group, props.fieldOptions) : '',
+)
 
 interface RenderNode {
   child: ConditionNode
@@ -222,6 +299,19 @@ const scopedIndex = computed<Map<string, ConditionFieldGroup>>(() => {
   for (const group of props.scopedGroups) map.set(group.key, group)
   return map
 })
+
+const retainedScopes = computed<Set<string>>(
+  () =>
+    new Set(props.scopedGroups.filter((group) => group.active === false).map((group) => group.key)),
+)
+
+function isRetainedNode(node: ConditionNode): boolean {
+  return isConditionGroup(node) && !!node.scope && retainedScopes.value.has(node.scope)
+}
+
+const activeChildCount = computed(
+  () => props.group.children.filter((child) => !isRetainedNode(child)).length,
+)
 
 const activeScopedCount = computed(
   () => props.scopedGroups.filter((group) => group.active !== false).length,
@@ -261,16 +351,27 @@ const showAddGroup = computed(
 
 const showClear = computed(() =>
   props.isRoot
-    ? scopedRenderCount.value === 0 && props.group.children.length > 0
-    : props.lockGroup && props.group.children.length > 0,
+    ? scopedRenderCount.value === 0 && activeChildCount.value > 0
+    : props.lockGroup && activeChildCount.value > 0,
 )
 
 const showFooter = computed(() => !props.flat && (showAddItem.value || showClear.value))
 
 const canAddGroup = computed(() => props.depth < props.maxDepth)
-const atMaxItems = computed(
-  () => props.maxItems > 0 && props.group.children.length >= props.maxItems,
+
+const levelLogic = computed<ConditionLogic>(() => {
+  return props.group.children[0]?.logic ?? props.group.logic
+})
+
+const showLevelLogic = computed(
+  () => props.logicMode === 'uniform' && props.group.children.length > 1,
 )
+
+function requestLevelLogic(logic: ConditionLogic): void {
+  emitCommand({ type: 'set-level-logic', path: props.path, logic })
+}
+
+const atMaxItems = computed(() => props.maxItems > 0 && activeChildCount.value >= props.maxItems)
 
 function childPath(index: number): number[] {
   return [...props.path, index]
@@ -294,6 +395,18 @@ function onNodeLogicChange(index: number, logic: ConditionLogic): void {
 
 function requestRemove(): void {
   emitCommand({ type: 'remove-group', path: props.path })
+}
+
+function requestAddItem(): void {
+  emitCommand({ type: 'add-item', path: props.path })
+}
+
+function requestAddGroup(): void {
+  emitCommand({
+    type: 'add-group',
+    path: props.path,
+    field: effectiveLockedField.value || undefined,
+  })
 }
 
 function requestUngroup(): void {
@@ -353,9 +466,43 @@ function requestUngroup(): void {
   background: rgba(0, 185, 107, 0.12);
 }
 
+.cge-header__locked {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #d46b08;
+  background: rgba(255, 149, 0, 0.14);
+  border-radius: 6px;
+  padding: 2px 8px;
+}
+
 .cge-header__lock {
   font-size: 11px;
   color: #86868b;
+}
+
+.cge-header__expression {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: min(26vw, 380px);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  padding-left: 10px;
+  border-left: 1px solid #e5e5ea;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  color: #6e6e73;
+}
+
+.cge-expression-tip {
+  max-width: 420px;
+  word-break: break-all;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  line-height: 1.6;
 }
 
 .cge-header__hint {
@@ -365,6 +512,44 @@ function requestUngroup(): void {
 
 .cge-header__spacer {
   flex: 1;
+}
+
+.cge-body > .cge-level-logic {
+  position: absolute;
+  top: 50%;
+  left: 5px;
+  transform: translateY(-50%);
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  width: 18px;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.cge-level-seg {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  background: #e9f0f7;
+  color: #86909c;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+}
+
+.cge-level-seg--active {
+  color: #fff;
+  background: #00b96b;
+}
+
+.cge-level-seg:disabled {
+  cursor: not-allowed;
 }
 
 .cge-header__action {
@@ -388,6 +573,21 @@ function requestUngroup(): void {
   border-radius: 1px;
   background: #e5e6eb;
   z-index: 0;
+}
+
+.cge-body--bracket::before {
+  content: '';
+  position: absolute;
+  left: 13px;
+  top: 0;
+  bottom: 0;
+  width: 5px;
+  border-left: 2px solid #e0e3e8;
+  border-top: 2px solid #e0e3e8;
+  border-bottom: 2px solid #e0e3e8;
+  border-radius: 4px 0 0 4px;
+  z-index: 0;
+  pointer-events: none;
 }
 
 .cge-body > * {

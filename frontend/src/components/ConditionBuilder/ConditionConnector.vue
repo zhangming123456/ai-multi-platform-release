@@ -1,7 +1,7 @@
 <template>
   <div class="connector">
-    <span v-if="index === 0" class="connector__first">IF</span>
-    <div v-else-if="editable !== false && !disabled" class="connector__toggle">
+    <span v-if="index === 0 && !uniform" class="connector__first">IF</span>
+    <div v-else-if="showToggle" class="connector__toggle">
       <button
         type="button"
         class="connector__seg"
@@ -19,11 +19,12 @@
         或
       </button>
     </div>
-    <span v-else class="connector__static">{{ CONDITION_LOGIC_SYMBOL[logic] }}</span>
+    <span v-else-if="!uniform" class="connector__static">{{ CONDITION_LOGIC_SYMBOL[logic] }}</span>
   </div>
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
 import type {
   ConditionConnectorEmits,
   ConditionConnectorProps,
@@ -31,9 +32,19 @@ import type {
 } from './ConditionBuilder.types'
 import { CONDITION_LOGIC_SYMBOL } from './conditionOperator'
 
-defineProps<ConditionConnectorProps>()
+const props = withDefaults(defineProps<ConditionConnectorProps>(), {
+  disabled: false,
+  editable: true,
+  logicMode: 'mixed',
+})
 
 const emit = defineEmits<ConditionConnectorEmits>()
+
+const showToggle = computed(
+  () => props.logicMode === 'mixed' && props.editable !== false && !props.disabled,
+)
+
+const uniform = computed(() => props.logicMode === 'uniform')
 
 function setLogic(value: ConditionLogic): void {
   emit('update:logic', value)

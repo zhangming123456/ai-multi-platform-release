@@ -10,6 +10,7 @@ import type {
   ConditionNode,
   ConditionOperator,
   ConditionOperatorMeta,
+  ConditionValueGranularity,
   ConditionValueType,
 } from './ConditionBuilder.types'
 
@@ -60,6 +61,14 @@ export const CONDITION_VALUE_TYPE_LABELS: Record<ConditionValueType, string> = {
   time: '时间',
   select: '枚举',
 }
+
+export const CONDITION_GRANULARITY_LABELS: Record<ConditionValueGranularity, string> = {
+  datetime: '日期时间',
+  date: '仅日期',
+  time: '仅时间',
+}
+
+const CONDITION_DATETIME_GRANULARITIES: ConditionValueGranularity[] = ['datetime', 'date', 'time']
 
 export const CONDITION_BOOLEAN_OPTIONS: ConditionFieldOptionValue[] = [
   { label: '是', value: 'true' },
@@ -180,6 +189,208 @@ export function resolveConditionOperator(
   return supported ? item.operator : 'eq'
 }
 
+export function conditionGranularityOptions(
+  field?: ConditionFieldOption,
+): ConditionValueGranularity[] {
+  return resolveConditionFieldType(field) === 'datetime' ? CONDITION_DATETIME_GRANULARITIES : []
+}
+
+export function resolveGranularityForType(
+  type: ConditionValueType,
+  granularity?: ConditionValueGranularity,
+): ConditionValueGranularity {
+  if (type === 'date') return 'date'
+  if (type === 'time') return 'time'
+  if (type === 'datetime' && (granularity === 'date' || granularity === 'time')) return granularity
+  return 'datetime'
+}
+
+export function resolveConditionGranularity(
+  item: ConditionItem,
+  field?: ConditionFieldOption,
+): ConditionValueGranularity {
+  return resolveGranularityForType(resolveConditionFieldType(field), item.granularity)
+}
+
+const CONDITION_LOCKABLE_TYPES: ConditionValueType[] = ['number', 'date', 'datetime', 'time']
+
+export function isConditionFieldLockable(field?: ConditionFieldOption): boolean {
+  return CONDITION_LOCKABLE_TYPES.includes(resolveConditionFieldType(field))
+}
+
+export function resolveGroupFieldLock(
+  group: ConditionGroup,
+  fieldOptions: ConditionFieldOption[] = [],
+): string {
+  const counts = new Map<string, number>()
+  for (const child of group.children) {
+    if (isConditionGroup(child) || !child.field) continue
+    counts.set(child.field, (counts.get(child.field) ?? 0) + 1)
+  }
+  for (const [field, count] of counts) {
+    if (count < 2) continue
+    if (!isConditionFieldLockable(fieldOptions.find((entry) => entry.value === field))) continue
+    return field
+  }
+  return ''
+}
+
+interface ConditionLockScope {
+  active: Map<string, ConditionFieldOption[]>
+  known: Set<string>
+}
+
+function createConditionLockScope(scopedGroups: ConditionFieldGroup[] = []): ConditionLockScope {
+  const active = new Map<string, ConditionFieldOption[]>()
+  const known = new Set<string>()
+  for (const entry of scopedGroups) {
+    known.add(entry.key)
+    if (entry.active !== false) active.set(entry.key, entry.fields)
+  }
+  return { active, known }
+}
+
+function regroupRun(items: ConditionItem[]): ConditionNode {
+  const [first] = items
+  return { ...createConditionGroup(items), logic: first?.logic ?? 'and', groupedByLock: true }
+}
+
+function flattenUnlockedLockGroups(
+  children: ConditionNode[],
+  fieldOptions: ConditionFieldOption[],
+): ConditionNode[] | null {
+  let changed = false
+  const result: ConditionNode[] = []
+  for (const child of children) {
+    if (
+      isConditionGroup(child) &&
+      child.groupedByLock &&
+      !resolveGroupFieldLock(child, fieldOptions)
+    ) {
+      changed = true
+      child.children.forEach((node, index) => {
+        result.push(index === 0 ? { ...node, logic: child.logic } : node)
+      })
+      continue
+    }
+    result.push(child)
+  }
+  return changed ? result : null
+}
+
+function conditionNodeHasForeignField(node: ConditionNode, lockedField: string): boolean {
+  if (!isConditionGroup(node)) return Boolean(node.field) && node.field !== lockedField
+  return node.children.some((child) => conditionNodeHasForeignField(child, lockedField))
+}
+
+function regroupLockedChildren(
+  children: ConditionNode[],
+  lockedField: string,
+): ConditionNode[] | null {
+  const needsRegroup = children.some((child) =>
+    isConditionGroup(child)
+      ? conditionNodeHasForeignField(child, lockedField)
+      : !child.field || child.field !== lockedField,
+  )
+  if (!needsRegroup) return null
+
+  const lockedItems = children.filter(
+    (child): child is ConditionItem => !isConditionGroup(child) && child.field === lockedField,
+  )
+  const result: ConditionNode[] = []
+  let emittedLock = false
+  let run: ConditionItem[] = []
+  let runField = ''
+
+  const flushRun = (): void => {
+    if (!run.length) return
+    if (run.length > 1) {
+      result.push(regroupRun(run))
+    } else {
+      const [single] = run
+      if (single) result.push(single)
+    }
+    run = []
+    runField = ''
+  }
+
+  for (const child of children) {
+    if (isConditionGroup(child)) {
+      flushRun()
+      result.push(child)
+      continue
+    }
+    if (!child.field) {
+      flushRun()
+      result.push(child)
+      continue
+    }
+    if (child.field === lockedField) {
+      flushRun()
+      if (emittedLock) continue
+      emittedLock = true
+      result.push(regroupRun(lockedItems))
+      continue
+    }
+    if (run.length && runField !== child.field) flushRun()
+    runField = child.field
+    run.push(child)
+  }
+  flushRun()
+  return result
+}
+
+function regroupLockedGroup(
+  group: ConditionGroup,
+  fieldOptions: ConditionFieldOption[],
+  scope: ConditionLockScope,
+  depth: number,
+  maxDepth: number,
+): ConditionGroup {
+  let changed = false
+  const children: ConditionNode[] = []
+  for (const child of group.children) {
+    if (!isConditionGroup(child)) {
+      children.push(child)
+      continue
+    }
+    const scopeKey = depth === 0 ? child.scope : undefined
+    if (scopeKey && scope.known.has(scopeKey) && !scope.active.has(scopeKey)) {
+      children.push(child)
+      continue
+    }
+    const childFields = scopeKey ? (scope.active.get(scopeKey) ?? fieldOptions) : fieldOptions
+    const next = regroupLockedGroup(child, childFields, scope, depth + 1, maxDepth)
+    if (next !== child) changed = true
+    children.push(next)
+  }
+
+  const flattened = flattenUnlockedLockGroups(children, fieldOptions)
+  const base = flattened ?? children
+  if (flattened) changed = true
+
+  if (depth < maxDepth) {
+    const lockedField = resolveGroupFieldLock({ ...group, children: base }, fieldOptions)
+    if (lockedField) {
+      const regrouped = regroupLockedChildren(base, lockedField)
+      if (regrouped) return { ...group, children: regrouped }
+    }
+  }
+
+  return changed ? { ...group, children: base } : group
+}
+
+export function regroupLockedConditions(
+  group: ConditionGroup,
+  fieldOptions: ConditionFieldOption[] = [],
+  scopedGroups: ConditionFieldGroup[] = [],
+  maxDepth: number = CONDITION_MAX_DEPTH,
+): ConditionGroup {
+  if (!fieldOptions.length) return group
+  const scope = createConditionLockScope(scopedGroups)
+  return regroupLockedGroup(group, fieldOptions, scope, 0, maxDepth)
+}
+
 export function conditionValueAllowedForField(
   value: string,
   field?: ConditionFieldOption,
@@ -203,6 +414,66 @@ export function splitConditionValues(value: string): string[] {
     .filter((part) => part.length > 0)
 }
 
+const CONDITION_DATE_PART = /^(\d{4})-(\d{2})-(\d{2})/
+const CONDITION_TIME_PART = /(\d{1,2}):(\d{2})(?::(\d{2}))?/
+
+export const CONDITION_RANGE_SEPARATOR = '~'
+
+export interface ConditionRangeValue {
+  start: string
+  end: string
+}
+
+export function parseConditionRange(value: string): ConditionRangeValue {
+  const [rawStart, rawEnd] = String(value ?? '').split(CONDITION_RANGE_SEPARATOR)
+  return { start: (rawStart ?? '').trim(), end: (rawEnd ?? '').trim() }
+}
+
+export function formatConditionRange(range: ConditionRangeValue): string {
+  const start = range.start.trim()
+  const end = range.end.trim()
+  if (!start && !end) return ''
+  return `${start}${CONDITION_RANGE_SEPARATOR}${end}`
+}
+
+function toValueText(value: unknown): string {
+  if (value === undefined || value === null) return ''
+  return String(value).trim()
+}
+
+export function conditionDatePart(value: unknown): string {
+  const match = CONDITION_DATE_PART.exec(toValueText(value))
+  return match ? `${match[1]}-${match[2]}-${match[3]}` : ''
+}
+
+export function conditionTimePart(value: unknown): string {
+  const match = CONDITION_TIME_PART.exec(toValueText(value))
+  if (!match) return ''
+  return `${match[1].padStart(2, '0')}:${match[2]}:${match[3] ?? '00'}`
+}
+
+function convertValuePart(value: string, granularity: ConditionValueGranularity): string {
+  if (!value) return ''
+  if (granularity === 'date') return conditionDatePart(value)
+  if (granularity === 'time') return conditionTimePart(value)
+  return value
+}
+
+export function convertConditionValue(
+  value: string,
+  granularity: ConditionValueGranularity,
+): string {
+  if (!value) return ''
+  if (String(value).includes(CONDITION_RANGE_SEPARATOR)) {
+    const range = parseConditionRange(value)
+    return formatConditionRange({
+      start: convertValuePart(range.start, granularity),
+      end: convertValuePart(range.end, granularity),
+    })
+  }
+  return convertValuePart(value, granularity)
+}
+
 export function conditionOperatorIsMultiValue(operator: ConditionOperator): boolean {
   return operator === 'contains' || operator === 'not_contains'
 }
@@ -223,6 +494,10 @@ export function conditionOperatorUsesLike(
 export function isConditionItemEffective(item: ConditionItem): boolean {
   if (!item.field) return false
   if (conditionOperatorIsMultiValue(item.operator)) {
+    if (String(item.value ?? '').includes(CONDITION_RANGE_SEPARATOR)) {
+      const range = parseConditionRange(item.value)
+      return Boolean(range.start || range.end)
+    }
     return splitConditionValues(item.value).length > 0
   }
   return true
@@ -426,13 +701,61 @@ export function patchChildLogic(
   return { ...group, children }
 }
 
+export function setGroupLevelLogic(group: ConditionGroup, logic: ConditionLogic): ConditionGroup {
+  if (group.children.every((child) => child.logic === logic)) return group
+  return {
+    ...group,
+    children: group.children.map((child) => (child.logic === logic ? child : { ...child, logic })),
+  }
+}
+
+export function setGroupTreeLevelLogicFromFirst(group: ConditionGroup): ConditionGroup {
+  const logic = group.children[0]?.logic ?? group.logic
+  let changed = false
+  const children = group.children.map((child) => {
+    let nextChild = isConditionGroup(child) ? setGroupTreeLevelLogicFromFirst(child) : child
+    if (nextChild !== child) changed = true
+    if (nextChild.logic === logic) return nextChild
+    changed = true
+    nextChild = { ...nextChild, logic }
+    return nextChild
+  })
+  return changed ? { ...group, children } : group
+}
+
+function granularitySuffix(item: ConditionItem, field?: ConditionFieldOption): string {
+  if (resolveConditionFieldType(field) !== 'datetime') return ''
+  const granularity = resolveConditionGranularity(item, field)
+  return granularity === 'date' || granularity === 'time'
+    ? `（${CONDITION_GRANULARITY_LABELS[granularity]}）`
+    : ''
+}
+
+export function conditionItemFieldLabel(item: ConditionItem, field?: ConditionFieldOption): string {
+  const base = field ? conditionFieldLabel(field) : item.field
+  return `${base}${granularitySuffix(item, field)}`
+}
+
+function rangeExpression(name: string, value: string, negated: boolean): string {
+  const range = parseConditionRange(value)
+  if (range.start && range.end) {
+    return `${name} ${negated ? '不在' : '在'} (${range.start} ~ ${range.end}) 内`
+  }
+  if (range.start) return `${name} ${negated ? '<' : '≥'} ${range.start}`
+  if (range.end) return `${name} ${negated ? '>' : '≤'} ${range.end}`
+  return ''
+}
+
 function itemExpression(item: ConditionItem, fieldMap: Map<string, ConditionFieldOption>): string {
   if (!isConditionItemEffective(item)) return ''
   const operator = OPERATOR_MAP.get(item.operator)
   const field = fieldMap.get(item.field)
-  const name = field?.label ?? item.field
+  const name = conditionItemFieldLabel(item, field)
   const symbol = operator?.symbol ?? item.operator
   if (conditionOperatorIsMultiValue(item.operator)) {
+    if (isConditionTemporalType(resolveConditionFieldType(field))) {
+      return rangeExpression(name, item.value, item.operator === 'not_contains')
+    }
     const values = splitConditionValues(item.value)
     if (conditionOperatorUsesLike(item.operator, field)) {
       const keyword = item.operator === 'contains' ? '包含' : '不包含'
@@ -481,7 +804,7 @@ function toComparableNumber(value: unknown): number {
   return Number(value)
 }
 
-function isTemporalType(type: ConditionValueType): boolean {
+export function isConditionTemporalType(type: ConditionValueType): boolean {
   return type === 'date' || type === 'datetime' || type === 'time'
 }
 
@@ -500,14 +823,42 @@ function toComparableTime(value: unknown): number {
   ).getTime()
 }
 
-function toComparableSeconds(value: unknown): number {
-  const match = /^(\d{1,2}):(\d{2})(?::(\d{2}))?$/.exec(String(value).trim())
-  if (!match) return Number.NaN
-  return Number(match[1]) * 3600 + Number(match[2]) * 60 + Number(match[3] ?? 0)
+function toDayNumber(value: unknown): number {
+  const date = conditionDatePart(value)
+  if (!date) return Number.NaN
+  const [year, month, day] = date.split('-').map(Number)
+  return Math.round(Date.UTC(year, month - 1, day) / 86400000)
 }
 
-function toComparableTemporal(type: ConditionValueType, value: unknown): number {
-  return type === 'time' ? toComparableSeconds(value) : toComparableTime(value)
+function toSecondsOfDay(value: unknown): number {
+  const time = conditionTimePart(value)
+  if (!time) return Number.NaN
+  const [hours, minutes, seconds] = time.split(':').map(Number)
+  return hours * 3600 + minutes * 60 + seconds
+}
+
+function toComparableGranular(granularity: ConditionValueGranularity, value: unknown): number {
+  if (granularity === 'date') return toDayNumber(value)
+  if (granularity === 'time') return toSecondsOfDay(value)
+  return toComparableTime(value)
+}
+
+function conditionRangeMatch(
+  value: string,
+  actual: unknown,
+  granularity: ConditionValueGranularity,
+  negated: boolean,
+): boolean {
+  const range = parseConditionRange(value)
+  const target = toComparableGranular(granularity, actual)
+  if (Number.isNaN(target)) return false
+  const start = range.start ? toComparableGranular(granularity, range.start) : Number.NaN
+  const end = range.end ? toComparableGranular(granularity, range.end) : Number.NaN
+  const hasStart = !Number.isNaN(start)
+  const hasEnd = !Number.isNaN(end)
+  if (!hasStart && !hasEnd) return false
+  const inside = (!hasStart || target >= start) && (!hasEnd || target <= end)
+  return negated ? !inside : inside
 }
 
 function normalizeBoolean(value: unknown): boolean {
@@ -520,12 +871,17 @@ function isBlankValue(value: unknown): boolean {
   return value === undefined || value === null || String(value).trim() === ''
 }
 
-function compareEquality(type: ConditionValueType, actual: unknown, expected: string): boolean {
+function compareEquality(
+  type: ConditionValueType,
+  actual: unknown,
+  expected: string,
+  granularity: ConditionValueGranularity,
+): boolean {
   if (type === 'number') return toComparableNumber(actual) === toComparableNumber(expected)
   if (type === 'boolean') return normalizeBoolean(actual) === normalizeBoolean(expected)
-  if (isTemporalType(type)) {
-    const left = toComparableTemporal(type, actual)
-    const right = toComparableTemporal(type, expected)
+  if (isConditionTemporalType(type)) {
+    const left = toComparableGranular(granularity, actual)
+    const right = toComparableGranular(granularity, expected)
     return !Number.isNaN(left) && !Number.isNaN(right) && left === right
   }
   return String(actual) === expected
@@ -537,6 +893,7 @@ export function evaluateConditionItem(
   field?: ConditionFieldOption,
 ): boolean {
   const type = resolveConditionFieldType(field)
+  const granularity = resolveConditionGranularity(item, field)
   const actual = data[item.field]
 
   if (item.operator === 'is_null') return isBlankValue(actual)
@@ -544,35 +901,41 @@ export function evaluateConditionItem(
 
   switch (item.operator) {
     case 'eq':
-      return compareEquality(type, actual, item.value)
+      return compareEquality(type, actual, item.value, granularity)
     case 'ne':
-      return !compareEquality(type, actual, item.value)
+      return !compareEquality(type, actual, item.value, granularity)
     case 'contains': {
+      if (isConditionTemporalType(type)) {
+        return conditionRangeMatch(item.value, actual, granularity, false)
+      }
       const values = splitConditionValues(item.value)
       if (values.length === 0) return false
       if (conditionOperatorUsesLike(item.operator, field)) {
         const text = String(actual).toLowerCase()
         return values.some((value) => text.includes(value.toLowerCase()))
       }
-      return values.some((value) => compareEquality(type, actual, value))
+      return values.some((value) => compareEquality(type, actual, value, granularity))
     }
     case 'not_contains': {
+      if (isConditionTemporalType(type)) {
+        return conditionRangeMatch(item.value, actual, granularity, true)
+      }
       const values = splitConditionValues(item.value)
       if (values.length === 0) return false
       if (conditionOperatorUsesLike(item.operator, field)) {
         const text = String(actual).toLowerCase()
         return !values.some((value) => text.includes(value.toLowerCase()))
       }
-      return !values.some((value) => compareEquality(type, actual, value))
+      return !values.some((value) => compareEquality(type, actual, value, granularity))
     }
     case 'gt':
     case 'gte':
     case 'lt':
     case 'lte': {
-      const temporal = isTemporalType(type)
-      const left = temporal ? toComparableTemporal(type, actual) : toComparableNumber(actual)
+      const temporal = isConditionTemporalType(type)
+      const left = temporal ? toComparableGranular(granularity, actual) : toComparableNumber(actual)
       const right = temporal
-        ? toComparableTemporal(type, item.value)
+        ? toComparableGranular(granularity, item.value)
         : toComparableNumber(item.value)
       if (Number.isNaN(left) || Number.isNaN(right)) return false
       if (item.operator === 'gt') return left > right
@@ -619,6 +982,11 @@ function evaluateGroupNode(
   return segments.some((segment) => segment.every(Boolean))
 }
 
+function formatExpectedValue(item: ConditionItem, needsValue?: boolean): string {
+  if (needsValue === false) return '—'
+  return item.value
+}
+
 function collectItemResults(
   group: ConditionGroup,
   data: Record<string, unknown>,
@@ -627,24 +995,25 @@ function collectItemResults(
 ): ConditionItemResult[] {
   const results: ConditionItemResult[] = []
 
-  for (const child of group.children) {
+  group.children.forEach((child, index) => {
     if (isConditionGroup(child)) {
       results.push(...collectItemResults(child, data, fieldMap, depth + 1))
-      continue
+      return
     }
-    if (!isConditionItemEffective(child)) continue
+    if (!isConditionItemEffective(child)) return
     const field = fieldMap.get(child.field)
     const operator = OPERATOR_MAP.get(child.operator)
     results.push({
       item: child,
-      fieldLabel: field ? conditionFieldLabel(field) : child.field,
+      fieldLabel: conditionItemFieldLabel(child, field),
       operatorLabel: operator?.label ?? child.operator,
-      expected: operator?.needsValue === false ? '—' : child.value,
+      expected: formatExpectedValue(child, operator?.needsValue),
       actual: formatActualValue(data[child.field]),
       passed: evaluateConditionItem(child, data, field),
       depth,
+      isFirst: index === 0,
     })
-  }
+  })
 
   return results
 }

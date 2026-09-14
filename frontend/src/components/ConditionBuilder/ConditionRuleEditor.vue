@@ -591,7 +591,7 @@ function toggleActive(rule: ConditionRule, value: boolean): void {
 .cre-form__control {
   flex: 1;
   width: max-content;
-  min-width: 120px;
+  min-width: 80px;
 }
 
 .cre-form__section {
@@ -610,7 +610,7 @@ function toggleActive(rule: ConditionRule, value: boolean): void {
   :deep(.cre-form__control) {
     flex: 1;
     width: max-content;
-    min-width: 120px;
+    min-width: 80px;
   }
 }
 

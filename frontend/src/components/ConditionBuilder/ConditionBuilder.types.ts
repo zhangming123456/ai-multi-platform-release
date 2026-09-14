@@ -1,10 +1,14 @@
 export type ConditionLogic = 'and' | 'or'
 
+export type ConditionLogicMode = 'mixed' | 'uniform'
+
 export type ConditionValueType =
   'string' | 'number' | 'boolean' | 'date' | 'datetime' | 'time' | 'select'
 
 export type ConditionOperator =
   'eq' | 'ne' | 'gt' | 'gte' | 'lt' | 'lte' | 'contains' | 'not_contains' | 'is_null'
+
+export type ConditionValueGranularity = 'datetime' | 'date' | 'time'
 
 export type ConditionNodeType = 'item' | 'group'
 
@@ -37,6 +41,7 @@ export interface ConditionItem {
   field: string
   operator: ConditionOperator
   value: string
+  granularity?: ConditionValueGranularity
 }
 
 export interface ConditionGroup {
@@ -44,6 +49,7 @@ export interface ConditionGroup {
   nodeType: 'group'
   logic: ConditionLogic
   scope?: string
+  groupedByLock?: boolean
   children: ConditionNode[]
 }
 
@@ -65,6 +71,7 @@ export interface ConditionItemResult {
   actual: string
   passed: boolean
   depth: number
+  isFirst: boolean
 }
 
 export interface ConditionEvaluation {
@@ -104,14 +111,15 @@ export interface ConditionSqlStatement {
 
 export type ConditionCommand =
   | { type: 'set-logic'; path: number[]; logic: ConditionLogic }
+  | { type: 'set-level-logic'; path: number[]; logic: ConditionLogic }
   | { type: 'add-item'; path: number[] }
-  | { type: 'add-group'; path: number[] }
+  | { type: 'add-group'; path: number[]; field?: string }
   | { type: 'clear-group'; path: number[] }
   | { type: 'remove-group'; path: number[] }
   | { type: 'ungroup-group'; path: number[] }
   | { type: 'update-item'; path: number[]; index: number; patch: Partial<ConditionItem> }
   | { type: 'remove-item'; path: number[]; index: number }
-  | { type: 'wrap-item'; path: number[]; index: number }
+  | { type: 'wrap-item'; path: number[]; index: number; field?: string }
 
 export interface ConditionBuilderProps {
   modelValue?: ConditionGroup
@@ -124,6 +132,7 @@ export interface ConditionBuilderProps {
   maxItems?: number
   maxDepth?: number
   logicEditable?: boolean
+  logicMode?: ConditionLogicMode
   addText?: string
   addGroupText?: string
   clearText?: string
@@ -145,10 +154,12 @@ export interface ConditionGroupEditorProps {
   scopedGroups?: ConditionFieldGroup[]
   groupTitle?: string
   lockGroup?: boolean
+  lockedField?: string
   flat?: boolean
   ruleContext?: ConditionRuleContext
   disabled?: boolean
   logicEditable?: boolean
+  logicMode?: ConditionLogicMode
   maxDepth?: number
   maxItems?: number
   isRoot?: boolean
@@ -169,9 +180,13 @@ export interface ConditionItemRowProps {
   index: number
   fieldOptions: ConditionFieldOption[]
   fieldGroups?: ConditionFieldGroup[]
+  lockedField?: string
   ruleContext?: ConditionRuleContext
   disabled?: boolean
   logicEditable?: boolean
+  logicMode?: ConditionLogicMode
+  canAddGroup?: boolean
+  maxDepth?: number
 }
 
 export type ConditionItemRowEmits = {
@@ -183,6 +198,7 @@ export interface ConditionConnectorProps {
   logic: ConditionLogic
   disabled?: boolean
   editable?: boolean
+  logicMode?: ConditionLogicMode
 }
 
 export type ConditionConnectorEmits = {
@@ -310,6 +326,7 @@ export interface ConditionValueControlProps {
   modelValue: string
   field?: ConditionFieldOption
   operator?: ConditionOperator
+  granularity?: ConditionValueGranularity
   multiple?: boolean
   creatable?: boolean
   disabled?: boolean

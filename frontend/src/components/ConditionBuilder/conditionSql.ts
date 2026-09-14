@@ -8,11 +8,15 @@ import type {
   ConditionSqlOptions,
   ConditionSqlResult,
   ConditionSqlStatement,
+  ConditionValueGranularity,
   ConditionValueType,
 } from './ConditionBuilder.types'
 import {
   isConditionGroup,
+  isConditionTemporalType,
+  parseConditionRange,
   resolveConditionFieldType,
+  resolveConditionGranularity,
   splitConditionValues,
 } from './conditionOperator'
 import {
@@ -66,6 +70,45 @@ function resolveSqlColumn(
   return entry.column
 }
 
+function resolveSqlTarget(
+  column: string,
+  type: ConditionValueType,
+  granularity: ConditionValueGranularity,
+): string {
+  if (type !== 'datetime') return column
+  if (granularity === 'date') return `DATE(${column})`
+  if (granularity === 'time') return `TIME(${column})`
+  return column
+}
+
+function rangeSqlFragment(
+  target: string,
+  value: string,
+  negated: boolean,
+  type: ConditionValueType,
+): SqlFragment | null {
+  const range = parseConditionRange(value)
+  if (range.start && range.end) {
+    return {
+      text: `${target} ${negated ? 'NOT BETWEEN' : 'BETWEEN'} ${CONDITION_SQL_PLACEHOLDER} AND ${CONDITION_SQL_PLACEHOLDER}`,
+      params: [toSqlParam(range.start, type), toSqlParam(range.end, type)],
+    }
+  }
+  if (range.start) {
+    return {
+      text: `${target} ${negated ? '<' : '>='} ${CONDITION_SQL_PLACEHOLDER}`,
+      params: [toSqlParam(range.start, type)],
+    }
+  }
+  if (range.end) {
+    return {
+      text: `${target} ${negated ? '>' : '<='} ${CONDITION_SQL_PLACEHOLDER}`,
+      params: [toSqlParam(range.end, type)],
+    }
+  }
+  return null
+}
+
 function itemSqlFragment(
   item: ConditionItem,
   fieldMap: Map<string, ConditionFieldOption>,
@@ -75,7 +118,9 @@ function itemSqlFragment(
   if (!item.field) return null
   const column = resolveSqlColumn(item.field, columnIndex, skipped)
   if (!column) return null
-  const type = resolveConditionFieldType(fieldMap.get(item.field))
+  const field = fieldMap.get(item.field)
+  const type = resolveConditionFieldType(field)
+  const target = resolveSqlTarget(column, type, resolveConditionGranularity(item, field))
 
   if (item.operator === 'is_null') {
     return { text: `(${column} IS NULL OR ${column} = '')`, params: [] }
@@ -84,15 +129,20 @@ function itemSqlFragment(
   const comparison = COMPARISON_SQL[item.operator]
   if (comparison) {
     return {
-      text: `${column} ${comparison} ${CONDITION_SQL_PLACEHOLDER}`,
+      text: `${target} ${comparison} ${CONDITION_SQL_PLACEHOLDER}`,
       params: [toSqlParam(item.value, type)],
     }
   }
 
   if (item.operator === 'contains' || item.operator === 'not_contains') {
+    const isContains = item.operator === 'contains'
+
+    if (isConditionTemporalType(type)) {
+      return rangeSqlFragment(target, item.value, !isContains, type)
+    }
+
     const values = splitConditionValues(item.value)
     if (values.length === 0) return null
-    const isContains = item.operator === 'contains'
 
     if (type === 'string') {
       const keyword = isContains ? 'LIKE' : 'NOT LIKE'
@@ -107,7 +157,7 @@ function itemSqlFragment(
     const keyword = isContains ? 'IN' : 'NOT IN'
     const placeholders = values.map(() => CONDITION_SQL_PLACEHOLDER).join(', ')
     return {
-      text: `${column} ${keyword} (${placeholders})`,
+      text: `${target} ${keyword} (${placeholders})`,
       params: values.map((value) => toSqlParam(value, type)),
     }
   }

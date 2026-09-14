@@ -14,6 +14,7 @@ export interface ConditionPreset {
   key: string
   label: string
   group: ConditionGroup
+  data?: Record<string, unknown>[]
 }
 
 export interface ConditionDataPreset {

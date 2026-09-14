@@ -41,8 +41,38 @@
     placeholder="输入数值"
     @update:model-value="onTextValue"
   />
+  <a-time-picker
+    v-else-if="temporalRange && temporalGranularity === 'time'"
+    class="cvc-control"
+    type="time-range"
+    :model-value="rangePickerValue"
+    format="HH:mm:ss"
+    allow-clear
+    :disabled="disabled"
+    :placeholder="['开始时间', '结束时间']"
+    @update:model-value="onRangeValue"
+  />
+  <a-range-picker
+    v-else-if="temporalRange"
+    class="cvc-control"
+    :model-value="rangePickerValue"
+    :value-format="rangeValueFormat"
+    :show-time="temporalGranularity === 'datetime'"
+    allow-clear
+    :disabled="disabled"
+    :placeholder="rangePlaceholder"
+    @update:model-value="onRangeValue"
+  >
+    <!--    <div class="flex max-w-full" style="overflow: hidden">-->
+    <!--      <a-button class="flex-1">-->
+    <!--        <a-typography-title :heading="6" class="text-ellipsis" ellipsis>-->
+    <!--          {{ (rangePickerValue && rangePickerValue.join(' ~ ')) || '请选择日期范围' }}-->
+    <!--        </a-typography-title>-->
+    <!--      </a-button>-->
+    <!--    </div>-->
+  </a-range-picker>
   <a-date-picker
-    v-else-if="fieldType === 'date'"
+    v-else-if="temporalGranularity === 'date'"
     class="cvc-control"
     :model-value="modelValue"
     value-format="YYYY-MM-DD"
@@ -51,7 +81,7 @@
     @update:model-value="onTextValue"
   />
   <a-date-picker
-    v-else-if="fieldType === 'datetime'"
+    v-else-if="temporalGranularity === 'datetime'"
     class="cvc-control"
     show-time
     :model-value="modelValue"
@@ -61,7 +91,7 @@
     @update:model-value="onTextValue"
   />
   <a-time-picker
-    v-else-if="fieldType === 'time'"
+    v-else-if="temporalGranularity === 'time'"
     class="cvc-control"
     :model-value="modelValue"
     format="HH:mm:ss"
@@ -85,19 +115,24 @@ import type { SelectOptionData } from '@arco-design/web-vue'
 import type {
   ConditionValueControlEmits,
   ConditionValueControlProps,
+  ConditionValueGranularity,
 } from './ConditionBuilder.types'
 import {
   CONDITION_BOOLEAN_OPTIONS,
   conditionFieldHasOptions,
   conditionOperatorIsMultiValue,
   conditionOperatorNeedsValue,
+  formatConditionRange,
+  parseConditionRange,
   resolveConditionFieldType,
+  resolveGranularityForType,
   splitConditionValues,
 } from './conditionOperator'
 
 const props = withDefaults(defineProps<ConditionValueControlProps>(), {
   field: undefined,
   operator: undefined,
+  granularity: undefined,
   multiple: undefined,
   creatable: false,
   disabled: false,
@@ -108,9 +143,36 @@ const emit = defineEmits<ConditionValueControlEmits>()
 
 const fieldType = computed(() => resolveConditionFieldType(props.field))
 
+const temporalGranularity = computed<ConditionValueGranularity | ''>(() => {
+  const type = fieldType.value
+  if (type !== 'date' && type !== 'datetime' && type !== 'time') return ''
+  return resolveGranularityForType(type, props.granularity)
+})
+
 const needsValue = computed(() =>
   props.operator ? conditionOperatorNeedsValue(props.operator) : true,
 )
+
+const temporalRange = computed(() => {
+  if (!temporalGranularity.value || !props.operator) return false
+  return conditionOperatorIsMultiValue(props.operator)
+})
+
+const rangeValueFormat = computed(() =>
+  temporalGranularity.value === 'date' ? 'YYYY-MM-DD' : 'YYYY-MM-DD HH:mm:ss',
+)
+
+const rangePlaceholder = computed(() =>
+  temporalGranularity.value === 'date' ? ['开始日期', '结束日期'] : ['开始时间', '结束时间'],
+)
+
+function rangeEnds(): (string | undefined)[] {
+  const range = parseConditionRange(props.modelValue)
+  if (!range.start && !range.end) return []
+  return [range.start || undefined, range.end || undefined]
+}
+
+const rangePickerValue = computed(() => rangeEnds() as unknown as (string | number | Date)[])
 
 const hasFixedOptions = computed(() => conditionFieldHasOptions(props.field))
 
@@ -153,6 +215,14 @@ function onMultiValue(value: unknown): void {
   emit(
     'update:modelValue',
     Array.isArray(value) ? value.map((entry) => toText(entry)).join(', ') : '',
+  )
+}
+
+function onRangeValue(value: unknown): void {
+  const ends = Array.isArray(value) ? value : []
+  emit(
+    'update:modelValue',
+    formatConditionRange({ start: toText(ends[0]).trim(), end: toText(ends[1]).trim() }),
   )
 }
 </script>
