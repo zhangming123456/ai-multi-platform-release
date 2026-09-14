@@ -658,7 +658,7 @@ const selectedFieldGroupKeys = ref<string[]>(fieldGroupPresets.map((group) => gr
 
 const maxDepth = ref(3)
 
-const logicMode = ref<ConditionLogicMode>('mixed')
+const logicMode = ref<ConditionLogicMode>('uniform')
 
 const fieldOptions = computed<ConditionFieldOption[]>(() => flattenFieldGroups(fieldGroups.value))
 const fieldGroups = computed(() =>

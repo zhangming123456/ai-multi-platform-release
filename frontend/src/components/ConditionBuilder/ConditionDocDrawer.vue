@@ -1,16 +1,14 @@
 <template>
-  <a-drawer
-    :visible="props.visible"
+  <el-drawer
+    :model-value="props.visible"
     title="说明"
-    :width="620"
-    :drawer-style="{ maxWidth: '100%' }"
-    :footer="false"
-    placement="right"
-    unmount-on-close
-    @cancel="close"
+    size="620px"
+    direction="rtl"
+    destroy-on-close
+    @close="close"
   >
-    <a-tabs :active-key="props.activeTab" type="line" @change="onTabChange">
-      <a-tab-pane key="schema" title="输出 JSON 结构字段说明">
+    <el-tabs :model-value="props.activeTab" @update:model-value="onTabChange">
+      <el-tab-pane name="schema" label="输出 JSON 结构字段说明">
         <div class="schema-table">
           <div class="schema-row schema-row--head">
             <span>字段</span>
@@ -23,9 +21,9 @@
             <span class="schema-desc">{{ field.desc }}</span>
           </div>
         </div>
-      </a-tab-pane>
+      </el-tab-pane>
 
-      <a-tab-pane key="operator" title="运算符说明">
+      <el-tab-pane name="operator" label="运算符说明">
         <div class="op-table">
           <div class="op-row op-row--head">
             <span>运算符</span>
@@ -56,13 +54,13 @@
           </li>
           <li>「为空」翻译为 (col IS NULL OR col = '')</li>
         </ul>
-      </a-tab-pane>
+      </el-tab-pane>
 
-      <a-tab-pane key="condition" title="条件编辑说明">
+      <el-tab-pane name="condition" label="条件编辑说明">
         <ul class="doc-list">
           <li>每行左侧可切换「且 / 或」，「且」优先级高于「或」（与 SQL 一致）</li>
           <li>
-            组件参数 logicMode 可选 mixed / uniform（默认 mixed）：mixed 为每行各自切换「且 /
+            组件参数 logicMode 可选 mixed / uniform（默认 uniform）：mixed 为每行各自切换「且 /
             或」，行内保留连接符与 IF
             标记；uniform（全且或）时不显示行内连接符，仅在层级底部显示一个 且 / 或 切换器；切换到
             uniform 时会按每层第一个子项的逻辑统一该层所有条件的
@@ -128,9 +126,9 @@
             按「单一可用变量组」的平铺结构输出
           </li>
         </ul>
-      </a-tab-pane>
+      </el-tab-pane>
 
-      <a-tab-pane key="rule" title="互斥与关联规则说明">
+      <el-tab-pane name="rule" label="互斥与关联规则说明">
         <ul class="doc-list">
           <li>规则使用全量可用变量，不受「可用变量组」勾选影响</li>
           <li>规则命中后会禁用或过滤不可选的变量与取值</li>
@@ -143,9 +141,9 @@
           </li>
           <li>条件行尾的橙色感叹号可查看冲突原因</li>
         </ul>
-      </a-tab-pane>
+      </el-tab-pane>
 
-      <a-tab-pane key="sql" title="SQL 翻译说明">
+      <el-tab-pane name="sql" label="SQL 翻译说明">
         <ul class="doc-list">
           <li>
             「生成 SQL」针对真实表 contents 输出完整同表查询：SELECT 显式列出可用变量列 → FROM
@@ -167,9 +165,9 @@
           </li>
           <li>「为空」翻译为 (col IS NULL OR col = '')</li>
         </ul>
-      </a-tab-pane>
-    </a-tabs>
-  </a-drawer>
+      </el-tab-pane>
+    </el-tabs>
+  </el-drawer>
 </template>
 
 <script setup lang="ts">

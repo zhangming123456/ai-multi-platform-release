@@ -1,39 +1,55 @@
 <template>
   <span v-if="!needsValue" class="cvc-empty">无需填写值</span>
   <template v-else-if="useMulti">
-    <a-select
+    <el-select
       v-if="hasFixedOptions"
       class="cvc-control"
       multiple
-      allow-clear
+      clearable
+      :filterable="creatable"
       :allow-create="creatable"
+      default-first-option
       :model-value="multiSelected"
-      :options="resolvedOptions"
       :disabled="disabled"
       placeholder="选择值（可多选）"
       @update:model-value="onMultiValue"
-    />
-    <a-input
+    >
+      <el-option
+        v-for="option in resolvedOptions"
+        :key="option.value"
+        :label="option.label"
+        :value="option.value"
+        :disabled="option.disabled"
+      />
+    </el-select>
+    <el-input
       v-else
       class="cvc-control"
-      allow-clear
+      clearable
       :model-value="modelValue"
       :disabled="disabled"
       placeholder="多个值用逗号分隔"
       @update:model-value="onTextValue"
     />
   </template>
-  <a-select
+  <el-select
     v-else-if="fieldType === 'select' || fieldType === 'boolean'"
     class="cvc-control"
-    allow-clear
+    clearable
     :model-value="modelValue"
-    :options="resolvedOptions"
     :disabled="disabled"
     placeholder="选择值"
     @update:model-value="onTextValue"
-  />
-  <a-input-number
+  >
+    <el-option
+      v-for="option in resolvedOptions"
+      :key="option.value"
+      :label="option.label"
+      :value="option.value"
+      :disabled="option.disabled"
+    />
+  </el-select>
+  <el-input-number
     v-else-if="fieldType === 'number'"
     class="cvc-control"
     :model-value="numberValue"
@@ -41,65 +57,64 @@
     placeholder="输入数值"
     @update:model-value="onTextValue"
   />
-  <a-time-picker
+  <el-time-picker
     v-else-if="temporalRange && temporalGranularity === 'time'"
     class="cvc-control"
-    type="time-range"
+    is-range
     :model-value="rangePickerValue"
     format="HH:mm:ss"
-    allow-clear
+    value-format="HH:mm:ss"
+    clearable
     :disabled="disabled"
-    :placeholder="['开始时间', '结束时间']"
+    start-placeholder="开始时间"
+    end-placeholder="结束时间"
+    range-separator="至"
     @update:model-value="onRangeValue"
   />
-  <a-range-picker
+  <el-date-picker
     v-else-if="temporalRange"
     class="cvc-control"
+    :type="rangePickerType"
     :model-value="rangePickerValue"
     :value-format="rangeValueFormat"
-    :show-time="temporalGranularity === 'datetime'"
-    allow-clear
+    clearable
     :disabled="disabled"
-    :placeholder="rangePlaceholder"
+    :start-placeholder="rangePlaceholder[0]"
+    :end-placeholder="rangePlaceholder[1]"
+    range-separator="至"
     @update:model-value="onRangeValue"
-  >
-    <!--    <div class="flex max-w-full" style="overflow: hidden">-->
-    <!--      <a-button class="flex-1">-->
-    <!--        <a-typography-title :heading="6" class="text-ellipsis" ellipsis>-->
-    <!--          {{ (rangePickerValue && rangePickerValue.join(' ~ ')) || '请选择日期范围' }}-->
-    <!--        </a-typography-title>-->
-    <!--      </a-button>-->
-    <!--    </div>-->
-  </a-range-picker>
-  <a-date-picker
+  />
+  <el-date-picker
     v-else-if="temporalGranularity === 'date'"
     class="cvc-control"
+    type="date"
     :model-value="modelValue"
     value-format="YYYY-MM-DD"
     :disabled="disabled"
     placeholder="选择日期"
     @update:model-value="onTextValue"
   />
-  <a-date-picker
+  <el-date-picker
     v-else-if="temporalGranularity === 'datetime'"
     class="cvc-control"
-    show-time
+    type="datetime"
     :model-value="modelValue"
     value-format="YYYY-MM-DD HH:mm:ss"
     :disabled="disabled"
     placeholder="选择日期时间"
     @update:model-value="onTextValue"
   />
-  <a-time-picker
+  <el-time-picker
     v-else-if="temporalGranularity === 'time'"
     class="cvc-control"
     :model-value="modelValue"
     format="HH:mm:ss"
+    value-format="HH:mm:ss"
     :disabled="disabled"
     placeholder="选择时间"
     @update:model-value="onTextValue"
   />
-  <a-input
+  <el-input
     v-else
     class="cvc-control"
     :model-value="modelValue"
@@ -111,7 +126,6 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { SelectOptionData } from '@arco-design/web-vue'
 import type {
   ConditionValueControlEmits,
   ConditionValueControlProps,
@@ -141,6 +155,12 @@ const props = withDefaults(defineProps<ConditionValueControlProps>(), {
 
 const emit = defineEmits<ConditionValueControlEmits>()
 
+interface ValueSelectOption {
+  value: string
+  label: string
+  disabled: boolean
+}
+
 const fieldType = computed(() => resolveConditionFieldType(props.field))
 
 const temporalGranularity = computed<ConditionValueGranularity | ''>(() => {
@@ -160,6 +180,10 @@ const temporalRange = computed(() => {
 
 const rangeValueFormat = computed(() =>
   temporalGranularity.value === 'date' ? 'YYYY-MM-DD' : 'YYYY-MM-DD HH:mm:ss',
+)
+
+const rangePickerType = computed<'daterange' | 'datetimerange'>(() =>
+  temporalGranularity.value === 'datetime' ? 'datetimerange' : 'daterange',
 )
 
 const rangePlaceholder = computed(() =>
@@ -184,7 +208,7 @@ const useMulti = computed(() => {
   return props.operator ? conditionOperatorIsMultiValue(props.operator) : false
 })
 
-const resolvedOptions = computed<SelectOptionData[]>(() => {
+const resolvedOptions = computed<ValueSelectOption[]>(() => {
   const base =
     fieldType.value === 'boolean' ? CONDITION_BOOLEAN_OPTIONS : (props.field?.options ?? [])
   return base.map((option) => ({

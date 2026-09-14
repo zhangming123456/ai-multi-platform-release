@@ -1,16 +1,16 @@
 <template>
   <div class="cre">
     <div class="cre-toolbar">
-      <a-button
-        type="text"
-        size="mini"
+      <el-button
+        link
+        size="small"
         class="cre-toolbar__add"
         :disabled="disabled"
+        :icon="Plus"
         @click="openCreate"
       >
-        <template #icon><IconPlus :size="13" /></template>
         新增规则
-      </a-button>
+      </el-button>
     </div>
 
     <div v-if="rules.length" class="cre-list">
@@ -21,9 +21,9 @@
         :class="{ 'cre-item--off': rule.isActive === false }"
       >
         <div class="cre-item__head">
-          <a-tag :color="typeColor(rule.type)" size="small" class="!m-0">
+          <el-tag :type="typeColor(rule.type)" size="small" class="!m-0">
             {{ typeLabel(rule.type) }}
-          </a-tag>
+          </el-tag>
           <span class="cre-item__name">{{ rule.name }}</span>
           <span
             v-if="ruleStates[rule.id]"
@@ -33,31 +33,29 @@
             {{ stateLabel(ruleStates[rule.id]) }}
           </span>
           <div class="cre-item__spacer" />
-          <a-switch
+          <el-switch
             :model-value="rule.isActive !== false"
             size="small"
             :disabled="disabled"
-            @change="(value: boolean | string | number) => toggleActive(rule, Boolean(value))"
+            @change="toggleActive(rule, $event)"
           />
-          <a-button
-            type="text"
-            size="mini"
+          <el-button
+            link
+            size="small"
             class="cre-item__action"
             :disabled="disabled"
+            :icon="Pencil"
             @click="openEdit(rule)"
-          >
-            <template #icon><IconEdit :size="13" /></template>
-          </a-button>
-          <a-button
-            type="text"
-            size="mini"
+          />
+          <el-button
+            link
+            type="danger"
+            size="small"
             class="cre-item__action"
-            status="danger"
             :disabled="disabled"
+            :icon="Trash2"
             @click="removeRule(rule)"
-          >
-            <template #icon><IconDelete :size="13" /></template>
-          </a-button>
+          />
         </div>
         <div class="cre-item__summary">{{ summaryOf(rule) }}</div>
         <div v-if="rule.description" class="cre-item__desc">{{ rule.description }}</div>
@@ -65,32 +63,35 @@
     </div>
     <div v-else class="cre-empty">暂无规则，点击「新增规则」创建</div>
 
-    <a-modal
-      v-model:visible="formVisible"
+    <el-dialog
+      v-model="formVisible"
       :title="draft.id ? '编辑规则' : '新增规则'"
-      :width="660"
-      :on-before-ok="handleBeforeOk"
-      ok-text="保存"
-      cancel-text="取消"
-      unmount-on-close
+      width="660px"
+      destroy-on-close
     >
       <div class="cre-form">
         <div class="cre-form__row">
           <span class="cre-form__label">规则类型</span>
-          <a-select
+          <el-select
             :model-value="draft.type"
-            :options="typeOptions"
             class="cre-form__control"
             @update:model-value="setType"
-          />
+          >
+            <el-option
+              v-for="option in typeOptions"
+              :key="option.value"
+              :label="option.label"
+              :value="option.value"
+            />
+          </el-select>
         </div>
         <div class="cre-form__row">
           <span class="cre-form__label">规则名称</span>
-          <a-input v-model="draft.name" class="cre-form__control" placeholder="如：平台取值互斥" />
+          <el-input v-model="draft.name" class="cre-form__control" placeholder="如：平台取值互斥" />
         </div>
         <div class="cre-form__row">
           <span class="cre-form__label">规则描述</span>
-          <a-input
+          <el-input
             v-model="draft.description"
             class="cre-form__control"
             placeholder="选填，用于列表展示"
@@ -100,22 +101,50 @@
         <div class="cre-form__section">触发条件（当满足）</div>
         <div class="cre-form__row">
           <span class="cre-form__label">变量</span>
-          <a-select
+          <el-select
             :model-value="draft.whenField"
-            :options="fieldSelectOptions"
             class="cre-form__control"
             placeholder="选择变量"
             @update:model-value="(value: unknown) => setTextField('whenField', value)"
-          />
+          >
+            <template v-if="fieldSelectOptionGroups.length">
+              <el-option-group
+                v-for="group in fieldSelectOptionGroups"
+                :key="group.label"
+                :label="group.label"
+              >
+                <el-option
+                  v-for="option in group.options"
+                  :key="option.value"
+                  :label="option.label"
+                  :value="option.value"
+                />
+              </el-option-group>
+            </template>
+            <template v-else>
+              <el-option
+                v-for="option in fieldSelectOptions"
+                :key="option.value"
+                :label="option.label"
+                :value="option.value"
+              />
+            </template>
+          </el-select>
         </div>
         <div class="cre-form__row">
           <span class="cre-form__label">运算符</span>
-          <a-select
+          <el-select
             :model-value="draft.whenOperator"
-            :options="operatorOptionsFor(draft.whenField)"
             class="cre-form__control"
             @update:model-value="(value: unknown) => setTextOperator('whenOperator', value)"
-          />
+          >
+            <el-option
+              v-for="option in operatorOptionsFor(draft.whenField)"
+              :key="option.value"
+              :label="option.label"
+              :value="option.value"
+            />
+          </el-select>
         </div>
         <div class="cre-form__row">
           <span class="cre-form__label">取值</span>
@@ -132,23 +161,51 @@
           <div class="cre-form__section">联动约束（当命中时）</div>
           <div class="cre-form__row">
             <span class="cre-form__label">目标变量</span>
-            <a-select
+            <el-select
               :model-value="draft.linkageField"
-              :options="fieldSelectOptions"
               class="cre-form__control"
               placeholder="选择被约束的变量"
               @update:model-value="(value: unknown) => setTextField('linkageField', value)"
-            />
+            >
+              <template v-if="fieldSelectOptionGroups.length">
+                <el-option-group
+                  v-for="group in fieldSelectOptionGroups"
+                  :key="group.label"
+                  :label="group.label"
+                >
+                  <el-option
+                    v-for="option in group.options"
+                    :key="option.value"
+                    :label="option.label"
+                    :value="option.value"
+                  />
+                </el-option-group>
+              </template>
+              <template v-else>
+                <el-option
+                  v-for="option in fieldSelectOptions"
+                  :key="option.value"
+                  :label="option.label"
+                  :value="option.value"
+                />
+              </template>
+            </el-select>
           </div>
           <div class="cre-form__row">
             <span class="cre-form__label">运算符</span>
-            <a-select
+            <el-select
               :model-value="draft.linkageOperator"
-              :options="linkageOperatorOptions"
               class="cre-form__control"
               placeholder="选择运算符"
               @update:model-value="setLinkageOperator"
-            />
+            >
+              <el-option
+                v-for="option in linkageOperatorOptions"
+                :key="option.value"
+                :label="option.label"
+                :value="option.value"
+              />
+            </el-select>
           </div>
           <div v-if="linkageNeedsValue" class="cre-form__row">
             <span class="cre-form__label">约束取值</span>
@@ -172,19 +229,47 @@
             }}
           </div>
           <div v-for="(target, index) in draft.targets" :key="index" class="cre-form__target">
-            <a-select
+            <el-select
               :model-value="target.field"
-              :options="fieldSelectOptions"
               class="cre-form__control"
               placeholder="变量"
               @update:model-value="(value: unknown) => setTargetField(target, value)"
-            />
-            <a-select
+            >
+              <template v-if="fieldSelectOptionGroups.length">
+                <el-option-group
+                  v-for="group in fieldSelectOptionGroups"
+                  :key="group.label"
+                  :label="group.label"
+                >
+                  <el-option
+                    v-for="option in group.options"
+                    :key="option.value"
+                    :label="option.label"
+                    :value="option.value"
+                  />
+                </el-option-group>
+              </template>
+              <template v-else>
+                <el-option
+                  v-for="option in fieldSelectOptions"
+                  :key="option.value"
+                  :label="option.label"
+                  :value="option.value"
+                />
+              </template>
+            </el-select>
+            <el-select
               :model-value="target.operator"
-              :options="operatorOptionsFor(target.field)"
               class="cre-form__control"
               @update:model-value="(value: unknown) => setTargetOperator(target, value)"
-            />
+            >
+              <el-option
+                v-for="option in operatorOptionsFor(target.field)"
+                :key="option.value"
+                :label="option.label"
+                :value="option.value"
+              />
+            </el-select>
             <div class="cre-form__control">
               <ConditionValueControl
                 v-model="target.value"
@@ -192,40 +277,41 @@
                 :operator="target.operator || undefined"
               />
             </div>
-            <a-button
-              type="text"
-              size="mini"
-              status="danger"
+            <el-button
+              link
+              type="danger"
+              size="small"
               :disabled="draft.targets.length <= 1"
+              :icon="Trash2"
               @click="removeTarget(index)"
-            >
-              <template #icon><IconDelete :size="13" /></template>
-            </a-button>
+            />
           </div>
-          <a-button type="text" size="mini" class="cre-form__add-target" @click="addTarget">
-            <template #icon><IconPlus :size="13" /></template>
+          <el-button link size="small" class="cre-form__add-target" :icon="Plus" @click="addTarget">
             添加目标
-          </a-button>
+          </el-button>
         </template>
 
         <div class="cre-form__row">
           <span class="cre-form__label">冲突提示</span>
-          <a-input
+          <el-input
             v-model="draft.message"
             class="cre-form__control"
             placeholder="选填；命中冲突时的提示文案"
           />
         </div>
       </div>
-    </a-modal>
+      <template #footer>
+        <el-button @click="formVisible = false">取消</el-button>
+        <el-button type="primary" @click="handleSave">保存</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, reactive, ref } from 'vue'
-import { Message } from '@arco-design/web-vue'
-import type { SelectOptionData } from '@arco-design/web-vue'
-import { IconDelete, IconEdit, IconPlus } from '@arco-design/web-vue/es/icon'
+import { ElMessage } from 'element-plus'
+import { Pencil, Plus, Trash2 } from 'lucide-vue-next'
 import type {
   ConditionFieldOption,
   ConditionOperator,
@@ -269,6 +355,16 @@ const props = withDefaults(defineProps<ConditionRuleEditorProps>(), {
 
 const emit = defineEmits<ConditionRuleEditorEmits>()
 
+interface RuleSelectOption {
+  value: string
+  label: string
+}
+
+interface RuleSelectGroup {
+  label: string
+  options: RuleSelectOption[]
+}
+
 const typeOptions = CONDITION_RULE_TYPE_OPTIONS
 
 const formVisible = ref(false)
@@ -284,15 +380,16 @@ function fieldLabel(field: ConditionFieldOption): string {
   return warning ? `${label} · ${warning}` : label
 }
 
-const fieldSelectOptions = computed<SelectOptionData[]>(() => {
-  if (!props.fieldGroups.length) {
-    return props.fieldOptions.map((field) => ({
-      value: field.value,
-      label: fieldLabel(field),
-    }))
-  }
+const fieldSelectOptions = computed<RuleSelectOption[]>(() =>
+  props.fieldOptions.map((field) => ({
+    value: field.value,
+    label: fieldLabel(field),
+  })),
+)
+
+const fieldSelectOptionGroups = computed<RuleSelectGroup[]>(() => {
+  if (!props.fieldGroups.length) return []
   return groupConditionFields(props.fieldOptions, props.fieldGroups).map((group) => ({
-    isGroup: true,
     label: group.label,
     options: group.fields.map((field) => ({
       value: field.value,
@@ -303,7 +400,7 @@ const fieldSelectOptions = computed<SelectOptionData[]>(() => {
 
 const linkageValueText = computed(() => draft.linkageValues.join(', '))
 
-const linkageOperatorOptions = computed<SelectOptionData[]>(() =>
+const linkageOperatorOptions = computed<RuleSelectOption[]>(() =>
   operatorOptionsFor(draft.linkageField).filter((option) => option.value !== ''),
 )
 
@@ -336,7 +433,7 @@ function toText(value: unknown): string {
   return String(value)
 }
 
-function operatorOptionsFor(fieldValue: string): SelectOptionData[] {
+function operatorOptionsFor(fieldValue: string): RuleSelectOption[] {
   const field = props.fieldOptions.find((option) => option.value === fieldValue)
   const operators = conditionOperatorsForType(resolveConditionFieldType(field))
   return [
@@ -349,10 +446,10 @@ function typeLabel(type: ConditionRuleType): string {
   return CONDITION_RULE_TYPE_LABELS[type]
 }
 
-function typeColor(type: ConditionRuleType): string {
-  if (type === 'mutual_exclusive') return 'red'
-  if (type === 'prerequisite') return 'orange'
-  return 'purple'
+function typeColor(type: ConditionRuleType): 'danger' | 'warning' | 'primary' {
+  if (type === 'mutual_exclusive') return 'danger'
+  if (type === 'prerequisite') return 'warning'
+  return 'primary'
 }
 
 function stateLabel(state: ConditionRuleState): string {
@@ -440,11 +537,11 @@ function validate(): string {
   return ''
 }
 
-async function handleBeforeOk(): Promise<boolean> {
+function handleSave(): void {
   const error = validate()
   if (error) {
-    Message.warning(error)
-    return false
+    ElMessage.warning(error)
+    return
   }
 
   const next = conditionRuleFromDraft(draft)
@@ -453,7 +550,7 @@ async function handleBeforeOk(): Promise<boolean> {
   if (index >= 0) list.splice(index, 1, next)
   else list.push(next)
   emit('update:rules', list)
-  return true
+  formVisible.value = false
 }
 
 function removeRule(rule: ConditionRule): void {
@@ -463,11 +560,12 @@ function removeRule(rule: ConditionRule): void {
   )
 }
 
-function toggleActive(rule: ConditionRule, value: boolean): void {
+function toggleActive(rule: ConditionRule, value: boolean | string | number): void {
+  const isActive = Boolean(value)
   emit(
     'update:rules',
     props.rules.map((entry) =>
-      entry.id === rule.id ? ({ ...entry, isActive: value } as ConditionRule) : entry,
+      entry.id === rule.id ? ({ ...entry, isActive } as ConditionRule) : entry,
     ),
   )
 }

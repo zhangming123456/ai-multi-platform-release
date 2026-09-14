@@ -10,101 +10,98 @@
     />
 
     <div class="cir-row__fields">
-      <a-auto-complete
+      <el-autocomplete
         class="cre-form__control cir-field flex-1"
         :model-value="fieldText"
-        :data="fieldSuggestData"
-        :filter-option="filterFieldOption"
-        :strict="false"
+        :fetch-suggestions="fetchFieldSuggestions"
         :disabled="fieldInputDisabled"
-        :trigger-props="{
-          contentStyle: {
-            minWidth: 'max-content',
-          },
-        }"
-        allow-clear
+        value-key="label"
+        :fit-input-width="false"
+        clearable
         placeholder="输入变量名"
         @update:model-value="onFieldInput"
       >
-        <template #option="{ data }">
+        <template #default="{ item }">
           <div
             class="cir-suggest"
-            :class="{ 'cir-suggest--disabled': fieldDisabled(optionValue(data)) }"
+            :class="{ 'cir-suggest--disabled': fieldDisabled(optionValue(item)) }"
           >
             <div class="cir-suggest__head">
-              <span class="cir-suggest__name">{{ suggestLabel(optionValue(data)) }}</span>
-              <code class="cir-suggest__code">{{ optionValue(data) }}</code>
+              <span class="cir-suggest__name">{{ suggestLabel(optionValue(item)) }}</span>
+              <code class="cir-suggest__code">{{ optionValue(item) }}</code>
               <span class="cir-suggest__type">{{
-                valueTypeLabel(suggestType(optionValue(data)))
+                valueTypeLabel(suggestType(optionValue(item)))
               }}</span>
-              <span v-if="fieldWarning(optionValue(data))" class="cir-suggest__warn">
-                {{ fieldWarning(optionValue(data)) }}
+              <span v-if="fieldWarning(optionValue(item))" class="cir-suggest__warn">
+                {{ fieldWarning(optionValue(item)) }}
               </span>
-              <span v-if="groupLabelOf(optionValue(data))" class="cir-suggest__group">
-                {{ groupLabelOf(optionValue(data)) }}
+              <span v-if="groupLabelOf(optionValue(item))" class="cir-suggest__group">
+                {{ groupLabelOf(optionValue(item)) }}
               </span>
-              <span v-if="fieldQueryable(optionValue(data)) === false" class="cir-suggest__demo">
+              <span v-if="fieldQueryable(optionValue(item)) === false" class="cir-suggest__demo">
                 不可查询
               </span>
-              <span v-if="fieldDisabled(optionValue(data))" class="cir-suggest__lock">禁用</span>
+              <span v-if="fieldDisabled(optionValue(item))" class="cir-suggest__lock">禁用</span>
             </div>
-            <div v-if="fieldHint(optionValue(data))" class="cir-suggest__desc">
-              {{ fieldHint(optionValue(data)) }}
+            <div v-if="fieldHint(optionValue(item))" class="cir-suggest__desc">
+              {{ fieldHint(optionValue(item)) }}
             </div>
           </div>
         </template>
-      </a-auto-complete>
+      </el-autocomplete>
 
-      <!--      <a-tooltip-->
+      <!--      <el-tooltip-->
       <!--        v-if="fieldDemo"-->
       <!--        content="该变量暂无对应真实列，生成的 SQL 会跳过此条件"-->
-      <!--        position="tr"-->
+      <!--        placement="top-end"-->
       <!--      >-->
       <!--        <span class="cir-demo">演示</span>-->
-      <!--      </a-tooltip>-->
+      <!--      </el-tooltip>-->
 
-      <a-tooltip
+      <el-tooltip
         v-if="fieldInactive"
         content="该变量不属于当前可用变量组，已保留原配置"
-        position="tr"
+        placement="top-end"
       >
         <span class="cir-stale">
-          <IconExclamationCircle :size="14" />
+          <CircleAlert :size="14" />
         </span>
-      </a-tooltip>
+      </el-tooltip>
 
-      <a-tooltip v-if="lockedFieldMismatch" :content="lockedFieldTip" position="tr">
+      <el-tooltip v-if="lockedFieldMismatch" :content="lockedFieldTip" placement="top-end">
         <span class="cir-lock">
-          <IconLock :size="14" />
+          <Lock :size="14" />
         </span>
-      </a-tooltip>
+      </el-tooltip>
 
-      <a-select
+      <el-select
         class="cre-form__control cir-operator flex-1"
         :model-value="item.operator"
-        :options="operatorOptions"
         :disabled="disabled"
-        :trigger-props="{
-          contentStyle: {
-            minWidth: 'max-content',
-          },
-        }"
         @update:model-value="onOperatorChange"
-      />
+      >
+        <el-option
+          v-for="option in operatorOptions"
+          :key="option.value"
+          :label="option.label"
+          :value="option.value"
+        />
+      </el-select>
 
-      <a-select
+      <el-select
         v-if="granularityOptions.length"
         class="cre-form__control cir-granularity flex-1"
         :model-value="activeGranularity"
-        :options="granularityOptions"
         :disabled="disabled"
-        :trigger-props="{
-          contentStyle: {
-            minWidth: 'max-content',
-          },
-        }"
         @update:model-value="onGranularityChange"
-      />
+      >
+        <el-option
+          v-for="option in granularityOptions"
+          :key="option.value"
+          :label="option.label"
+          :value="option.value"
+        />
+      </el-select>
 
       <div class="cre-form__control cir-value flex-2">
         <ConditionValueControl
@@ -118,43 +115,35 @@
         />
       </div>
 
-      <a-tooltip v-if="rowViolations.length" :content="rowViolationText" position="tr">
+      <el-tooltip v-if="rowViolations.length" :content="rowViolationText" placement="top-end">
         <span class="cir-warn">
-          <IconExclamationCircle :size="14" />
+          <CircleAlert :size="14" />
         </span>
-      </a-tooltip>
+      </el-tooltip>
 
-      <a-tooltip :content="wrapTip" position="tr">
-        <a-button
-          class="cir-wrap"
-          type="text"
-          size="mini"
-          :disabled="wrapDisabled"
-          @click="wrapToGroup"
-        >
+      <el-tooltip :content="wrapTip" placement="top-end">
+        <el-button class="cir-wrap" link size="small" :disabled="wrapDisabled" @click="wrapToGroup">
           + 并且满足
-        </a-button>
-      </a-tooltip>
+        </el-button>
+      </el-tooltip>
 
-      <a-button
+      <el-button
         class="cir-remove"
-        type="text"
-        status="danger"
+        link
+        type="danger"
         size="small"
         :disabled="disabled"
+        :icon="Trash2"
         @click="removeSelf"
-      >
-        <template #icon><IconDelete /></template>
-      </a-button>
+      />
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { Message } from '@arco-design/web-vue'
-import type { SelectOptionData } from '@arco-design/web-vue'
-import { IconDelete, IconExclamationCircle, IconLock } from '@arco-design/web-vue/es/icon'
+import { ElMessage } from 'element-plus'
+import { CircleAlert, Lock, Trash2 } from 'lucide-vue-next'
 import type {
   ConditionFieldGroup,
   ConditionFieldOption,
@@ -205,6 +194,13 @@ const props = withDefaults(defineProps<ConditionItemRowProps>(), {
 })
 
 const emit = defineEmits<ConditionItemRowEmits>()
+
+interface FieldSuggestion {
+  value: string
+  label: string
+  description: string
+  disabled: boolean
+}
 
 const wrapDisabled = computed(() => props.disabled || !props.canAddGroup)
 
@@ -302,7 +298,7 @@ function valueDisabled(value: string): boolean {
   return conditionRuleValueDisabled(valueLimits.value, value, fieldOf(props.item.field))
 }
 
-const operatorOptions = computed<SelectOptionData[]>(() => {
+const operatorOptions = computed(() => {
   const operators = fieldInactive.value
     ? CONDITION_OPERATORS
     : conditionOperatorsForType(fieldType.value)
@@ -324,7 +320,7 @@ const disabledValues = computed<string[]>(() =>
   optionValues.value.filter((value) => valueDisabled(value)),
 )
 
-const fieldSuggestData = computed<SelectOptionData[]>(() => {
+const fieldSuggestData = computed<FieldSuggestion[]>(() => {
   const options = props.lockedField
     ? props.fieldOptions.filter((option) => option.value === props.lockedField)
     : props.fieldOptions
@@ -365,12 +361,12 @@ function matchFieldOption(text: string): ConditionFieldOption | undefined {
 
 function applyField(fieldValue: string): boolean {
   if (props.lockedField && fieldValue !== props.lockedField) {
-    Message.warning(lockedFieldTip.value)
+    ElMessage.warning(lockedFieldTip.value)
     return false
   }
   const lock = fieldLocks.value.get(fieldValue)
   if (lock) {
-    Message.warning(lock.reason)
+    ElMessage.warning(lock.reason)
     return false
   }
   const nextField = fieldOf(fieldValue)
@@ -465,11 +461,18 @@ function optionValue(option: unknown): string {
   return ''
 }
 
-function filterFieldOption(inputValue: string, option: SelectOptionData): boolean {
+function filterFieldOption(inputValue: string, option: FieldSuggestion): boolean {
   const query = inputValue.trim().toLowerCase()
   if (!query) return true
   const candidates = [option.value, option.label, option.description]
   return candidates.some((candidate) => toValueText(candidate).toLowerCase().includes(query))
+}
+
+function fetchFieldSuggestions(
+  query: string,
+  callback: (suggestions: FieldSuggestion[]) => void,
+): void {
+  callback(fieldSuggestData.value.filter((option) => filterFieldOption(query, option)))
 }
 </script>
 

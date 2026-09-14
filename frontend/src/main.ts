@@ -2,6 +2,8 @@ import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import ArcoVue from '@arco-design/web-vue'
 import '@arco-design/web-vue/dist/arco.css'
+import ElementPlus from 'element-plus'
+import 'element-plus/dist/index.css'
 import router, { startRoutePermWatcher } from './router'
 import App from './App.vue'
 import './tailwind.css'
@@ -11,6 +13,7 @@ import vPerm from './directives/permission'
 const app = createApp(App)
 app.directive('perm', vPerm)
 app.use(ArcoVue)
+app.use(ElementPlus)
 app.use(createPinia())
 app.use(router)
 startRoutePermWatcher()

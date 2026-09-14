@@ -7,16 +7,16 @@
       </span>
 
       <span v-if="lockedFieldLabel" class="cge-header__locked">
-        <IconLock :size="12" />
+        <Lock :size="12" />
         变量锁定：{{ lockedFieldLabel }}
       </span>
 
-      <a-tooltip v-if="lockedExpression" position="br">
+      <el-tooltip v-if="lockedExpression" placement="bottom-end">
         <span class="cge-header__expression">{{ lockedExpression }}</span>
         <template #content>
           <div class="cge-expression-tip">{{ lockedExpression }}</div>
         </template>
-      </a-tooltip>
+      </el-tooltip>
 
       <span v-if="isRoot" class="cge-header__hint">
         {{
@@ -33,18 +33,17 @@
         {{ fieldOptions.length }} 个可用变量
       </span>
       <template v-else>
-        <a-button type="text" size="mini" class="cge-header__action" @click="requestUngroup">
+        <el-button link size="small" class="cge-header__action" @click="requestUngroup">
           {{ ungroupText }}
-        </a-button>
-        <a-button
-          type="text"
-          size="mini"
-          status="danger"
+        </el-button>
+        <el-button
+          link
+          type="danger"
+          size="small"
           class="cge-header__action"
+          :icon="Trash2"
           @click="requestRemove"
-        >
-          <template #icon><IconDelete /></template>
-        </a-button>
+        />
       </template>
     </div>
 
@@ -186,46 +185,46 @@
     </div>
 
     <div v-if="showFooter" class="cge-footer">
-      <a-button
+      <el-button
         v-if="showAddItem"
-        type="text"
+        link
         size="small"
         class="cge-footer__add"
         :disabled="disabled || atMaxItems"
+        :icon="Plus"
         @click="requestAddItem"
       >
-        <template #icon><IconPlus /></template>
         {{ addText }}
-      </a-button>
-      <a-button
+      </el-button>
+      <el-button
         v-if="showAddGroup && canAddGroup"
-        type="text"
+        link
         size="small"
         class="cge-footer__add-group"
         :disabled="disabled"
+        :icon="Plus"
         @click="requestAddGroup"
       >
-        <template #icon><IconPlus /></template>
         {{ addGroupText }}
-      </a-button>
+      </el-button>
       <div class="cge-footer__spacer" />
-      <a-button
+      <el-button
         v-if="showClear"
-        type="text"
+        link
         size="small"
         class="cge-footer__clear"
         :disabled="disabled"
         @click="emitCommand({ type: 'clear-group', path })"
       >
         {{ clearText }}
-      </a-button>
+      </el-button>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import { IconDelete, IconLock, IconPlus } from '@arco-design/web-vue/es/icon'
+import { Lock, Plus, Trash2 } from 'lucide-vue-next'
 import ConditionConnector from './ConditionConnector.vue'
 import ConditionItemRow from './ConditionItemRow.vue'
 import type {

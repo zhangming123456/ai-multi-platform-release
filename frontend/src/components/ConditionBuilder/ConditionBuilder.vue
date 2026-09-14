@@ -22,11 +22,8 @@
       @command="handleCommand"
     >
       <template #header-actions>
-        <a-tooltip position="br">
-          <a-button type="text" size="mini" class="cb-help">
-            <template #icon><IconQuestionCircle /></template>
-            可用变量
-          </a-button>
+        <el-tooltip placement="bottom-end">
+          <el-button link size="small" class="cb-help" :icon="HelpCircle"> 可用变量 </el-button>
           <template #content>
             <div class="cb-var-tip">
               <div v-for="group in varGroups" :key="group.key" class="cb-var-tip__group">
@@ -52,7 +49,7 @@
               <div v-if="!varGroups.length" class="cb-var-tip__empty">未配置可用变量</div>
             </div>
           </template>
-        </a-tooltip>
+        </el-tooltip>
       </template>
     </ConditionGroupEditor>
   </div>
@@ -60,7 +57,7 @@
 
 <script setup lang="ts">
 import { computed, watch } from 'vue'
-import { IconQuestionCircle } from '@arco-design/web-vue/es/icon'
+import { HelpCircle } from 'lucide-vue-next'
 import type {
   ConditionBuilderEmits,
   ConditionBuilderProps,
@@ -105,7 +102,7 @@ const props = withDefaults(defineProps<ConditionBuilderProps>(), {
   maxItems: 0,
   maxDepth: CONDITION_MAX_DEPTH,
   logicEditable: true,
-  logicMode: 'mixed',
+  logicMode: 'uniform',
   addText: '添加条件',
   addGroupText: '添加子条件组',
   clearText: '清空',
