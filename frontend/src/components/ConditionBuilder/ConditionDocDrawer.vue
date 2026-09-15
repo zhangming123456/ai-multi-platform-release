@@ -50,7 +50,7 @@
           </li>
           <li>
             「包含 / 不包含」在文本字段翻译为 LIKE / NOT LIKE（多值分别用 OR / AND 连接），在日期 /
-            日期时间 / 时间字段为闭区间比较（可只填一端），其他类型翻译为 IN / NOT IN
+            日期时间 / 时间、数值字段为闭区间比较（可只填一端），枚举 / 布尔翻译为 IN / NOT IN
           </li>
           <li>「为空」翻译为 (col IS NULL OR col = '')</li>
         </ul>
@@ -112,6 +112,30 @@
             分隔起止，如 2026-09-26~2026-10-12，可只填一端）
           </li>
           <li>
+            数值字段选择「包含 / 不包含」时，值输入变为数值范围（v-model 用 ~ 分隔起止，如
+            10~100，可只填一端）
+          </li>
+          <li>
+            枚举字段选择「等于 / 不等于」时支持多选，v-model 使用英文逗号或中文逗号分隔多个值；
+            等于多值会展开为 col = ? AND col = ?，不等于多值会展开为 col != ? AND col != ?
+          </li>
+          <li>
+            枚举字段的值输入支持关键字搜索；配置 field.loadOptions(query, signal)
+            后会启用异步远程搜索， 请求带 250ms 防抖，并支持通过 signal 取消过期请求
+          </li>
+          <li>
+            field.loadOptions 返回 ConditionFieldOptionValue[]，格式为 [{ label: '展示名称', value:
+            '编码值' }]；异步枚举可以不配置初始 options
+          </li>
+          <li>
+            条件字段输入默认使用本地关键字筛选；给 ConditionBuilder 配置 loadFieldOptions(query,
+            signal, context) 后会启用异步远程搜索，同样带 250ms 防抖，并支持通过 signal 取消过期请求
+          </li>
+          <li>
+            loadFieldOptions 返回 ConditionFieldOption[]；固定变量组搜索时会传入 context.scope
+            变量组 key，接口应按该 scope 过滤，避免加载到组外字段
+          </li>
+          <li>
             只勾选 1 个变量组时不套固定子组，条件直接平铺（与分组功能上线前一致），v-model
             输出同样是平铺结构（不含 scope 子组节点）
           </li>
@@ -139,6 +163,10 @@
             上述警示词会出现在规则列表状态区、规则编辑器选择变量时，以及条件编辑器受影响的变量候选项上；命中结果状态显示为「未生效
             / 部分未生效」
           </li>
+          <li>
+            数值、日期、日期时间、时间字段的「包含 /
+            不包含」使用起止范围时，互斥与联动规则会分别校验最小值、最大值；只填一端时，缺失边界按无穷处理
+          </li>
           <li>条件行尾的橙色感叹号可查看冲突原因</li>
         </ul>
       </el-tab-pane>
@@ -160,8 +188,12 @@
           </li>
           <li>
             「包含 / 不包含」在字符串字段翻译为 LIKE / NOT LIKE（多值用 OR / AND 连接）；日期 /
-            日期时间 / 时间字段为闭区间，两端填齐翻译为 BETWEEN / NOT
-            BETWEEN，只填一端时退化为单边比较；枚举、布尔、数值翻译为 IN / NOT IN
+            日期时间 / 时间、数值字段为闭区间，两端填齐翻译为 BETWEEN / NOT
+            BETWEEN，只填一端时退化为单边比较；枚举、布尔翻译为 IN / NOT IN
+          </li>
+          <li>
+            枚举字段多选「等于 / 不等于」时逐个展开比较，多值之间使用 AND 连接，例如 col = ? AND col
+            = ? 或 col != ? AND col != ?
           </li>
           <li>「为空」翻译为 (col IS NULL OR col = '')</li>
         </ul>

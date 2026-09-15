@@ -147,6 +147,7 @@
             <ConditionBuilder
               v-model="group"
               :field-options="fieldOptions"
+              :load-field-options="loadConditionFieldOptions"
               :field-groups="fieldGroups"
               :scoped-groups="scopedGroups"
               :rule-field-options="allFieldOptions"
@@ -432,6 +433,8 @@ import ConditionRuleEditor from '@/components/ConditionBuilder/ConditionRuleEdit
 import type {
   ConditionFieldGroup,
   ConditionFieldOption,
+  ConditionFieldOptionsLoaderContext,
+  ConditionFieldOptionValue,
   ConditionGroup,
   ConditionItem,
   ConditionLogic,
@@ -474,6 +477,44 @@ import type {
   ConditionRuleState,
   ConditionSchemaField,
 } from './ConditionTest.types'
+
+const REMOTE_REGION_OPTIONS: ConditionFieldOptionValue[] = [
+  { label: '北京', value: 'beijing' },
+  { label: '上海', value: 'shanghai' },
+  { label: '广东', value: 'guangdong' },
+  { label: '浙江', value: 'zhejiang' },
+  { label: '江苏', value: 'jiangsu' },
+  { label: '四川', value: 'sichuan' },
+  { label: '湖北', value: 'hubei' },
+  { label: '湖南', value: 'hunan' },
+  { label: '山东', value: 'shandong' },
+  { label: '福建', value: 'fujian' },
+  { label: '河南', value: 'henan' },
+  { label: '安徽', value: 'anhui' },
+]
+
+async function loadRegionOptions(
+  query: string,
+  signal?: AbortSignal,
+): Promise<ConditionFieldOptionValue[]> {
+  await new Promise<void>((resolve, reject) => {
+    const timer = window.setTimeout(resolve, 360)
+    signal?.addEventListener(
+      'abort',
+      () => {
+        window.clearTimeout(timer)
+        reject(new Error('aborted'))
+      },
+      { once: true },
+    )
+  })
+  const keyword = query.trim().toLowerCase()
+  if (!keyword) return REMOTE_REGION_OPTIONS
+  return REMOTE_REGION_OPTIONS.filter(
+    (option) =>
+      option.label.toLowerCase().includes(keyword) || option.value.toLowerCase().includes(keyword),
+  )
+}
 
 const fieldGroupPresets: ConditionFieldGroup[] = [
   {
@@ -618,8 +659,9 @@ const fieldGroupPresets: ConditionFieldGroup[] = [
       {
         value: 'region',
         label: '账号地区',
-        type: 'string',
-        description: '账号所属地区',
+        type: 'select',
+        description: '账号所属地区，选项通过异步接口搜索获取',
+        loadOptions: loadRegionOptions,
         queryable: false,
       },
     ],
@@ -676,6 +718,38 @@ const allFieldGroups = computed<ConditionFieldGroup[]>(() => fieldGroupPresets)
 const allFieldOptions = computed<ConditionFieldOption[]>(() =>
   flattenFieldGroups(fieldGroupPresets),
 )
+
+async function loadConditionFieldOptions(
+  query: string,
+  signal?: AbortSignal,
+  context?: ConditionFieldOptionsLoaderContext,
+): Promise<ConditionFieldOption[]> {
+  await new Promise<void>((resolve, reject) => {
+    const timer = window.setTimeout(resolve, 320)
+    signal?.addEventListener(
+      'abort',
+      () => {
+        window.clearTimeout(timer)
+        reject(new Error('aborted'))
+      },
+      { once: true },
+    )
+  })
+  const scopedFields = context?.scope
+    ? fieldGroupPresets.find((group) => group.key === context.scope)?.fields
+    : undefined
+  const options = scopedFields ?? allFieldOptions.value
+  const keyword = query.trim().toLowerCase()
+  if (!keyword) return options
+  return options.filter((option) => {
+    const label = option.label ?? option.value
+    return (
+      option.value.toLowerCase().includes(keyword) ||
+      label.toLowerCase().includes(keyword) ||
+      (option.description ?? '').toLowerCase().includes(keyword)
+    )
+  })
+}
 
 const sampleData: Record<string, unknown> = {
   title: '周末不跑远！城市露营攻略🏕️超全装备清单+玩法推荐✨',
@@ -1065,7 +1139,7 @@ const schemaFields: ConditionSchemaField[] = [
   {
     name: 'value',
     type: 'string',
-    desc: '比较值；非日期类多值以逗号分隔；日期 / 日期时间 / 时间的「包含 / 不包含」用 起~止（允许单边）；is_null 时为空字符串',
+    desc: '比较值；枚举多值以逗号分隔；数值及日期 / 日期时间 / 时间的「包含 / 不包含」用 起~止（允许单边）；is_null 时为空字符串',
   },
   {
     name: 'granularity',
@@ -1081,14 +1155,21 @@ const schemaFields: ConditionSchemaField[] = [
 ]
 
 const operatorDocs: ConditionOperatorDoc[] = [
-  { value: 'eq', label: '等于', symbol: '=', types: '全部类型', needsValue: true, sql: 'col = ?' },
+  {
+    value: 'eq',
+    label: '等于',
+    symbol: '=',
+    types: '全部类型',
+    needsValue: true,
+    sql: 'col = ?；枚举多值时 col = ? AND col = ?',
+  },
   {
     value: 'ne',
     label: '不等于',
     symbol: '≠',
     types: '全部类型',
     needsValue: true,
-    sql: 'col != ?',
+    sql: 'col != ?；枚举多值时 col != ? AND col != ?',
   },
   {
     value: 'gt',
@@ -1128,7 +1209,7 @@ const operatorDocs: ConditionOperatorDoc[] = [
     symbol: 'IN',
     types: '全部类型',
     needsValue: true,
-    sql: '文本 LIKE ?（OR）；日期类 BETWEEN ? AND ?；其他 IN (?)',
+    sql: '文本 LIKE ?（OR）；数值 / 日期类 BETWEEN ? AND ?；枚举 IN (?)',
   },
   {
     value: 'not_contains',
@@ -1136,7 +1217,7 @@ const operatorDocs: ConditionOperatorDoc[] = [
     symbol: 'NOT IN',
     types: '全部类型',
     needsValue: true,
-    sql: '文本 NOT LIKE ?（AND）；日期类 NOT BETWEEN ? AND ?；其他 NOT IN (?)',
+    sql: '文本 NOT LIKE ?（AND）；数值 / 日期类 NOT BETWEEN ? AND ?；枚举 NOT IN (?)',
   },
   {
     value: 'is_null',

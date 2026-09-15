@@ -14,6 +14,7 @@
         class="cre-form__control cir-field flex-1"
         :model-value="fieldText"
         :fetch-suggestions="fetchFieldSuggestions"
+        :debounce="0"
         :disabled="fieldInputDisabled"
         value-key="label"
         :fit-input-width="false"
@@ -141,7 +142,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { CircleAlert, Lock, Trash2 } from 'lucide-vue-next'
 import type {
@@ -184,6 +185,8 @@ import {
 } from './conditionRules'
 
 const props = withDefaults(defineProps<ConditionItemRowProps>(), {
+  loadFieldOptions: undefined,
+  fieldScope: '',
   fieldGroups: () => [],
   lockedField: '',
   disabled: false,
@@ -210,8 +213,31 @@ const wrapTip = computed(() =>
     : `子条件组最多嵌套 ${props.maxDepth} 层，已达上限`,
 )
 
+const REMOTE_FIELD_OPTIONS_DEBOUNCE = 250
+
+const remoteFields = ref<ConditionFieldOption[]>([])
+let fieldOptionsTimer: ReturnType<typeof setTimeout> | undefined
+let fieldOptionsController: AbortController | undefined
+let fieldOptionsRequestId = 0
+
+function mergeFieldOptions(
+  base: ConditionFieldOption[],
+  remote: ConditionFieldOption[],
+): ConditionFieldOption[] {
+  const optionMap = new Map<string, ConditionFieldOption>()
+  for (const option of base) optionMap.set(option.value, option)
+  for (const option of remote) {
+    if (!optionMap.has(option.value)) optionMap.set(option.value, option)
+  }
+  return [...optionMap.values()]
+}
+
+const availableFieldOptions = computed<ConditionFieldOption[]>(() =>
+  mergeFieldOptions(props.fieldOptions, remoteFields.value),
+)
+
 const field = computed<ConditionFieldOption | undefined>(() =>
-  props.fieldOptions.find((option) => option.value === props.item.field),
+  availableFieldOptions.value.find((option) => option.value === props.item.field),
 )
 
 const fieldInactive = computed(() => Boolean(props.item.field) && !field.value)
@@ -284,6 +310,10 @@ const rowViolationText = computed(() =>
   rowViolations.value.map((violation) => violation.message).join('；'),
 )
 
+const activeGranularity = computed<ConditionValueGranularity>(() =>
+  resolveConditionGranularity(props.item, field.value),
+)
+
 function fieldDisabled(fieldValue: string): boolean {
   return fieldLocks.value.has(fieldValue)
 }
@@ -295,7 +325,12 @@ function fieldHint(fieldValue: string): string {
 }
 
 function valueDisabled(value: string): boolean {
-  return conditionRuleValueDisabled(valueLimits.value, value, fieldOf(props.item.field))
+  return conditionRuleValueDisabled(
+    valueLimits.value,
+    value,
+    fieldOf(props.item.field),
+    activeGranularity.value,
+  )
 }
 
 const operatorOptions = computed(() => {
@@ -312,24 +347,15 @@ const granularityOptions = computed<{ value: ConditionValueGranularity; label: s
   })),
 )
 
-const activeGranularity = computed<ConditionValueGranularity>(() =>
-  resolveConditionGranularity(props.item, field.value),
-)
-
 const disabledValues = computed<string[]>(() =>
   optionValues.value.filter((value) => valueDisabled(value)),
 )
 
 const fieldSuggestData = computed<FieldSuggestion[]>(() => {
   const options = props.lockedField
-    ? props.fieldOptions.filter((option) => option.value === props.lockedField)
-    : props.fieldOptions
-  return options.map((option) => ({
-    value: option.value,
-    label: conditionFieldLabel(option),
-    description: option.description ?? '',
-    disabled: fieldDisabled(option.value),
-  }))
+    ? availableFieldOptions.value.filter((option) => option.value === props.lockedField)
+    : availableFieldOptions.value
+  return options.map(fieldSuggestion)
 })
 
 function toValueText(value: unknown): string {
@@ -353,7 +379,7 @@ function displayFieldText(fieldValue: string): string {
 function matchFieldOption(text: string): ConditionFieldOption | undefined {
   const query = text.trim().toLowerCase()
   if (!query) return undefined
-  return props.fieldOptions.find((option) => {
+  return availableFieldOptions.value.find((option) => {
     const label = conditionFieldLabel(option).trim().toLowerCase()
     return option.value.toLowerCase() === query || label === query
   })
@@ -430,7 +456,7 @@ function wrapToGroup(): void {
 }
 
 function fieldOf(fieldValue: string): ConditionFieldOption | undefined {
-  return props.fieldOptions.find((option) => option.value === fieldValue)
+  return availableFieldOptions.value.find((option) => option.value === fieldValue)
 }
 
 function valueTypeLabel(type?: ConditionValueType): string {
@@ -443,7 +469,9 @@ function suggestLabel(fieldValue: string): string {
 }
 
 function groupLabelOf(fieldValue: string): string {
-  return fieldGroupMap.value.get(fieldValue)?.label ?? ''
+  const group = fieldGroupMap.value.get(fieldValue)
+  if (group) return group.label
+  return props.fieldGroups.find((entry) => entry.key === props.fieldScope)?.label ?? ''
 }
 
 function fieldQueryable(fieldValue: string): boolean | undefined {
@@ -468,12 +496,136 @@ function filterFieldOption(inputValue: string, option: FieldSuggestion): boolean
   return candidates.some((candidate) => toValueText(candidate).toLowerCase().includes(query))
 }
 
+function fieldSuggestion(option: ConditionFieldOption): FieldSuggestion {
+  return {
+    value: option.value,
+    label: conditionFieldLabel(option),
+    description: option.description ?? '',
+    disabled: fieldDisabled(option.value),
+  }
+}
+
+function localFieldSuggestions(query: string): FieldSuggestion[] {
+  return fieldSuggestData.value.filter((option) => filterFieldOption(query, option))
+}
+
+function mergeFieldSuggestions(
+  local: FieldSuggestion[],
+  remote: FieldSuggestion[],
+): FieldSuggestion[] {
+  const suggestionMap = new Map<string, FieldSuggestion>()
+  for (const option of local) suggestionMap.set(option.value, option)
+  for (const option of remote) {
+    if (!suggestionMap.has(option.value)) suggestionMap.set(option.value, option)
+  }
+  return [...suggestionMap.values()]
+}
+
+function normalizeRemoteFieldOption(
+  option: ConditionFieldOption,
+): ConditionFieldOption | undefined {
+  const value = toValueText(option.value).trim()
+  if (!value) return undefined
+  return {
+    ...option,
+    value,
+    label: option.label === undefined ? undefined : toValueText(option.label),
+  }
+}
+
+function cacheRemoteFields(options: ConditionFieldOption[]): ConditionFieldOption[] {
+  const normalized = options
+    .map(normalizeRemoteFieldOption)
+    .filter((option): option is ConditionFieldOption => Boolean(option))
+  const fieldMap = new Map(remoteFields.value.map((option) => [option.value, option]))
+  for (const option of normalized) fieldMap.set(option.value, option)
+  remoteFields.value = [...fieldMap.values()]
+  return normalized
+}
+
+function syncRemoteMatchedField(options: ConditionFieldOption[]): void {
+  const currentField = props.item.field
+  const currentText = fieldText.value.trim().toLowerCase()
+  const matched = options.find((option) => {
+    const label = conditionFieldLabel(option).trim().toLowerCase()
+    return (
+      option.value === currentField ||
+      option.value.toLowerCase() === currentText ||
+      label === currentText
+    )
+  })
+  if (matched && applyField(matched.value)) {
+    fieldText.value = conditionFieldLabel(matched)
+  }
+}
+
+function fieldLoaderContext(): { scope?: string } | undefined {
+  return props.fieldScope ? { scope: props.fieldScope } : undefined
+}
+
+function cancelFieldOptionsLoad(): void {
+  fieldOptionsRequestId += 1
+  if (fieldOptionsTimer) {
+    clearTimeout(fieldOptionsTimer)
+    fieldOptionsTimer = undefined
+  }
+  fieldOptionsController?.abort()
+  fieldOptionsController = undefined
+}
+
+function executeRemoteFieldLoad(
+  query: string,
+  requestId: number,
+  callback: (suggestions: FieldSuggestion[]) => void,
+): void {
+  const loader = props.loadFieldOptions
+  if (!loader) {
+    callback(localFieldSuggestions(query))
+    return
+  }
+  const currentFieldKnown = Boolean(fieldOf(props.item.field))
+  const controller = new AbortController()
+  fieldOptionsController = controller
+
+  void loader(query, controller.signal, fieldLoaderContext())
+    .then((options) => {
+      if (requestId !== fieldOptionsRequestId || controller.signal.aborted) return
+      const remoteOptions = cacheRemoteFields(Array.isArray(options) ? options : [])
+      if (!currentFieldKnown) syncRemoteMatchedField(remoteOptions)
+      callback(
+        mergeFieldSuggestions(localFieldSuggestions(query), remoteOptions.map(fieldSuggestion)),
+      )
+    })
+    .catch(() => {
+      if (requestId !== fieldOptionsRequestId || controller.signal.aborted) return
+      callback(localFieldSuggestions(query))
+    })
+    .finally(() => {
+      if (requestId !== fieldOptionsRequestId) return
+      fieldOptionsController = undefined
+    })
+}
+
 function fetchFieldSuggestions(
   query: string,
   callback: (suggestions: FieldSuggestion[]) => void,
 ): void {
-  callback(fieldSuggestData.value.filter((option) => filterFieldOption(query, option)))
+  const loader = props.loadFieldOptions
+  if (!loader) {
+    callback(localFieldSuggestions(query))
+    return
+  }
+
+  cancelFieldOptionsLoad()
+  const requestId = fieldOptionsRequestId
+  const normalizedQuery = query.trim()
+  fieldOptionsTimer = setTimeout(() => {
+    fieldOptionsTimer = undefined
+    executeRemoteFieldLoad(normalizedQuery, requestId, callback)
+  }, REMOTE_FIELD_OPTIONS_DEBOUNCE)
 }
+
+onBeforeUnmount(cancelFieldOptionsLoad)
 </script>
 
 <style scoped lang="scss">

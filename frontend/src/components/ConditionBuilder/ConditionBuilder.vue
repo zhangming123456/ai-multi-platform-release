@@ -7,6 +7,7 @@
       :field-options="fieldOptions"
       :field-groups="fieldGroups"
       :scoped-groups="scopedGroups"
+      :load-field-options="loadFieldOptions"
       :rule-context="ruleContext"
       :disabled="disabled"
       :logic-editable="logicEditable"

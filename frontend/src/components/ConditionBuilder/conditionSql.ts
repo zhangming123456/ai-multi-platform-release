@@ -12,6 +12,7 @@ import type {
   ConditionValueType,
 } from './ConditionBuilder.types'
 import {
+  conditionOperatorAllowsMultipleValues,
   isConditionGroup,
   isConditionTemporalType,
   parseConditionRange,
@@ -126,6 +127,24 @@ function itemSqlFragment(
     return { text: `(${column} IS NULL OR ${column} = '')`, params: [] }
   }
 
+  const multipleValues = conditionOperatorAllowsMultipleValues(item.operator, field)
+    ? splitConditionValues(item.value)
+    : []
+  if (
+    (item.operator === 'eq' || item.operator === 'ne') &&
+    type === 'select' &&
+    multipleValues.length > 1
+  ) {
+    const comparison = item.operator === 'ne' ? '!=' : '='
+    const text = multipleValues
+      .map(() => `${target} ${comparison} ${CONDITION_SQL_PLACEHOLDER}`)
+      .join(' AND ')
+    return {
+      text: `(${text})`,
+      params: multipleValues.map((value) => toSqlParam(value, type)),
+    }
+  }
+
   const comparison = COMPARISON_SQL[item.operator]
   if (comparison) {
     return {
@@ -137,7 +156,7 @@ function itemSqlFragment(
   if (item.operator === 'contains' || item.operator === 'not_contains') {
     const isContains = item.operator === 'contains'
 
-    if (isConditionTemporalType(type)) {
+    if (isConditionTemporalType(type) || type === 'number') {
       return rangeSqlFragment(target, item.value, !isContains, type)
     }
 

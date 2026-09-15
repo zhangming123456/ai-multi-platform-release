@@ -17,12 +17,28 @@ export interface ConditionFieldOptionValue {
   value: string
 }
 
+export interface ConditionFieldOptionsLoaderContext {
+  scope?: string
+}
+
+export type ConditionFieldOptionsLoader = (
+  query: string,
+  signal?: AbortSignal,
+  context?: ConditionFieldOptionsLoaderContext,
+) => Promise<ConditionFieldOption[]>
+
+export type ConditionFieldOptionLoader = (
+  query: string,
+  signal?: AbortSignal,
+) => Promise<ConditionFieldOptionValue[]>
+
 export interface ConditionFieldOption {
   value: string
   label?: string
   type?: ConditionValueType
   description?: string
   options?: ConditionFieldOptionValue[]
+  loadOptions?: ConditionFieldOptionLoader
   queryable?: boolean
 }
 
@@ -124,6 +140,7 @@ export type ConditionCommand =
 export interface ConditionBuilderProps {
   modelValue?: ConditionGroup
   fieldOptions?: ConditionFieldOption[]
+  loadFieldOptions?: ConditionFieldOptionsLoader
   fieldGroups?: ConditionFieldGroup[]
   scopedGroups?: ConditionFieldGroup[]
   ruleFieldOptions?: ConditionFieldOption[]
@@ -150,6 +167,8 @@ export interface ConditionGroupEditorProps {
   path: number[]
   depth: number
   fieldOptions: ConditionFieldOption[]
+  loadFieldOptions?: ConditionFieldOptionsLoader
+  fieldScope?: string
   fieldGroups?: ConditionFieldGroup[]
   scopedGroups?: ConditionFieldGroup[]
   groupTitle?: string
@@ -179,6 +198,8 @@ export interface ConditionItemRowProps {
   path: number[]
   index: number
   fieldOptions: ConditionFieldOption[]
+  loadFieldOptions?: ConditionFieldOptionsLoader
+  fieldScope?: string
   fieldGroups?: ConditionFieldGroup[]
   lockedField?: string
   ruleContext?: ConditionRuleContext

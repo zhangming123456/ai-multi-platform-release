@@ -399,6 +399,7 @@ export function conditionValueAllowedForField(
   const parts = splitConditionValues(value)
   if (parts.length === 0) return true
   if (field.type === 'select') {
+    if (field.loadOptions) return true
     return parts.every((part) => (field.options ?? []).some((option) => option.value === part))
   }
   if (field.type === 'boolean') {
@@ -478,10 +479,18 @@ export function conditionOperatorIsMultiValue(operator: ConditionOperator): bool
   return operator === 'contains' || operator === 'not_contains'
 }
 
+export function conditionOperatorAllowsMultipleValues(
+  operator: ConditionOperator,
+  field?: ConditionFieldOption,
+): boolean {
+  if (conditionOperatorIsMultiValue(operator)) return true
+  return (operator === 'eq' || operator === 'ne') && resolveConditionFieldType(field) === 'select'
+}
+
 export function conditionFieldHasOptions(field?: ConditionFieldOption): boolean {
   if (!field) return false
   if (field.type === 'boolean') return true
-  return field.type === 'select' && (field.options ?? []).length > 0
+  return field.type === 'select'
 }
 
 export function conditionOperatorUsesLike(
@@ -752,8 +761,9 @@ function itemExpression(item: ConditionItem, fieldMap: Map<string, ConditionFiel
   const field = fieldMap.get(item.field)
   const name = conditionItemFieldLabel(item, field)
   const symbol = operator?.symbol ?? item.operator
-  if (conditionOperatorIsMultiValue(item.operator)) {
-    if (isConditionTemporalType(resolveConditionFieldType(field))) {
+  const fieldType = resolveConditionFieldType(field)
+  if (conditionOperatorAllowsMultipleValues(item.operator, field)) {
+    if (isConditionTemporalType(fieldType) || fieldType === 'number') {
       return rangeExpression(name, item.value, item.operator === 'not_contains')
     }
     const values = splitConditionValues(item.value)
@@ -861,6 +871,19 @@ function conditionRangeMatch(
   return negated ? !inside : inside
 }
 
+function conditionNumberRangeMatch(value: string, actual: unknown, negated: boolean): boolean {
+  const range = parseConditionRange(value)
+  const target = toComparableNumber(actual)
+  if (Number.isNaN(target)) return false
+  const start = range.start ? toComparableNumber(range.start) : Number.NaN
+  const end = range.end ? toComparableNumber(range.end) : Number.NaN
+  const hasStart = !Number.isNaN(start)
+  const hasEnd = !Number.isNaN(end)
+  if (!hasStart && !hasEnd) return false
+  const inside = (!hasStart || target >= start) && (!hasEnd || target <= end)
+  return negated ? !inside : inside
+}
+
 function normalizeBoolean(value: unknown): boolean {
   if (typeof value === 'boolean') return value
   const text = String(value).trim().toLowerCase()
@@ -900,11 +923,28 @@ export function evaluateConditionItem(
   if (actual === undefined || actual === null) return false
 
   switch (item.operator) {
-    case 'eq':
+    case 'eq': {
+      if (conditionOperatorAllowsMultipleValues(item.operator, field)) {
+        const values = splitConditionValues(item.value)
+        return values.length > 0
+          ? values.some((value) => compareEquality(type, actual, value, granularity))
+          : false
+      }
       return compareEquality(type, actual, item.value, granularity)
-    case 'ne':
+    }
+    case 'ne': {
+      if (conditionOperatorAllowsMultipleValues(item.operator, field)) {
+        const values = splitConditionValues(item.value)
+        return values.length > 0
+          ? !values.some((value) => compareEquality(type, actual, value, granularity))
+          : false
+      }
       return !compareEquality(type, actual, item.value, granularity)
+    }
     case 'contains': {
+      if (type === 'number') {
+        return conditionNumberRangeMatch(item.value, actual, false)
+      }
       if (isConditionTemporalType(type)) {
         return conditionRangeMatch(item.value, actual, granularity, false)
       }
@@ -917,6 +957,9 @@ export function evaluateConditionItem(
       return values.some((value) => compareEquality(type, actual, value, granularity))
     }
     case 'not_contains': {
+      if (type === 'number') {
+        return conditionNumberRangeMatch(item.value, actual, true)
+      }
       if (isConditionTemporalType(type)) {
         return conditionRangeMatch(item.value, actual, granularity, true)
       }

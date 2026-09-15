@@ -15,12 +15,17 @@ import type {
   ConditionRuleType,
   ConditionRuleValueLimit,
   ConditionRuleViolation,
+  ConditionValueGranularity,
 } from './ConditionBuilder.types'
 import {
+  CONDITION_RANGE_SEPARATOR,
   collectConditionItems,
   conditionFieldLabel,
   evaluateConditionItem,
   getConditionOperator,
+  isConditionTemporalType,
+  parseConditionRange,
+  resolveConditionFieldType,
   splitConditionValues,
 } from './conditionOperator'
 
@@ -61,21 +66,122 @@ function selectorValues(selector: ConditionRuleSelector): string[] {
   return selector.value ? splitConditionValues(selector.value) : []
 }
 
-function selectorMatchesItem(selector: ConditionRuleSelector, item: ConditionItem): boolean {
+interface ConditionRuleRange {
+  min?: string
+  max?: string
+}
+
+type ConditionRuleRangeBoundary = 'min' | 'max'
+
+function conditionRuleRange(
+  value: string,
+  field?: ConditionFieldOption,
+): ConditionRuleRange | undefined {
+  const type = resolveConditionFieldType(field)
+  if (type !== 'number' && !isConditionTemporalType(type)) return undefined
+  if (!String(value ?? '').includes(CONDITION_RANGE_SEPARATOR)) return undefined
+
+  const range = parseConditionRange(value)
+  if (!range.start && !range.end) return undefined
+
+  return {
+    min: range.start || undefined,
+    max: range.end || undefined,
+  }
+}
+
+function conditionRuleInfiniteBoundarySatisfied(
+  operator: ConditionOperator,
+  expected: string,
+  boundary: ConditionRuleRangeBoundary,
+): boolean {
+  if (operator === 'contains' || operator === 'not_contains') {
+    const range = parseConditionRange(expected)
+    const inside = boundary === 'min' ? !range.start : !range.end
+    return operator === 'contains' ? inside : !inside
+  }
+
+  if (operator === 'eq' || operator === 'is_null') return false
+  if (operator === 'ne') return true
+  if (operator === 'gt' || operator === 'gte') return boundary === 'max'
+  return boundary === 'min'
+}
+
+function selectorMatchesBoundary(
+  selector: ConditionRuleSelector,
+  boundary: string | undefined,
+  boundarySide: ConditionRuleRangeBoundary,
+  field?: ConditionFieldOption,
+  granularity?: ConditionValueGranularity,
+): boolean {
+  const expected = selectorValues(selector)
+  if (expected.length === 0) return true
+
+  const operator = selector.operator
+  if (!operator) return boundary !== undefined && expected.includes(boundary)
+  if (boundary === undefined) {
+    return expected.some((entry) =>
+      conditionRuleInfiniteBoundarySatisfied(operator, entry, boundarySide),
+    )
+  }
+
+  return expected.some((entry) =>
+    evaluateConditionItem(
+      {
+        id: 'condition-rule-selector-boundary',
+        nodeType: 'item',
+        logic: 'and',
+        field: selector.field,
+        operator,
+        value: entry,
+        granularity,
+      },
+      { [selector.field]: boundary },
+      field,
+    ),
+  )
+}
+
+function selectorMatchesItem(
+  selector: ConditionRuleSelector,
+  item: ConditionItem,
+  field?: ConditionFieldOption,
+): boolean {
   if (item.field !== selector.field) return false
   if (selector.operator && item.operator !== selector.operator) return false
+
+  const range = conditionRuleRange(item.value, field)
+  if (range) {
+    return (
+      [
+        [range.min, 'min'],
+        [range.max, 'max'],
+      ] as const
+    ).every(([boundary, side]) =>
+      selectorMatchesBoundary(selector, boundary, side, field, item.granularity),
+    )
+  }
+
   const expected = selectorValues(selector)
   if (expected.length === 0) return true
   const actual = splitConditionValues(item.value)
   return expected.some((value) => actual.includes(value))
 }
 
-function matchingItems(items: ConditionItem[], selector: ConditionRuleSelector): ConditionItem[] {
-  return items.filter((item) => selectorMatchesItem(selector, item))
+function matchingItems(
+  items: ConditionItem[],
+  selector: ConditionRuleSelector,
+  fieldMap: Map<string, ConditionFieldOption>,
+): ConditionItem[] {
+  return items.filter((item) => selectorMatchesItem(selector, item, fieldMap.get(selector.field)))
 }
 
-function matchedItemIds(items: ConditionItem[], selector: ConditionRuleSelector): string[] {
-  return matchingItems(items, selector).map((item) => item.id)
+function matchedItemIds(
+  items: ConditionItem[],
+  selector: ConditionRuleSelector,
+  fieldMap: Map<string, ConditionFieldOption>,
+): string[] {
+  return matchingItems(items, selector, fieldMap).map((item) => item.id)
 }
 
 export function resolveConditionRules(
@@ -115,7 +221,9 @@ export function resolveConditionRules(
 
     if (rule.type === 'mutual_exclusive') {
       const members: ConditionRuleSelector[] = [rule.when, ...rule.targets]
-      const matched = members.filter((selector) => matchingItems(items, selector).length > 0)
+      const matched = members.filter(
+        (selector) => matchingItems(items, selector, fieldMap).length > 0,
+      )
       if (matched.length === 0) continue
 
       activeRuleIds.push(rule.id)
@@ -129,7 +237,7 @@ export function resolveConditionRules(
           ruleId: rule.id,
           ruleName: rule.name,
           message: rule.message ?? `「${rule.name}」中的互斥条件不可同时存在`,
-          itemIds: matched.flatMap((selector) => matchedItemIds(items, selector)),
+          itemIds: matched.flatMap((selector) => matchedItemIds(items, selector, fieldMap)),
         })
       }
 
@@ -158,7 +266,7 @@ export function resolveConditionRules(
     }
 
     if (rule.type === 'prerequisite') {
-      const satisfied = matchingItems(items, rule.when).length > 0
+      const satisfied = matchingItems(items, rule.when, fieldMap).length > 0
       if (satisfied) {
         activeRuleIds.push(rule.id)
         markEffect(
@@ -169,7 +277,7 @@ export function resolveConditionRules(
       }
 
       const matchedTargets = rule.targets.filter(
-        (selector) => matchingItems(items, selector).length > 0,
+        (selector) => matchingItems(items, selector, fieldMap).length > 0,
       )
 
       if (matchedTargets.length === 0) {
@@ -189,12 +297,12 @@ export function resolveConditionRules(
         ruleId: rule.id,
         ruleName: rule.name,
         message: rule.message ?? `「${rule.name}」缺少前置条件`,
-        itemIds: matchedTargets.flatMap((selector) => matchedItemIds(items, selector)),
+        itemIds: matchedTargets.flatMap((selector) => matchedItemIds(items, selector, fieldMap)),
       })
       continue
     }
 
-    const triggered = matchingItems(items, rule.when).length > 0
+    const triggered = matchingItems(items, rule.when, fieldMap).length > 0
     if (!triggered) continue
 
     activeRuleIds.push(rule.id)
@@ -213,7 +321,8 @@ export function resolveConditionRules(
     const targetField = fieldMap.get(rule.field)
     const conflicted = items.filter(
       (item) =>
-        item.field === rule.field && !conditionRuleValueSatisfied(limit, item.value, targetField),
+        item.field === rule.field &&
+        !conditionRuleValueSatisfied(limit, item.value, targetField, item.granularity),
     )
     if (conflicted.length > 0) {
       violations.push({
@@ -232,21 +341,47 @@ function conditionRuleValueSatisfied(
   limit: ConditionRuleValueLimit,
   value: string,
   field?: ConditionFieldOption,
+  granularity?: ConditionValueGranularity,
+): boolean {
+  const range = conditionRuleRange(value, field)
+  if (range) {
+    return (
+      [
+        [range.min, 'min'],
+        [range.max, 'max'],
+      ] as const
+    ).every(([boundary, side]) =>
+      conditionRuleBoundarySatisfied(limit, boundary, side, field, granularity),
+    )
+  }
+  return conditionRuleBoundarySatisfied(limit, value, undefined, field, granularity)
+}
+
+function conditionRuleBoundarySatisfied(
+  limit: ConditionRuleValueLimit,
+  value: string | undefined,
+  boundarySide: ConditionRuleRangeBoundary | undefined,
+  field?: ConditionFieldOption,
+  granularity?: ConditionValueGranularity,
 ): boolean {
   const dataset: Record<string, unknown> = { [limit.field]: value }
   const evaluate = (operator: ConditionOperator, expected: string): boolean =>
-    evaluateConditionItem(
-      {
-        id: 'condition-rule-limit',
-        nodeType: 'item',
-        logic: 'and',
-        field: limit.field,
-        operator,
-        value: expected,
-      },
-      dataset,
-      field,
-    )
+    value === undefined
+      ? boundarySide !== undefined &&
+        conditionRuleInfiniteBoundarySatisfied(operator, expected, boundarySide)
+      : evaluateConditionItem(
+          {
+            id: 'condition-rule-limit',
+            nodeType: 'item',
+            logic: 'and',
+            field: limit.field,
+            operator,
+            value: expected,
+            granularity,
+          },
+          dataset,
+          field,
+        )
 
   if (limit.operator === 'is_null') return evaluate('is_null', '')
 
@@ -286,16 +421,21 @@ export function conditionRuleValueDisabled(
   limits: ConditionRuleValueLimit[],
   value: string,
   field?: ConditionFieldOption,
+  granularity?: ConditionValueGranularity,
 ): boolean {
-  return limits.some((limit) => !conditionRuleValueSatisfied(limit, value, field))
+  return limits.some((limit) => !conditionRuleValueSatisfied(limit, value, field, granularity))
 }
 
 export function conditionRuleValueReason(
   limits: ConditionRuleValueLimit[],
   value: string,
   field?: ConditionFieldOption,
+  granularity?: ConditionValueGranularity,
 ): string {
-  return limits.find((limit) => !conditionRuleValueSatisfied(limit, value, field))?.reason ?? ''
+  return (
+    limits.find((limit) => !conditionRuleValueSatisfied(limit, value, field, granularity))
+      ?.reason ?? ''
+  )
 }
 
 export const CONDITION_RULE_TYPE_OPTIONS: { value: ConditionRuleType; label: string }[] = [
