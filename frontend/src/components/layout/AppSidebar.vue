@@ -124,6 +124,8 @@ import {
   IconUser,
   IconEdit,
   IconGift,
+  IconCalendar,
+  IconSun,
 } from '@arco-design/web-vue/es/icon'
 
 const iconRegistry: Record<string, Component> = {
@@ -132,6 +134,8 @@ const iconRegistry: Record<string, Component> = {
   send: IconSend,
   apps: IconApps,
   gift: IconGift,
+  calendar: IconCalendar,
+  sun: IconSun,
   settings: IconSettings,
   code: IconCode,
   safe: IconSafe,
@@ -145,13 +149,14 @@ const iconRegistry: Record<string, Component> = {
 const SIDEBAR_GROUPS: Record<string, SidebarGroupConfig> = {
   top: { name: '', icon: '', order: 0, wrapGroup: false },
   content: { name: '内容管理', icon: 'file', order: 1, wrapGroup: true },
-  material: { name: '素材管理', icon: 'image', order: 2, wrapGroup: true },
-  review: { name: '审核管理', icon: 'check', order: 3, wrapGroup: true },
-  inspection: { name: '巡店管理', icon: 'check', order: 4, wrapGroup: true },
-  platforms: { name: '平台管理', icon: 'apps', order: 5, wrapGroup: false },
-  rbac: { name: '权限管理', icon: 'safe', order: 6, wrapGroup: true },
-  system: { name: '系统管理', icon: 'tool', order: 7, wrapGroup: true },
-  dev: { name: '开发', icon: 'code', order: 8, wrapGroup: true },
+  photography: { name: '摄影工具', icon: 'sun', order: 2, wrapGroup: true },
+  material: { name: '素材管理', icon: 'image', order: 3, wrapGroup: true },
+  review: { name: '审核管理', icon: 'check', order: 4, wrapGroup: true },
+  inspection: { name: '巡店管理', icon: 'check', order: 5, wrapGroup: true },
+  platforms: { name: '平台管理', icon: 'apps', order: 6, wrapGroup: false },
+  rbac: { name: '权限管理', icon: 'safe', order: 7, wrapGroup: true },
+  system: { name: '系统管理', icon: 'tool', order: 8, wrapGroup: true },
+  dev: { name: '开发', icon: 'code', order: 9, wrapGroup: true },
 }
 
 function isGroup(item: MenuItem): item is MenuGroup {
@@ -172,7 +177,9 @@ function hasPerm(key: string, ctx?: PermContext): boolean {
 }
 
 const menuItems = computed<MenuItem[]>(() => {
-  const sidebarRoutes = router.getRoutes().filter((r) => r.meta.sidebarType && r.meta.title)
+  const sidebarRoutes = router
+    .getRoutes()
+    .filter((r) => r.meta.sidebarType && r.meta.title && !r.meta.hideInSidebar)
 
   const byType = new Map<string, { route: (typeof sidebarRoutes)[number]; order: number }[]>()
 

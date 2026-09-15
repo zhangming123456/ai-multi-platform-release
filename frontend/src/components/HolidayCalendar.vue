@@ -1,28 +1,24 @@
 <template>
   <div class="holiday-calendar" :class="{ 'is-embedded': embedded }">
     <div class="holiday-calendar__header">
-      <div class="holiday-calendar__left min-w-2/12" />
+      <div class="holiday-calendar__left" />
       <div class="holiday-calendar__nav">
         <a-button size="mini" shape="circle" @click="shiftMonth(-1)">
           <template #icon><IconLeft :size="12" /></template>
         </a-button>
-        <a-select
-          v-model="yearValue"
-          size="mini"
+        <a-month-picker
           class="holiday-calendar__select"
-          :options="yearOptions"
-        />
-        <a-select
           v-model="monthValue"
-          size="mini"
-          class="holiday-calendar__select holiday-calendar__select--month"
-          :options="monthOptions"
+          format="YYYY-MM"
+          value-format="YYYY-MM"
+          :allow-clear="false"
+          disabled-input
         />
         <a-button size="mini" shape="circle" @click="shiftMonth(1)">
           <template #icon><IconRight :size="12" /></template>
         </a-button>
       </div>
-      <div class="holiday-calendar__right min-w-2/12 flex justify-end">
+      <div class="holiday-calendar__right flex justify-end">
         <a-button size="mini" @click="goToday">今天</a-button>
       </div>
     </div>
@@ -111,7 +107,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, unref, watch } from 'vue'
 import { IconLeft, IconRight } from '@arco-design/web-vue/es/icon'
 import api from '@/utils/api'
 import type {
@@ -122,7 +118,6 @@ import type {
   HolidayDay,
   HolidayKind,
   HolidayMonthGroup,
-  HolidaySelectOption,
 } from './HolidayCalendar.types'
 import dayjs from 'dayjs'
 
@@ -172,33 +167,18 @@ const weekdayLabels = computed(() =>
     : ['日', '一', '二', '三', '四', '五', '六'],
 )
 
-const yearOptions = computed<HolidaySelectOption[]>(() => {
-  const currentYear = Number(today.slice(0, 4))
-  const years = new Set<number>()
-  for (let offset = -3; offset <= 3; offset += 1) {
-    years.add(currentYear + offset)
-  }
-  for (const day of data.value?.days ?? []) {
-    years.add(Number(day.date.slice(0, 4)))
-  }
-  return Array.from(years)
-    .filter((year) => year > 1900)
-    .sort((a, b) => a - b)
-    .map((year) => ({ label: `${year} 年`, value: year }))
-})
-
-const monthOptions = computed<HolidaySelectOption[]>(() =>
-  Array.from({ length: 12 }, (_, index) => ({ label: `${index + 1} 月`, value: index + 1 })),
-)
-
 const yearValue = computed({
   get: () => Number(cursor.value.slice(0, 4)),
   set: (value: number) => setCursor(value, Number(cursor.value.slice(5, 7))),
 })
 
 const monthValue = computed({
-  get: () => Number(cursor.value.slice(5, 7)),
-  set: (value: number) => setCursor(Number(cursor.value.slice(0, 4)), value),
+  get: () => `${unref(yearValue)}-${Number(cursor.value.slice(5, 7))}`,
+  set: (value: string) => {
+    const [year, month] = value.split('-')
+    yearValue.value = Number(year)
+    setCursor(Number(cursor.value.slice(0, 4)), Number(month))
+  },
 })
 
 const cells = computed<HolidayCalendarCell[]>(() => {
@@ -415,12 +395,18 @@ onMounted(() => {
   }
 }
 
-.holiday-calendar__select {
-  width: 88px;
-}
-
-.holiday-calendar__select--month {
-  width: 72px;
+:deep(.holiday-calendar__select) {
+  width: 80px;
+  padding: 4px;
+  justify-content: center;
+  .arco-picker-suffix {
+    display: none;
+  }
+  .arco-picker-start-time {
+    padding: 0;
+    width: 100%;
+    text-align: center;
+  }
 }
 
 .holiday-calendar__meta {
@@ -459,12 +445,12 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 1px;
-  min-height: 58px;
+  gap: 2px;
+  height: 58px;
   padding: 6px 4px 5px;
   border: 1px solid transparent;
   border-radius: 10px;
-  background: #f7f7f9;
+  background: transparent;
   cursor: pointer;
   transition:
     background 0.15s,
@@ -489,12 +475,13 @@ onMounted(() => {
 
 .holiday-calendar__cell.is-selected {
   border-color: #007aff;
-  background: rgba(0, 122, 255, 0.12);
+  //background: rgba(0, 122, 255, 0.12);
 }
 
 .holiday-calendar__day {
-  font-size: 13px;
-  font-weight: 600;
+  height: 50%;
+  font-size: 14px;
+  font-weight: bold;
   line-height: 1.2;
   color: #1d1d1f;
 }
@@ -523,8 +510,9 @@ onMounted(() => {
 
 .holiday-calendar__badge {
   position: absolute;
-  top: 4px;
-  right: 4px;
+  top: 0;
+  right: 0;
+  transform: translate(20%, -20%);
   width: 14px;
   height: 14px;
   border-radius: 4px;
@@ -679,11 +667,7 @@ onMounted(() => {
   }
 
   .holiday-calendar__cell {
-    min-height: 50px;
-  }
-
-  .holiday-calendar__name {
-    //display: none;
+    height: 50px;
   }
 }
 </style>

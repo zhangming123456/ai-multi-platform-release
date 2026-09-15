@@ -1,6 +1,8 @@
 import axios from 'axios'
 import router from '@/router'
 
+export const WEATHER_API_TIMEOUT = 35000
+
 const api = axios.create({
   baseURL: '/api',
   timeout: 10000,

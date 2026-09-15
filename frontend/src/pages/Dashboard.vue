@@ -43,7 +43,7 @@
             </a-col>
             <a-col :xs="24">
               <a-row div class="flex flex-wrap" style="gap: 16px; align-items: stretch">
-                <a-col :flex="2" class="min-w-max">
+                <a-col :flex="2">
                   <a-card :bordered="false" class="min-h-full" title="日历" style="padding: 10px">
                     <template #extra>
                       <span v-if="upcomingText" style="font-size: 12px; color: var(--color-text-3)">

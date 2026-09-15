@@ -63,6 +63,26 @@ func registerRoutes() {
 	web.Router("/api/holiday-sources/:id", holidaySources, "put:Update;delete:Delete")
 	web.Router("/api/holiday-sources/:id/refresh", holidaySources, "post:Refresh")
 
+	photographyWeatherConfigs := &controllers.PhotographyWeatherConfigsController{}
+	web.Router("/api/photography-weather-configs", photographyWeatherConfigs, "get:List")
+	web.Router("/api/photography-weather-configs/:source", photographyWeatherConfigs, "put:Update")
+
+	photographyTools := &controllers.PhotographyToolsController{}
+	web.Router("/api/photography-tools/overview", photographyTools, "get:Overview")
+	web.Router("/api/photography-tools/geocode", photographyTools, "get:Geocode")
+	web.Router("/api/photography-tools/map-config", photographyTools, "get:MapConfig")
+
+	photographyIntegrations := &controllers.PhotographyIntegrationsController{}
+	web.Router("/api/system/integrations/photography", photographyIntegrations, "get:Get;put:Update")
+
+	photographyPlans := &controllers.PhotographyPlansController{}
+	web.Router("/api/photography-plans/geocode", photographyPlans, "get:Geocode")
+	web.Router("/api/photography-plans/weather-sources", photographyPlans, "get:WeatherSources")
+	web.Router("/api/photography-plans/forecast", photographyPlans, "get:Forecast")
+	web.Router("/api/photography-plans/", photographyPlans, "get:List;post:Create")
+	web.Router("/api/photography-plans/:id", photographyPlans, "get:Get;put:Update;delete:Delete")
+	web.Router("/api/photography-plans/:id/refresh", photographyPlans, "post:Refresh")
+
 	modelConfigs := &controllers.ModelConfigsController{}
 	web.Router("/api/model-configs/", modelConfigs, "get:List;post:Create")
 	web.Router("/api/model-configs/reorder", modelConfigs, "put:Reorder")

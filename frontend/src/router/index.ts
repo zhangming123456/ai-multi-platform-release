@@ -15,8 +15,10 @@ declare module 'vue-router' {
       | 'rbac'
       | 'system'
       | 'material'
+      | 'photography'
       | 'dev'
     sidebarOrder?: number
+    hideInSidebar?: boolean
     icon?: string
   }
 }
@@ -187,6 +189,34 @@ const router = createRouter({
           },
         },
         {
+          path: 'photography-tools/plans',
+          name: 'PhotographyPlans',
+          component: () => import('@/pages/PhotographyPlan.vue'),
+          meta: {
+            title: '计划',
+            permKey: 'photography_plan:read',
+            sidebarType: 'photography',
+            sidebarOrder: 0,
+            icon: 'calendar',
+          },
+        },
+        {
+          path: 'photography-tools/weather',
+          name: 'PhotographyWeather',
+          component: () => import('@/pages/PhotographyWeatherOverview.vue'),
+          meta: {
+            title: '天气',
+            permKey: 'photography_tool:read',
+            sidebarType: 'photography',
+            sidebarOrder: 1,
+            icon: 'sun',
+          },
+        },
+        {
+          path: 'photography-plans',
+          redirect: { name: 'PhotographyPlans' },
+        },
+        {
           path: 'materials/images',
           name: 'MaterialImageList',
           component: () => import('@/pages/MaterialList.vue'),
@@ -220,6 +250,31 @@ const router = createRouter({
             sidebarType: 'system',
             sidebarOrder: 1,
             icon: 'settings',
+          },
+        },
+        {
+          path: 'settings/photography-integrations',
+          name: 'PhotographyIntegrationSettings',
+          component: () => import('@/pages/PhotographyIntegrationSettings.vue'),
+          meta: {
+            title: '气象数据源',
+            permKey: 'photography_tool:config:read',
+            sidebarType: 'system',
+            sidebarOrder: 5,
+            icon: 'sun',
+          },
+        },
+        {
+          path: 'settings/photography-weather',
+          name: 'PhotographyWeatherSettings',
+          component: () => import('@/pages/PhotographyWeatherSettings.vue'),
+          meta: {
+            title: '天气数据源 / 模型',
+            permKey: 'photography_weather_config:read',
+            hideInSidebar: true,
+            sidebarType: 'system',
+            sidebarOrder: 2,
+            icon: 'sun',
           },
         },
         {

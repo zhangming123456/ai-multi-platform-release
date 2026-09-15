@@ -108,6 +108,15 @@ var RBACResources = []resourceDef{
 	{Key: "campaign:delete:write", Name: "删除活动", Description: "删除或归档营销活动"},
 	{Key: "holiday_source:read", Name: "日历订阅源", Description: "查看节假日日历订阅源列表"},
 	{Key: "holiday_source:write", Name: "维护日历订阅源", Description: "新增、编辑、删除日历订阅源并手动刷新"},
+	{Key: "photography_weather_config:read", Name: "天气数据源配置", Description: "查看天气数据源和模型配置状态"},
+	{Key: "photography_weather_config:update:write", Name: "维护天气数据源配置", Description: "配置天气数据源 API Key、Token 和服务地址"},
+	{Key: "photography_plan:read", Name: "摄影计划", Description: "查询朝霞晚霞天气并查看个人摄影计划"},
+	{Key: "photography_plan:create:write", Name: "创建摄影计划", Description: "保存新的摄影计划"},
+	{Key: "photography_plan:update:write", Name: "编辑摄影计划", Description: "编辑和刷新摄影计划"},
+	{Key: "photography_plan:delete:write", Name: "删除摄影计划", Description: "删除个人摄影计划"},
+	{Key: "photography_tool:read", Name: "摄影工具", Description: "查询位置天气与摄影指数"},
+	{Key: "photography_tool:config:read", Name: "摄影工具集成配置", Description: "查看地图、天气、潮汐和极光服务配置状态"},
+	{Key: "photography_tool:config:update", Name: "维护摄影工具集成配置", Description: "配置摄影工具第三方服务密钥和启用状态"},
 }
 
 func AllPermissionKeys() []string {
@@ -160,6 +169,10 @@ var defaultRolePermissions = map[string][]string{
 		"campaign:read", "campaign:create:write",
 		"campaign:update:write", "campaign:delete:write",
 		"holiday_source:read", "holiday_source:write",
+		"photography_weather_config:read", "photography_weather_config:update:write",
+		"photography_plan:read", "photography_plan:create:write",
+		"photography_plan:update:write", "photography_plan:delete:write",
+		"photography_tool:read", "photography_tool:config:read", "photography_tool:config:update",
 	},
 	"operator": []string{
 		"dashboard:read", "platforms:read", "content:read", "publish:read",
@@ -183,6 +196,9 @@ var defaultRolePermissions = map[string][]string{
 		"material:read", "material:create:write", "material:update:write",
 		"campaign:read", "campaign:create:write",
 		"campaign:update:write", "campaign:delete:write",
+		"photography_plan:read", "photography_plan:create:write",
+		"photography_plan:update:write", "photography_plan:delete:write",
+		"photography_tool:read", "photography_tool:config:read", "photography_tool:config:update",
 	},
 	"reviewer": []string{
 		"dashboard:read", "content:read", "review:read", "sql_review:read",
@@ -192,6 +208,7 @@ var defaultRolePermissions = map[string][]string{
 		"stores:read", "inspection:read", "inspection:template:read",
 		"inspection:material:read", "inspection:task:read", "inspection:task:confirm:write",
 		"material:read", "campaign:read",
+		"photography_tool:read",
 	},
 	"inspector": []string{
 		"dashboard:read", "stores:read",
