@@ -1026,10 +1026,14 @@ async function handleSavePlan() {
   savingPlan.value = true
   try {
     if (editingPlanId.value) {
-      await api.put<PhotographyPlan>('/photography-plans/' + editingPlanId.value, payload, { timeout: WEATHER_API_TIMEOUT })
+      await api.put<PhotographyPlan>('/photography-plans/' + editingPlanId.value, payload, {
+        timeout: WEATHER_API_TIMEOUT,
+      })
       Message.success('摄影计划已更新')
     } else {
-      await api.post<PhotographyPlan>('/photography-plans/', payload, { timeout: WEATHER_API_TIMEOUT })
+      await api.post<PhotographyPlan>('/photography-plans/', payload, {
+        timeout: WEATHER_API_TIMEOUT,
+      })
       Message.success('摄影计划已保存')
     }
     saveModalVisible.value = false
@@ -1044,7 +1048,11 @@ async function handleSavePlan() {
 async function refreshPlan(plan: PhotographyPlan) {
   busyPlanId.value = plan.id
   try {
-    const response = await api.post<PhotographyPlan>('/photography-plans/' + plan.id + '/refresh', undefined, { timeout: WEATHER_API_TIMEOUT })
+    const response = await api.post<PhotographyPlan>(
+      '/photography-plans/' + plan.id + '/refresh',
+      undefined,
+      { timeout: WEATHER_API_TIMEOUT },
+    )
     const index = plans.value.findIndex((item) => item.id === plan.id)
     if (index !== -1) plans.value[index] = response.data
     Message.success('天气数据已刷新')

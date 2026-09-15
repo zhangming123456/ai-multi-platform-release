@@ -14,7 +14,8 @@
 
     <div class="flex-1 px-4 pb-8 md:px-6 lg:px-8">
       <a-alert type="info" show-icon class="mb-4">
-        浏览器地图 Key 会作为运行时公开 Key 下发，请在高德/Google 控制台配置域名或 IP 限制。服务端天气、潮汐和 NOAA 密钥不会返回前端，也不会写入日志。
+        浏览器地图 Key 会作为运行时公开 Key 下发，请在高德/Google 控制台配置域名或 IP
+        限制。服务端天气、潮汐和 NOAA 密钥不会返回前端，也不会写入日志。
       </a-alert>
 
       <a-spin :loading="loading" class="w-full">
@@ -24,15 +25,27 @@
               <template #title>地图服务</template>
               <a-form :model="form" layout="vertical">
                 <a-form-item label="高德 Web Key">
-                  <a-input-password v-model="form.amap_web_key" :placeholder="placeholder(config?.amap_web_key_masked)" allow-clear />
+                  <a-input-password
+                    v-model="form.amap_web_key"
+                    :placeholder="placeholder(config?.amap_web_key_masked)"
+                    allow-clear
+                  />
                 </a-form-item>
                 <a-checkbox v-model="form.clear_amap_web_key">清除高德 Web Key</a-checkbox>
                 <a-form-item label="高德安全密钥">
-                  <a-input-password v-model="form.amap_security_key" :placeholder="placeholder(config?.amap_security_key_masked)" allow-clear />
+                  <a-input-password
+                    v-model="form.amap_security_key"
+                    :placeholder="placeholder(config?.amap_security_key_masked)"
+                    allow-clear
+                  />
                 </a-form-item>
                 <a-checkbox v-model="form.clear_amap_security_key">清除高德安全密钥</a-checkbox>
                 <a-form-item label="Google Maps Browser Key">
-                  <a-input-password v-model="form.google_maps_key" :placeholder="placeholder(config?.google_maps_key_masked)" allow-clear />
+                  <a-input-password
+                    v-model="form.google_maps_key"
+                    :placeholder="placeholder(config?.google_maps_key_masked)"
+                    allow-clear
+                  />
                 </a-form-item>
                 <a-checkbox v-model="form.clear_google_maps_key">清除 Google Maps Key</a-checkbox>
               </a-form>
@@ -53,7 +66,11 @@
             <a-card :bordered="false" class="h-full shadow-sm">
               <template #title>天气服务</template>
               <a-form :model="form" layout="vertical">
-                <div v-for="provider in config?.weather_providers || []" :key="provider.id" class="provider-row">
+                <div
+                  v-for="provider in config?.weather_providers || []"
+                  :key="provider.id"
+                  class="provider-row"
+                >
                   <div>
                     <div class="font-medium">{{ provider.name }}</div>
                     <div class="text-xs text-[#86868B]">
@@ -64,10 +81,17 @@
                   <a-switch v-else v-model="form.qweather_enabled" />
                 </div>
                 <a-form-item label="Open-Meteo API Host">
-                  <a-input v-model="form.open_meteo_host" placeholder="https://api.open-meteo.com/v1/forecast" />
+                  <a-input
+                    v-model="form.open_meteo_host"
+                    placeholder="https://api.open-meteo.com/v1/forecast"
+                  />
                 </a-form-item>
                 <a-form-item label="Open-Meteo API Key（可选）">
-                  <a-input-password v-model="form.open_meteo_key" :placeholder="placeholder(config?.open_meteo_key_masked)" allow-clear />
+                  <a-input-password
+                    v-model="form.open_meteo_key"
+                    :placeholder="placeholder(config?.open_meteo_key_masked)"
+                    allow-clear
+                  />
                 </a-form-item>
                 <a-checkbox v-model="form.clear_open_meteo_key">清除 Open-Meteo Key</a-checkbox>
                 <a-form-item label="和风天气认证方式">
@@ -77,7 +101,11 @@
                   </a-radio-group>
                 </a-form-item>
                 <a-form-item label="和风天气 API Key / Token">
-                  <a-input-password v-model="form.qweather_key" :placeholder="placeholder(config?.qweather_key_masked)" allow-clear />
+                  <a-input-password
+                    v-model="form.qweather_key"
+                    :placeholder="placeholder(config?.qweather_key_masked)"
+                    allow-clear
+                  />
                 </a-form-item>
                 <a-checkbox v-model="form.clear_qweather_key">清除和风天气 Key / Token</a-checkbox>
                 <a-form-item label="和风天气 API Host">
@@ -109,7 +137,11 @@
                   <a-switch v-model="form.tide_enabled" />
                 </div>
                 <a-form-item label="全球潮汐服务 Key（Stormglass 等）">
-                  <a-input-password v-model="form.tide_key" :placeholder="placeholder(config?.tide_key_masked)" allow-clear />
+                  <a-input-password
+                    v-model="form.tide_key"
+                    :placeholder="placeholder(config?.tide_key_masked)"
+                    allow-clear
+                  />
                 </a-form-item>
                 <a-checkbox v-model="form.clear_tide_key">清除潮汐服务 Key</a-checkbox>
                 <a-form-item label="全球潮汐 API Host">
@@ -141,11 +173,18 @@
                   <a-switch v-model="form.noaa_enabled" />
                 </div>
                 <a-form-item label="NOAA API Key（可选）">
-                  <a-input-password v-model="form.noaa_key" :placeholder="placeholder(config?.noaa_key_masked)" allow-clear />
+                  <a-input-password
+                    v-model="form.noaa_key"
+                    :placeholder="placeholder(config?.noaa_key_masked)"
+                    allow-clear
+                  />
                 </a-form-item>
                 <a-checkbox v-model="form.clear_noaa_key">清除 NOAA Key</a-checkbox>
                 <a-form-item label="NOAA Host">
-                  <a-input v-model="form.noaa_host" placeholder="可选，默认 services.swpc.noaa.gov" />
+                  <a-input
+                    v-model="form.noaa_host"
+                    placeholder="可选，默认 services.swpc.noaa.gov"
+                  />
                 </a-form-item>
               </a-form>
               <div class="mt-5 flex justify-end">
@@ -256,7 +295,10 @@ function syncForm(value: PhotographyIntegrationConfig) {
   resetSecretFields()
 }
 
-function syncSavedSection(section: PhotographyIntegrationSection, value: PhotographyIntegrationConfig) {
+function syncSavedSection(
+  section: PhotographyIntegrationSection,
+  value: PhotographyIntegrationConfig,
+) {
   config.value = value
   if (section === 'map') {
     form.amap_web_key = ''

@@ -1,9 +1,6 @@
 <template>
   <div class="page-main photography-settings-page">
-    <PageHeader
-      title="天气数据源 / 模型"
-      subtitle="集中管理摄影工具天气查询所使用的第三方服务凭据"
-    >
+    <PageHeader title="天气数据源 / 模型" subtitle="集中管理摄影工具天气查询所使用的第三方服务凭据">
       <template #actions>
         <a-button size="mini" :loading="loading" @click="loadConfigs">
           <template #icon><IconRefresh :size="13" /></template>
@@ -14,7 +11,8 @@
 
     <div class="px-4 md:px-6 lg:px-8 flex-1 pb-8">
       <a-alert type="info" show-icon class="mb-4">
-        API Key 仅提交到后端保存，页面只显示脱敏值。Open-Meteo 不配置 Key 也可以使用；和风天气需要配置 API Key 或 JWT Token。
+        API Key 仅提交到后端保存，页面只显示脱敏值。Open-Meteo 不配置 Key
+        也可以使用；和风天气需要配置 API Key 或 JWT Token。
       </a-alert>
 
       <a-spin :loading="loading" class="w-full">
@@ -31,12 +29,17 @@
                 </div>
               </template>
               <template #extra>
-                <a-tag :color="item.requires_key && !item.configured ? 'orange' : 'green'" size="small">
+                <a-tag
+                  :color="item.requires_key && !item.configured ? 'orange' : 'green'"
+                  size="small"
+                >
                   {{ item.requires_key && !item.configured ? '未配置' : '可用' }}
                 </a-tag>
               </template>
 
-              <div class="mb-4 text-[12px] leading-relaxed text-[#5D5D63]">{{ item.description }}</div>
+              <div class="mb-4 text-[12px] leading-relaxed text-[#5D5D63]">
+                {{ item.description }}
+              </div>
               <a-form v-if="forms[item.source]" :model="forms[item.source]" layout="vertical">
                 <a-form-item v-if="item.requires_key" label="认证方式">
                   <a-radio-group v-model="forms[item.source].credential_type" type="button">
@@ -44,10 +47,16 @@
                     <a-radio value="token">JWT Token</a-radio>
                   </a-radio-group>
                 </a-form-item>
-                <a-form-item :label="item.requires_key ? 'Key / Token' : 'Open-Meteo API Key（可选）'">
+                <a-form-item
+                  :label="item.requires_key ? 'Key / Token' : 'Open-Meteo API Key（可选）'"
+                >
                   <a-input-password
                     v-model="forms[item.source].api_key"
-                    :placeholder="item.api_key_masked ? '已配置 ' + item.api_key_masked + '，留空表示不修改' : '请输入凭据'"
+                    :placeholder="
+                      item.api_key_masked
+                        ? '已配置 ' + item.api_key_masked + '，留空表示不修改'
+                        : '请输入凭据'
+                    "
                     allow-clear
                   />
                   <div v-if="item.api_key_masked" class="mt-1 text-[11px] text-[#86868B]">
@@ -55,7 +64,10 @@
                   </div>
                 </a-form-item>
                 <a-form-item v-if="item.supports_host" label="API Host">
-                  <a-input v-model="forms[item.source].api_host" placeholder="例如：https://devapi.qweather.com" />
+                  <a-input
+                    v-model="forms[item.source].api_host"
+                    placeholder="例如：https://devapi.qweather.com"
+                  />
                 </a-form-item>
                 <a-checkbox v-if="item.api_key_masked" v-model="forms[item.source].clear_api_key">
                   清除已保存的凭据
@@ -75,7 +87,11 @@
             </a-card>
           </a-col>
         </a-row>
-        <a-empty v-if="!loading && configs.length === 0" description="暂无天气数据源配置" class="py-12" />
+        <a-empty
+          v-if="!loading && configs.length === 0"
+          description="暂无天气数据源配置"
+          class="py-12"
+        />
       </a-spin>
     </div>
   </div>

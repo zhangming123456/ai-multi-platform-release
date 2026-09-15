@@ -134,6 +134,58 @@ func TestPhotographyScoreLevels(t *testing.T) {
 	}
 }
 
+func TestSearchPhotographyLocationsUsesAMapWhenConfigured(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.Query().Get("key"); got != "amap-test-key" {
+			t.Errorf("key query = %q, want amap-test-key", got)
+		}
+		if got := r.URL.Query().Get("address"); got != "杭州西湖" {
+			t.Errorf("address query = %q, want 杭州西湖", got)
+		}
+		_, _ = w.Write([]byte(`{"status":"1","info":"OK","geocodes":[{"formatted_address":"浙江省杭州市西湖区","province":"浙江省","city":"杭州市","district":"西湖区","location":"120.148,30.242"}]}`))
+	}))
+	defer server.Close()
+	t.Setenv("AMAP_WEB_KEY", "amap-test-key")
+	t.Setenv("AMAP_GEOCODING_BASE_URL", server.URL)
+
+	locations, err := SearchPhotographyLocations("杭州西湖", "CN")
+	if err != nil {
+		t.Fatalf("SearchPhotographyLocations() error = %v", err)
+	}
+	if len(locations) != 1 || locations[0].MapProvider != "amap" || locations[0].CountryCode != "CN" {
+		t.Fatalf("locations = %+v", locations)
+	}
+	if locations[0].Latitude != 30.242 || locations[0].Longitude != 120.148 {
+		t.Fatalf("coordinates = %v,%v", locations[0].Latitude, locations[0].Longitude)
+	}
+}
+
+func TestSearchPhotographyLocationsUsesGoogleWhenConfigured(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.Query().Get("key"); got != "google-test-key" {
+			t.Errorf("key query = %q, want google-test-key", got)
+		}
+		if got := r.URL.Query().Get("region"); got != "us" {
+			t.Errorf("region query = %q, want us", got)
+		}
+		_, _ = w.Write([]byte(`{"status":"OK","results":[{"formatted_address":"1600 Amphitheatre Parkway, Mountain View, CA","address_components":[{"long_name":"United States","short_name":"US","types":["country"]}],"geometry":{"location":{"lat":37.422,"lng":-122.084}}}]}`))
+	}))
+	defer server.Close()
+	t.Setenv("GOOGLE_MAPS_BROWSER_KEY", "google-test-key")
+	t.Setenv("GOOGLE_GEOCODING_BASE_URL", server.URL)
+
+	locations, err := SearchPhotographyLocations("Googleplex", "US")
+	if err != nil {
+		t.Fatalf("SearchPhotographyLocations() error = %v", err)
+	}
+	if len(locations) != 1 || locations[0].MapProvider != "google" || locations[0].CountryCode != "US" {
+		t.Fatalf("locations = %+v", locations)
+	}
+	if locations[0].Latitude != 37.422 || locations[0].Longitude != -122.084 {
+		t.Fatalf("coordinates = %v,%v", locations[0].Latitude, locations[0].Longitude)
+	}
+}
+
 func TestSearchPhotographyLocationsParsesOpenMeteoResponse(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if got := r.URL.Query().Get("name"); got != "杭州西湖" {

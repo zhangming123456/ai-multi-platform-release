@@ -285,6 +285,38 @@ type openMeteoGeocodingResult struct {
 	Elevation   *float64 `json:"elevation"`
 }
 
+type amapGeocodingResponse struct {
+	Status   string `json:"status"`
+	Info     string `json:"info"`
+	Geocodes []struct {
+		FormattedAddress string          `json:"formatted_address"`
+		Country          string          `json:"country"`
+		Province         string          `json:"province"`
+		City             json.RawMessage `json:"city"`
+		District         string          `json:"district"`
+		Location         string          `json:"location"`
+	} `json:"geocodes"`
+}
+
+type googleGeocodingResponse struct {
+	Status       string `json:"status"`
+	ErrorMessage string `json:"error_message"`
+	Results      []struct {
+		FormattedAddress  string `json:"formatted_address"`
+		AddressComponents []struct {
+			LongName  string   `json:"long_name"`
+			ShortName string   `json:"short_name"`
+			Types     []string `json:"types"`
+		} `json:"address_components"`
+		Geometry struct {
+			Location struct {
+				Latitude  float64 `json:"lat"`
+				Longitude float64 `json:"lng"`
+			} `json:"location"`
+		} `json:"geometry"`
+	} `json:"results"`
+}
+
 type openMeteoForecastResponse struct {
 	Latitude  float64  `json:"latitude"`
 	Longitude float64  `json:"longitude"`
@@ -332,12 +364,132 @@ type openMeteoForecastResponse struct {
 	} `json:"hourly"`
 }
 
-func SearchPhotographyLocations(query string) ([]PhotographyLocation, error) {
+func SearchPhotographyLocations(query string, countryCodes ...string) ([]PhotographyLocation, error) {
 	query = strings.TrimSpace(query)
 	if len([]rune(query)) < 2 {
 		return nil, newPhotographyValidationError("地点关键词至少需要 2 个字符")
 	}
+	countryCode := ""
+	if len(countryCodes) > 0 {
+		countryCode = strings.TrimSpace(countryCodes[0])
+	}
+	provider := SelectPhotographyMapProvider(countryCode)
+	if locations, configured, err := searchPhotographyLocationsByMapProvider(query, provider, countryCode); configured {
+		return locations, err
+	}
 
+	// 地图服务未配置 Key 时保留 Open-Meteo 作为无 Key 降级方案，避免天气查询入口完全不可用。
+	return searchPhotographyLocationsByOpenMeteo(query)
+}
+
+func searchPhotographyLocationsByMapProvider(query, provider, countryCode string) ([]PhotographyLocation, bool, error) {
+	secrets := photographyIntegrationSecretsForUse()
+	var endpoint, key, source string
+	switch provider {
+	case "amap":
+		key, source = secrets.AMapWebKey, "amap-geocoding"
+		endpoint = strings.TrimSpace(os.Getenv("AMAP_GEOCODING_BASE_URL"))
+		if endpoint == "" {
+			endpoint = "https://restapi.amap.com/v3/geocode/geo"
+		}
+	case "google":
+		key, source = secrets.GoogleMapsKey, "google-geocoding"
+		endpoint = strings.TrimSpace(os.Getenv("GOOGLE_GEOCODING_BASE_URL"))
+		if endpoint == "" {
+			endpoint = "https://maps.googleapis.com/maps/api/geocode/json"
+		}
+	default:
+		return nil, false, nil
+	}
+	if key == "" {
+		return nil, false, nil
+	}
+
+	parsed, err := url.Parse(endpoint)
+	if err != nil {
+		return nil, true, fmt.Errorf("%s 地址搜索地址无效: %w", source, err)
+	}
+	params := parsed.Query()
+	params.Set("address", query)
+	params.Set("key", key)
+	if provider == "amap" {
+		params.Set("output", "JSON")
+	} else {
+		params.Set("language", "zh-CN")
+		if countryCode != "" {
+			params.Set("region", strings.ToLower(countryCode))
+		}
+	}
+	parsed.RawQuery = params.Encode()
+
+	if provider == "amap" {
+		var response amapGeocodingResponse
+		if err := fetchPhotographyJSONWithHeaders(source, parsed.String(), &response, nil); err != nil {
+			return nil, true, err
+		}
+		if response.Status != "1" {
+			message := strings.TrimSpace(response.Info)
+			if message == "" {
+				message = "高德地址搜索未返回有效结果"
+			}
+			return nil, true, fmt.Errorf("高德地址搜索失败: %s", message)
+		}
+		locations := make([]PhotographyLocation, 0, len(response.Geocodes))
+		for _, result := range response.Geocodes {
+			latitude, longitude, ok := parsePhotographyMapLocation(result.Location)
+			if !ok {
+				continue
+			}
+			city := parsePhotographyMapText(result.City)
+			name := firstPhotographyNonEmpty(result.District, city, result.Province, result.FormattedAddress)
+			locations = append(locations, PhotographyLocation{
+				Name: name, DisplayName: buildLocationDisplayName(name, result.Province, result.Country),
+				Country: result.Country, CountryCode: "CN", Admin1: result.Province,
+				Latitude: latitude, Longitude: longitude, MapProvider: "amap",
+			})
+		}
+		return locations, true, nil
+	}
+
+	var response googleGeocodingResponse
+	if err := fetchPhotographyJSONWithHeaders(source, parsed.String(), &response, nil); err != nil {
+		return nil, true, err
+	}
+	if response.Status == "ZERO_RESULTS" {
+		return []PhotographyLocation{}, true, nil
+	}
+	if response.Status != "OK" {
+		message := strings.TrimSpace(response.ErrorMessage)
+		if message == "" {
+			message = response.Status
+		}
+		return nil, true, fmt.Errorf("Google 地址搜索失败: %s", message)
+	}
+	locations := make([]PhotographyLocation, 0, len(response.Results))
+	for _, result := range response.Results {
+		country, resultCountryCode, admin1 := "", "", ""
+		for _, component := range result.AddressComponents {
+			if containsPhotographyString(component.Types, "country") {
+				country, resultCountryCode = component.LongName, component.ShortName
+			}
+			if containsPhotographyString(component.Types, "administrative_area_level_1") {
+				admin1 = component.LongName
+			}
+		}
+		if resultCountryCode == "" {
+			resultCountryCode = strings.ToUpper(countryCode)
+		}
+		locations = append(locations, PhotographyLocation{
+			Name: result.FormattedAddress, DisplayName: result.FormattedAddress,
+			Country: country, CountryCode: resultCountryCode, Admin1: admin1,
+			Latitude: result.Geometry.Location.Latitude, Longitude: result.Geometry.Location.Longitude,
+			MapProvider: "google",
+		})
+	}
+	return locations, true, nil
+}
+
+func searchPhotographyLocationsByOpenMeteo(query string) ([]PhotographyLocation, error) {
 	parsed, err := url.Parse(photographyGeocodingBaseURL())
 	if err != nil {
 		return nil, fmt.Errorf("地理编码地址无效: %w", err)
@@ -354,23 +506,50 @@ func SearchPhotographyLocations(query string) ([]PhotographyLocation, error) {
 	if err := fetchPhotographyJSON(parsed.String(), &response); err != nil {
 		return nil, err
 	}
-
 	locations := make([]PhotographyLocation, 0, len(response.Results))
 	for _, result := range response.Results {
 		locations = append(locations, PhotographyLocation{
-			Name:        result.Name,
-			DisplayName: buildLocationDisplayName(result.Name, result.Admin1, result.Country),
-			Country:     result.Country,
-			CountryCode: result.CountryCode,
-			Admin1:      result.Admin1,
-			Latitude:    result.Latitude,
-			Longitude:   result.Longitude,
-			Timezone:    result.Timezone,
-			Elevation:   result.Elevation,
-			MapProvider: SelectPhotographyMapProvider(result.CountryCode),
+			Name: result.Name, DisplayName: buildLocationDisplayName(result.Name, result.Admin1, result.Country),
+			Country: result.Country, CountryCode: result.CountryCode, Admin1: result.Admin1,
+			Latitude: result.Latitude, Longitude: result.Longitude, Timezone: result.Timezone,
+			Elevation: result.Elevation, MapProvider: SelectPhotographyMapProvider(result.CountryCode),
 		})
 	}
 	return locations, nil
+}
+
+func parsePhotographyMapLocation(value string) (float64, float64, bool) {
+	parts := strings.Split(strings.TrimSpace(value), ",")
+	if len(parts) != 2 {
+		return 0, 0, false
+	}
+	longitude, longitudeErr := strconv.ParseFloat(strings.TrimSpace(parts[0]), 64)
+	latitude, latitudeErr := strconv.ParseFloat(strings.TrimSpace(parts[1]), 64)
+	if longitudeErr != nil || latitudeErr != nil || ValidatePhotographyCoordinates(latitude, longitude) != nil {
+		return 0, 0, false
+	}
+	return latitude, longitude, true
+}
+
+func parsePhotographyMapText(value json.RawMessage) string {
+	var text string
+	if json.Unmarshal(value, &text) == nil {
+		return strings.TrimSpace(text)
+	}
+	var values []string
+	if json.Unmarshal(value, &values) == nil {
+		return strings.TrimSpace(strings.Join(values, " "))
+	}
+	return ""
+}
+
+func firstPhotographyNonEmpty(values ...string) string {
+	for _, value := range values {
+		if value = strings.TrimSpace(value); value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func ListPhotographyWeatherSources() []PhotographyWeatherSource {

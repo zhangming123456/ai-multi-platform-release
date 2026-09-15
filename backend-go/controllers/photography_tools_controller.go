@@ -35,7 +35,7 @@ func (c *PhotographyToolsController) Geocode() {
 	if !c.CheckPermission("photography_tool:read") {
 		return
 	}
-	locations, err := services.SearchPhotographyLocations(c.GetQuery("query"))
+	locations, err := services.SearchPhotographyLocations(c.GetQuery("query"), c.GetQuery("country_code"))
 	if err != nil {
 		status := http.StatusBadGateway
 		if services.IsPhotographyValidationError(err) {

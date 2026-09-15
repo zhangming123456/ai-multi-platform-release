@@ -14,7 +14,10 @@ export interface PhotographyLocationResult {
   map_provider: 'amap' | 'google'
 }
 
-export interface PhotographyTimeRange { start: string; end: string }
+export interface PhotographyTimeRange {
+  start: string
+  end: string
+}
 export interface PhotographyEstimate {
   available: boolean
   score: number | null
@@ -47,7 +50,11 @@ export interface PhotographyWeatherToday {
   weather_description: string
   risk: string
 }
-export interface PhotographyTideEvent { time: string; type: string; height: number }
+export interface PhotographyTideEvent {
+  time: string
+  type: string
+  height: number
+}
 export interface PhotographyTideSummary {
   available: boolean
   source: string
@@ -89,22 +96,56 @@ export interface PhotographyDay {
   weather_code: number | null
   confidence: PhotographyConfidence
 }
-export interface PhotographyChartSeries { name: string; values: number[]; color: string }
+export interface PhotographyChartSeries {
+  name: string
+  values: number[]
+  color: string
+}
 export interface PhotographyOverview {
-  location: { name: string; latitude: number; longitude: number; timezone: string; country_code: string; elevation: number | null; map_provider: 'amap' | 'google' }
-  today: { weather: PhotographyWeatherToday; hours: PhotographyForecastHour[]; rainbow: PhotographyEstimate; frost_rime: PhotographyEstimate; tide: PhotographyTideSummary; aurora: PhotographyAuroraSummary }
+  location: {
+    name: string
+    latitude: number
+    longitude: number
+    timezone: string
+    country_code: string
+    elevation: number | null
+    map_provider: 'amap' | 'google'
+  }
+  today: {
+    weather: PhotographyWeatherToday
+    hours: PhotographyForecastHour[]
+    rainbow: PhotographyEstimate
+    frost_rime: PhotographyEstimate
+    tide: PhotographyTideSummary
+    aurora: PhotographyAuroraSummary
+  }
   days: PhotographyDay[]
   charts: { probability: PhotographyChartSeries[]; cloud_quality: PhotographyChartSeries[] }
   sources: { weather: string; tide: string; aurora: string }
   warnings: string[]
 }
-export interface PhotographyMapConfig { provider: 'amap' | 'google'; configured: boolean; browser_key: string; security_key: string; message: string }
-export interface PhotographyWeatherSource { id: string; name: string; provider: string; model: string; description: string; available: boolean; max_days: number }
-
+export interface PhotographyMapConfig {
+  provider: 'amap' | 'google'
+  configured: boolean
+  browser_key: string
+  security_key: string
+  message: string
+}
+export interface PhotographyWeatherSource {
+  id: string
+  name: string
+  provider: string
+  model: string
+  description: string
+  available: boolean
+  max_days: number
+}
 
 type NullableArray<T> = T[] | null | undefined
 export type PhotographyEstimatePayload = Partial<PhotographyEstimate> | null | undefined
-export type PhotographyDayPayload = Partial<Omit<PhotographyDay, 'sunrise_assessment' | 'sunset_assessment' | 'cloud_sea'>> & {
+export type PhotographyDayPayload = Partial<
+  Omit<PhotographyDay, 'sunrise_assessment' | 'sunset_assessment' | 'cloud_sea'>
+> & {
   sunrise_assessment?: PhotographyEstimatePayload
   sunset_assessment?: PhotographyEstimatePayload
   cloud_sea?: PhotographyEstimatePayload
@@ -145,7 +186,9 @@ function normalizeEstimate(value: PhotographyEstimatePayload): PhotographyEstima
   }
 }
 
-function normalizeTimeRange(value: PhotographyTimeRange | null | undefined): PhotographyTimeRange | null {
+function normalizeTimeRange(
+  value: PhotographyTimeRange | null | undefined,
+): PhotographyTimeRange | null {
   if (!value?.start || !value.end) return null
   return { start: value.start, end: value.end }
 }
@@ -206,7 +249,9 @@ function normalizeDay(value: PhotographyDayPayload): PhotographyDay {
   }
 }
 
-export function normalizePhotographyOverview(payload: PhotographyOverviewPayload | null | undefined): PhotographyOverview {
+export function normalizePhotographyOverview(
+  payload: PhotographyOverviewPayload | null | undefined,
+): PhotographyOverview {
   const location = payload?.location
   const today = payload?.today
   const weather = today?.weather
@@ -247,7 +292,9 @@ export function normalizePhotographyOverview(payload: PhotographyOverviewPayload
     days: Array.isArray(payload?.days) ? payload.days.map(normalizeDay) : [],
     charts: {
       probability: Array.isArray(payload?.charts?.probability) ? payload.charts.probability : [],
-      cloud_quality: Array.isArray(payload?.charts?.cloud_quality) ? payload.charts.cloud_quality : [],
+      cloud_quality: Array.isArray(payload?.charts?.cloud_quality)
+        ? payload.charts.cloud_quality
+        : [],
     },
     sources: {
       weather: payload?.sources?.weather ?? '',
