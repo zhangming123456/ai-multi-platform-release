@@ -43,5 +43,8 @@ func InitModels() {
 		new(PromptTemplate),
 		new(HolidaySource),
 		new(HolidayEvent),
+		new(PhotographyPlan),
+		new(PhotographyWeatherConfig),
+		new(PhotographyIntegrationConfig),
 	)
 }

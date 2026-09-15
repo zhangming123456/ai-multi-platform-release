@@ -1,0 +1,3 @@
+./auth.go
+./permission.go
+./privacy.go

@@ -1,0 +1,5 @@
+./config.go
+./error.go
+./fake.go
+./global.go
+./ini.go

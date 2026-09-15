@@ -40,3 +40,6 @@ Thumbs.db
 # Docker
 docker/volumes/
 docker/data/
+
+.integration_encryption_key
+*.integration.key

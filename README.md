@@ -52,6 +52,22 @@ npm install
 npm run dev
 ```
 
+### 摄影工具天气数据源配置
+
+摄影工具默认使用 Open-Meteo，可在页面中切换自动匹配、ECMWF、NOAA GFS、DWD ICON 等模型。后端支持可选接入和风天气，配置后会在“天气数据源 / 模型”下拉框中启用：
+
+~~~bash
+QWEATHER_API_KEY=你的和风天气APIKey
+# 使用 JWT 时也可配置：
+QWEATHER_API_TOKEN=你的和风天气JWT
+# 可选，默认为开发版 API Host；商业版按服务商提供的 Host 配置
+QWEATHER_API_HOST=https://devapi.qweather.com
+~~~
+
+和风天气当前用于未来 10 天查询，未配置 Key 时会显示为“未配置”且不会影响 Open-Meteo 使用。所有第三方请求均由 Go 后端发起，密钥不会下发到浏览器。
+
+第三方密钥会在后端加密保存。生产环境请设置 `INTEGRATION_ENCRYPTION_KEY`（建议使用随机 32 字节密钥）；本地未设置时，后端会自动在数据库旁生成并复用权限为 0600 的 `.integration.key` 文件。
+
 ## 默认账号
 
 | 账号            | 密码     | 角色       |
