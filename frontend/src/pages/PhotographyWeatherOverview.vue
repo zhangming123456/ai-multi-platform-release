@@ -122,7 +122,7 @@
             <div class="rounded-xl bg-[#F5F5F7] p-3 text-xs leading-relaxed text-[#5D5D63]">
               {{
                 mapConfig?.message ||
-                '中国地点默认使用高德地图，其他地区默认使用 Google 地图。地图 Key 未配置时仍可使用搜索和坐标输入。'
+                '默认使用高德地图；明确选择其他国家或地区时使用 Google 地图。地图 Key 未配置时仍可使用搜索和坐标输入。'
               }}
             </div></a-col
           >
@@ -262,7 +262,9 @@
                     :title="hour.weather_text || weatherLabel(hour.weather_code)"
                   >
                     <span>{{ formatHour(hour.time) }}</span>
-                    <span class="text-[18px] leading-none">{{ weatherIcon(hour.weather_code) }}</span>
+                    <span class="text-[18px] leading-none">{{
+                      weatherIcon(hour.weather_code)
+                    }}</span>
                     <span class="font-medium text-[#1D1D1F]">{{
                       formatTemperature(hour.temperature)
                     }}</span>
@@ -492,6 +494,7 @@ import { Message } from '@arco-design/web-vue'
 import { IconLocation, IconRefresh, IconSearch } from '@arco-design/web-vue/es/icon'
 import PageHeader from '@/components/layout/PageHeader.vue'
 import api, { WEATHER_API_TIMEOUT, getApiErrorDetail } from '@/utils/api'
+import { countryCodeForRegion } from '@/utils/time'
 import { normalizePhotographyOverview } from './PhotographyWeatherOverview.types'
 import { useRegionStore } from '@/stores/region'
 import type {
@@ -568,12 +571,6 @@ declare global {
 
 const mapScriptPromises: Partial<Record<'amap' | 'google', Promise<void>>> = {}
 const { selectedTz } = useRegionStore()
-const CHINA_REGION_TIMEZONES = new Set([
-  'Asia/Shanghai',
-  'Asia/Taipei',
-  'Asia/Hong_Kong',
-  'Asia/Macau',
-])
 const overview = ref<PhotographyOverview | null>(null)
 const weatherSources = ref<PhotographyWeatherSource[]>([])
 const weatherSource = ref('open-meteo-best-match')
@@ -626,16 +623,14 @@ const weather = computed(
 )
 const todayHours = computed<PhotographyForecastHour[]>(() => overview.value?.today.hours ?? [])
 const tideCurve = computed(() => overview.value?.today.tide.curve ?? [])
-const defaultCountryCode = computed(() =>
-  CHINA_REGION_TIMEZONES.has(selectedTz.value) ? 'CN' : '',
-)
+const defaultCountryCode = computed(() => countryCodeForRegion(selectedTz.value))
 const mapCountryCode = computed(() =>
   locationCountryCodeLocked.value ? countryCode.value : defaultCountryCode.value,
 )
 const mapProviderLabel = computed(() =>
-  (mapConfig.value?.provider || overview.value?.location.map_provider) === 'amap'
-    ? '高德地图'
-    : 'Google 地图',
+  (mapConfig.value?.provider || overview.value?.location.map_provider) === 'google'
+    ? 'Google 地图'
+    : '高德地图',
 )
 const todayPhenomena = computed(() =>
   overview.value
@@ -1031,11 +1026,10 @@ async function renderHourlyChart() {
       tooltip: {
         trigger: 'axis',
         formatter: (params: unknown) => {
-          const point = (
-            Array.isArray(params)
-              ? params[0]
-              : params
-          ) as { dataIndex?: number; value?: number | null }
+          const point = (Array.isArray(params) ? params[0] : params) as {
+            dataIndex?: number
+            value?: number | null
+          }
           const hour = hours[point.dataIndex ?? 0]
           return `${formatHour(hour.time)}<br/>${weatherIcon(hour.weather_code)} ${
             hour.weather_text || weatherLabel(hour.weather_code)
@@ -1079,7 +1073,7 @@ function handleHourlyChartResize() {
 watch(searchText, () => searchLocations())
 watch([latitude, longitude], () => syncMapPosition())
 watch(selectedTz, () => {
-  if (!locationCountryCodeLocked.value && hasCoordinates()) void loadMapConfig()
+  if (!locationCountryCodeLocked.value && hasCoordinates()) void runQuery()
 })
 onMounted(() => {
   void loadSources()

@@ -469,6 +469,12 @@ func TestSavePhotographyWeatherConfigValidatesBeforeDatabaseAccess(t *testing.T)
 }
 
 func TestSelectPhotographyMapProvider(t *testing.T) {
+	if got := SelectPhotographyMapProvider(""); got != "amap" {
+		t.Fatalf("SelectPhotographyMapProvider(\"\") = %q, want amap", got)
+	}
+	if got := SelectPhotographyMapProvider("  "); got != "amap" {
+		t.Fatalf("SelectPhotographyMapProvider(blank) = %q, want amap", got)
+	}
 	if got := SelectPhotographyMapProvider("CN"); got != "amap" {
 		t.Fatalf("SelectPhotographyMapProvider(CN) = %q, want amap", got)
 	}

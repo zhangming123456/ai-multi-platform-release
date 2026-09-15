@@ -32,6 +32,24 @@ export const REGION_OPTIONS: RegionOption[] = [
   { value: 'Europe/Paris', label: '法国', offset: 'UTC+1' },
 ]
 
+const REGION_COUNTRY_CODES: Record<string, string> = {
+  'Asia/Shanghai': 'CN',
+  'Asia/Taipei': 'CN',
+  'Asia/Hong_Kong': 'CN',
+  'Asia/Macau': 'CN',
+  'Asia/Tokyo': 'JP',
+  'Asia/Seoul': 'KR',
+  'Asia/Singapore': 'SG',
+  'America/New_York': 'US',
+  'America/Los_Angeles': 'US',
+  'Europe/London': 'GB',
+  'Europe/Paris': 'FR',
+}
+
+export function countryCodeForRegion(timezone: string): string {
+  return REGION_COUNTRY_CODES[timezone] || ''
+}
+
 export const STORAGE_KEY = 'app_timezone'
 
 function loadStoredTz(): string {

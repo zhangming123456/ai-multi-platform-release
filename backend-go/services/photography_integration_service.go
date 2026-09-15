@@ -506,7 +506,8 @@ type PhotographyMapConfig struct {
 }
 
 func SelectPhotographyMapProvider(countryCode string) string {
-	if strings.EqualFold(strings.TrimSpace(countryCode), "CN") {
+	countryCode = strings.ToUpper(strings.TrimSpace(countryCode))
+	if countryCode == "" || countryCode == "CN" {
 		return "amap"
 	}
 	return "google"

@@ -263,7 +263,7 @@ export function normalizePhotographyOverview(
       timezone: location?.timezone ?? '',
       country_code: location?.country_code ?? '',
       elevation: location?.elevation ?? null,
-      map_provider: location?.map_provider === 'amap' ? 'amap' : 'google',
+      map_provider: location?.map_provider === 'google' ? 'google' : 'amap',
     },
     today: {
       weather: {

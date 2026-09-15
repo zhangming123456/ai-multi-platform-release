@@ -658,6 +658,8 @@ import {
 import PageHeader from '@/components/layout/PageHeader.vue'
 import { useRoute, useRouter } from 'vue-router'
 import api, { WEATHER_API_TIMEOUT, getApiErrorDetail } from '@/utils/api'
+import { countryCodeForRegion } from '@/utils/time'
+import { useRegionStore } from '@/stores/region'
 import type {
   PaginatedPhotographyPlans,
   PhotographyAssessmentLevel,
@@ -673,7 +675,9 @@ import type {
 const pageSize = 10
 const route = useRoute()
 const router = useRouter()
+const { selectedTz } = useRegionStore()
 const isWeatherPage = computed(() => route.name === 'PhotographyWeather')
+const defaultCountryCode = computed(() => countryCodeForRegion(selectedTz.value))
 const locationTimezone = ref('')
 const todayIso = computed(() => formatDateInTimezone(new Date(), locationTimezone.value))
 const selectedSourceMaxDays = computed(() => selectedWeatherSource.value?.max_days || 16)
@@ -758,11 +762,7 @@ watch(
   { flush: 'post' },
 )
 
-watch(locationQuery, (value) => {
-  if (suppressLocationSearch) {
-    suppressLocationSearch = false
-    return
-  }
+function scheduleLocationSearch(value: string) {
   locationDropdownVisible.value = false
   locationResults.value = []
   if (locationTimer !== undefined) window.clearTimeout(locationTimer)
@@ -771,7 +771,7 @@ watch(locationQuery, (value) => {
   locationTimer = window.setTimeout(async () => {
     try {
       const response = await api.get<PhotographyLocation[]>('/photography-plans/geocode', {
-        params: { query: value.trim() },
+        params: { query: value.trim(), country_code: defaultCountryCode.value },
       })
       if (requestId !== locationRequestId) return
       locationResults.value = response.data || []
@@ -780,6 +780,23 @@ watch(locationQuery, (value) => {
       if (requestId === locationRequestId) locationResults.value = []
     }
   }, 350)
+}
+
+watch(locationQuery, (value) => {
+  if (suppressLocationSearch) {
+    suppressLocationSearch = false
+    return
+  }
+  scheduleLocationSearch(value)
+})
+
+watch(selectedTz, () => {
+  locationRequestId++
+  locationResults.value = []
+  locationDropdownVisible.value = false
+  if (locationQuery.value.trim().length >= 2 && queryForm.location_name !== '当前位置') {
+    scheduleLocationSearch(locationQuery.value)
+  }
 })
 
 function selectLocation(location: PhotographyLocation) {
