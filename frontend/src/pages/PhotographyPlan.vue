@@ -72,58 +72,51 @@
             <a-row :gutter="16">
               <a-col :xs="24" :md="24" :lg="24">
                 <a-form-item content-class="flex items-center gap-2" label="拍摄地点" required>
-                  <div class="relative">
-                    <a-trigger
-                      :popup-visible="locationDropdownVisible && locationResults.length > 0"
+                  <div class="flex w-full items-center gap-2">
+                    <el-select
+                      v-model="selectedLocationKey"
+                      class="w-full"
+                      popper-class="photography-location-select"
+                      filterable
+                      remote
+                      reserve-keyword
+                      clearable
+                      :remote-method="remoteSearch"
+                      :loading="searchLoading"
+                      placeholder="搜索城市或地址，例如：杭州西湖"
+                      @change="handleLocationChange"
+                      @clear="clearLocationSearch"
                     >
-                      <template #content>
-                        <div
-                          v-if="locationDropdownVisible && locationResults.length"
-                          class="z-40 rounded-lg border border-[#E5E5EA] bg-white p-1 shadow-xl"
-                        >
-                          <button
-                            v-for="location in locationResults"
-                            :key="location.display_name + location.latitude"
-                            type="button"
-                            class="flex w-full items-start gap-2 rounded-md px-3 py-2 text-left hover:bg-[#F5F7FA]"
-                            @click="selectLocation(location)"
-                          >
-                            <IconLocation class="mt-0.5 shrink-0 text-[#007AFF]" />
-                            <span class="min-w-0">
-                              <span class="block truncate text-[13px] text-[#1D1D1F]">
-                                {{ location.display_name || location.name }}
-                              </span>
-                              <span class="block text-[11px] text-[#86868B]">
-                                {{ location.latitude.toFixed(4) }},
-                                {{ location.longitude.toFixed(4) }} ·
-                                {{ location.timezone || '自动时区' }}
-                              </span>
-                            </span>
-                          </button>
-                        </div>
-                      </template>
-                      <a-input
-                        v-model="locationQuery"
-                        allow-clear
-                        placeholder="搜索城市或地址，例如：杭州西湖"
-                        @focus="locationDropdownVisible = locationResults.length > 0"
-                        @clear="clearLocationSearch"
+                      <el-option
+                        v-for="item in locationOptions"
+                        :key="locationOptionKey(item)"
+                        :label="item.display_name || item.name"
+                        :value="locationOptionKey(item)"
                       >
-                        <template #suffix>
-                          <a-button
-                            class="mt-2"
-                            size="small"
-                            type="text"
-                            :loading="locating"
-                            @click="useCurrentLocation"
-                          >
-                            <template #icon>
-                              <IconLocation />
+                        <div class="flex flex-col gap-0.5">
+                          <div class="flex items-center justify-between gap-3">
+                            <span class="truncate">{{ item.display_name || item.name }}</span>
+                            <span class="shrink-0 text-[11px] text-[#86868B]">
+                              {{ item.latitude.toFixed(4) }}, {{ item.longitude.toFixed(4) }} ·
+                              {{ item.timezone || '自动时区' }}
+                            </span>
+                          </div>
+                          <span class="truncate text-[11px] text-[#86868B]">
+                            {{ item.detail || '无详细地址' }}
+                            <template v-if="item.adcode || item.city_code">
+                              · {{ item.adcode || item.city_code }}
                             </template>
-                          </a-button>
+                          </span>
+                        </div>
+                      </el-option>
+                    </el-select>
+                    <a-tooltip content="使用当前位置">
+                      <a-button size="small" :loading="locating" @click="useCurrentLocation()">
+                        <template #icon>
+                          <IconLocation />
                         </template>
-                      </a-input>
-                    </a-trigger>
+                      </a-button>
+                    </a-tooltip>
                   </div>
                   <div v-if="queryForm.location_name" class="mt-1 text-[11px] text-[#86868B]">
                     已选：{{ queryForm.location_name }}
@@ -659,7 +652,14 @@ import PageHeader from '@/components/layout/PageHeader.vue'
 import { useRoute, useRouter } from 'vue-router'
 import api, { WEATHER_API_TIMEOUT, getApiErrorDetail } from '@/utils/api'
 import { countryCodeForRegion } from '@/utils/time'
+import { useLocationStore } from '@/stores/location'
 import { useRegionStore } from '@/stores/region'
+import {
+  amapTipToLocation,
+  ensureAmapJS,
+  searchLocationsByAmapJS,
+  type PhotographyMapConfig,
+} from '@/utils/amapSearch'
 import type {
   PaginatedPhotographyPlans,
   PhotographyAssessmentLevel,
@@ -675,6 +675,7 @@ import type {
 const pageSize = 10
 const route = useRoute()
 const router = useRouter()
+const locationStore = useLocationStore()
 const { selectedTz } = useRegionStore()
 const isWeatherPage = computed(() => route.name === 'PhotographyWeather')
 const defaultCountryCode = computed(() => countryCodeForRegion(selectedTz.value))
@@ -699,9 +700,19 @@ const queryForm = reactive<{
   longitude: undefined,
 })
 
-const locationQuery = ref('')
-const locationResults = ref<PhotographyLocation[]>([])
-const locationDropdownVisible = ref(false)
+const searchResults = ref<PhotographyLocation[]>([])
+const mapConfig = ref<PhotographyMapConfig | null>(null)
+const selectedLocation = ref<PhotographyLocation | null>(null)
+const selectedLocationKey = ref('')
+const searchLoading = ref(false)
+const locationOptions = computed(() => {
+  const list = [...searchResults.value]
+  const current = selectedLocation.value
+  if (current && !list.some((item) => locationOptionKey(item) === selectedLocationKey.value)) {
+    list.unshift(current)
+  }
+  return list
+})
 const forecast = ref<PhotographyForecast | null>(null)
 const weatherSources = ref<PhotographyWeatherSource[]>([])
 const weatherSourcesLoading = ref(false)
@@ -711,7 +722,7 @@ const selectedWeatherSource = computed(() =>
 )
 const selectedDate = ref(todayIso.value)
 const forecastLoading = ref(false)
-const locating = ref(false)
+const locating = computed(() => locationStore.isLocating)
 const plansLoading = ref(false)
 const plans = ref<PhotographyPlan[]>([])
 const plansTotal = ref(0)
@@ -728,7 +739,6 @@ const saveForm = reactive<{ name: string; session: PhotographySession; note: str
 
 let locationTimer: number | undefined
 let locationRequestId = 0
-let suppressLocationSearch = false
 
 const selectedDay = computed<PhotographyForecastDay | null>(() => {
   return (
@@ -762,119 +772,141 @@ watch(
   { flush: 'post' },
 )
 
-function scheduleLocationSearch(value: string) {
-  locationDropdownVisible.value = false
-  locationResults.value = []
+// el-select 的 option value 必须是稳定字符串，用它反查完整地点对象。
+function locationOptionKey(item: PhotographyLocation) {
+  return `${item.latitude},${item.longitude},${item.display_name || item.name}`
+}
+
+function remoteSearch(keyword: string) {
   if (locationTimer !== undefined) window.clearTimeout(locationTimer)
-  if (value.trim().length < 2) return
+  searchResults.value = []
+  const query = keyword.trim()
+  if (query.length < 2) {
+    searchLoading.value = false
+    return
+  }
   const requestId = ++locationRequestId
+  searchLoading.value = true
   locationTimer = window.setTimeout(async () => {
     try {
-      const response = await api.get<PhotographyLocation[]>('/photography-plans/geocode', {
-        params: { query: value.trim(), country_code: defaultCountryCode.value },
-      })
+      const list = await fetchLocations(query)
       if (requestId !== locationRequestId) return
-      locationResults.value = response.data || []
-      locationDropdownVisible.value = locationResults.value.length > 0
-    } catch {
-      if (requestId === locationRequestId) locationResults.value = []
+      searchResults.value = list
+    } catch (error) {
+      if (requestId === locationRequestId) {
+        searchResults.value = []
+        Message.error(getApiErrorDetail(error) || '地址搜索失败，请检查地图服务配置')
+      }
+    } finally {
+      if (requestId === locationRequestId) searchLoading.value = false
     }
   }, 350)
 }
 
-watch(locationQuery, (value) => {
-  if (suppressLocationSearch) {
-    suppressLocationSearch = false
-    return
+async function loadMapConfig(): Promise<PhotographyMapConfig | null> {
+  if (mapConfig.value) return mapConfig.value
+  try {
+    const response = await api.get<PhotographyMapConfig>('/photography-tools/map-config', {
+      params: { country_code: defaultCountryCode.value },
+    })
+    mapConfig.value = response.data || null
+  } catch {
+    mapConfig.value = null
   }
-  scheduleLocationSearch(value)
-})
+  return mapConfig.value
+}
+
+// 中国大陆直接调用高德 JS API 2.0 的 AutoComplete，其他地区走服务端 Google 地理编码。
+async function fetchLocations(query: string): Promise<PhotographyLocation[]> {
+  const config = await loadMapConfig()
+  if (config?.provider === 'google') {
+    const response = await api.get<PhotographyLocation[]>('/photography-plans/geocode', {
+      params: { query, country_code: defaultCountryCode.value },
+    })
+    return response.data || []
+  }
+  await ensureAmapJS(config)
+  const tips = await searchLocationsByAmapJS(query)
+  return tips.map((tip) => amapTipToLocation(tip))
+}
+
+function handleLocationChange(key: string) {
+  const item = locationOptions.value.find((entry) => locationOptionKey(entry) === key)
+  if (item) selectLocation(item)
+}
 
 watch(selectedTz, () => {
   locationRequestId++
-  locationResults.value = []
-  locationDropdownVisible.value = false
-  if (locationQuery.value.trim().length >= 2 && queryForm.location_name !== '当前位置') {
-    scheduleLocationSearch(locationQuery.value)
-  }
+  mapConfig.value = null
+  searchResults.value = []
+  searchLoading.value = false
 })
 
 function selectLocation(location: PhotographyLocation) {
   if (locationTimer !== undefined) window.clearTimeout(locationTimer)
   locationRequestId++
-  const displayName = location.display_name || location.name
-  if (locationQuery.value !== displayName) {
-    suppressLocationSearch = true
-    locationQuery.value = displayName
-  } else {
-    suppressLocationSearch = false
-  }
-  queryForm.location_name = displayName
+  selectedLocation.value = location
+  selectedLocationKey.value = locationOptionKey(location)
+  queryForm.location_name = location.display_name || location.name
   queryForm.latitude = location.latitude
   queryForm.longitude = location.longitude
   locationTimezone.value = location.timezone || ''
   ensureDateWithinLocationRange()
-  locationResults.value = []
-  locationDropdownVisible.value = false
+  searchResults.value = []
+  searchLoading.value = false
+  void fillLocationTimezone(location)
+}
+
+// 高德 JS API 搜索结果没有时区，按经纬度向 Open-Meteo 补一次，用于展示与日期校验。
+async function fillLocationTimezone(location: PhotographyLocation) {
+  if (location.timezone) return
+  try {
+    const response = await api.get<{ timezone: string }>('/photography-tools/timezone', {
+      params: { latitude: location.latitude, longitude: location.longitude },
+    })
+    const timezone = response.data?.timezone || ''
+    if (!timezone || selectedLocationKey.value !== locationOptionKey(location)) return
+    selectedLocation.value = { ...location, timezone }
+    locationTimezone.value = timezone
+    ensureDateWithinLocationRange()
+  } catch {
+    // 时区只是辅助信息，查询结果里仍会带回地点时区，静默忽略。
+  }
 }
 
 function clearLocationSearch() {
-  suppressLocationSearch = false
+  if (locationTimer !== undefined) window.clearTimeout(locationTimer)
   locationRequestId++
+  selectedLocation.value = null
+  selectedLocationKey.value = ''
+  searchResults.value = []
+  searchLoading.value = false
   queryForm.location_name = ''
   queryForm.latitude = undefined
   queryForm.longitude = undefined
   locationTimezone.value = ''
-  locationResults.value = []
-  locationDropdownVisible.value = false
 }
 
-function useCurrentLocation() {
-  if (!navigator.geolocation) {
-    Message.error('当前浏览器不支持定位，请搜索城市或手动填写经纬度')
+async function useCurrentLocation(force = true) {
+  const location = await locationStore.locate(force)
+  if (!location) {
+    Message.error(locationStore.error || '获取当前位置失败，请搜索城市或手动填写经纬度')
     return
   }
 
-  locating.value = true
-  navigator.geolocation.getCurrentPosition(
-    (position) => {
-      if (locationTimer !== undefined) window.clearTimeout(locationTimer)
-      locationRequestId++
-      if (locationQuery.value !== '当前位置') {
-        suppressLocationSearch = true
-        locationQuery.value = '当前位置'
-      } else {
-        suppressLocationSearch = false
-      }
-      queryForm.location_name = '当前位置'
-      queryForm.latitude = position.coords.latitude
-      queryForm.longitude = position.coords.longitude
-      locationTimezone.value = ''
-      queryForm.date = formatIsoDate(new Date())
-      selectedDate.value = queryForm.date
-      locationResults.value = []
-      locationDropdownVisible.value = false
-      locating.value = false
-      runForecast()
-    },
-    (error) => {
-      locating.value = false
-      if (error.code === GeolocationPositionError.PERMISSION_DENIED) {
-        Message.error('请允许浏览器访问当前位置')
-      } else if (error.code === GeolocationPositionError.POSITION_UNAVAILABLE) {
-        Message.error('暂时无法获取当前位置，请稍后重试')
-      } else if (error.code === GeolocationPositionError.TIMEOUT) {
-        Message.error('定位超时，请重试')
-      } else {
-        Message.error('获取当前位置失败，请重试')
-      }
-    },
-    {
-      enableHighAccuracy: true,
-      timeout: 10000,
-      maximumAge: 300000,
-    },
-  )
+  if (locationTimer !== undefined) window.clearTimeout(locationTimer)
+  locationRequestId++
+  selectedLocation.value = null
+  selectedLocationKey.value = ''
+  searchResults.value = []
+  searchLoading.value = false
+  queryForm.location_name = '当前位置'
+  queryForm.latitude = Number(location.latitude.toFixed(6))
+  queryForm.longitude = Number(location.longitude.toFixed(6))
+  locationTimezone.value = ''
+  queryForm.date = formatIsoDate(new Date())
+  selectedDate.value = queryForm.date
+  runForecast()
 }
 
 function disabledDate(date?: Date): boolean {
@@ -933,15 +965,13 @@ async function runForecast() {
 }
 
 function resetQuery() {
-  suppressLocationSearch = false
-  locationRequestId++
+  clearLocationSearch()
   locationTimezone.value = ''
   queryForm.date = todayIso.value
   queryForm.session = 'both'
   queryForm.location_name = ''
   queryForm.latitude = undefined
   queryForm.longitude = undefined
-  locationQuery.value = ''
   forecast.value = null
   selectedDate.value = todayIso.value
 }
@@ -1001,14 +1031,22 @@ function openEditPlan(plan: PhotographyPlan) {
   locationTimezone.value = plan.timezone || ''
   if (locationTimer !== undefined) window.clearTimeout(locationTimer)
   locationRequestId++
-  if (locationQuery.value !== plan.location_name) {
-    suppressLocationSearch = true
-    locationQuery.value = plan.location_name
-  } else {
-    suppressLocationSearch = false
+  selectedLocation.value = {
+    name: plan.location_name,
+    display_name: plan.location_name,
+    detail: '',
+    country: '',
+    country_code: '',
+    admin1: '',
+    city_code: '',
+    adcode: '',
+    latitude: plan.latitude,
+    longitude: plan.longitude,
+    timezone: plan.timezone,
   }
-  locationResults.value = []
-  locationDropdownVisible.value = false
+  selectedLocationKey.value = locationOptionKey(selectedLocation.value)
+  searchResults.value = []
+  searchLoading.value = false
   selectedDate.value = plan.date
   forecast.value = {
     latitude: plan.latitude,

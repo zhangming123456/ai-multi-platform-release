@@ -12,6 +12,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"ai-multi-platform-release/backend-go/models"
@@ -39,9 +40,12 @@ var photographyHTTPClient = &http.Client{
 type PhotographyLocation struct {
 	Name        string   `json:"name"`
 	DisplayName string   `json:"display_name"`
+	Detail      string   `json:"detail"`
 	Country     string   `json:"country"`
 	CountryCode string   `json:"country_code"`
 	Admin1      string   `json:"admin1"`
+	CityCode    string   `json:"city_code"`
+	AdCode      string   `json:"adcode"`
 	Latitude    float64  `json:"latitude"`
 	Longitude   float64  `json:"longitude"`
 	Timezone    string   `json:"timezone"`
@@ -290,11 +294,13 @@ type amapGeocodingResponse struct {
 	Info     string `json:"info"`
 	Geocodes []struct {
 		FormattedAddress string          `json:"formatted_address"`
-		Country          string          `json:"country"`
-		Province         string          `json:"province"`
+		Country          json.RawMessage `json:"country"`
+		Province         json.RawMessage `json:"province"`
 		City             json.RawMessage `json:"city"`
-		District         string          `json:"district"`
+		District         json.RawMessage `json:"district"`
 		Location         string          `json:"location"`
+		AdCode           string          `json:"adcode"`
+		CityCode         string          `json:"citycode"`
 	} `json:"geocodes"`
 }
 
@@ -364,7 +370,76 @@ type openMeteoForecastResponse struct {
 	} `json:"hourly"`
 }
 
+// SearchPhotographyLocations 搜索地点，并按经纬度用 Open-Meteo 补齐时区。
 func SearchPhotographyLocations(query string, countryCodes ...string) ([]PhotographyLocation, error) {
+	locations, err := searchPhotographyLocations(query, countryCodes...)
+	if err != nil {
+		return locations, err
+	}
+	fillPhotographyLocationTimezones(locations)
+	return locations, nil
+}
+
+// 高德 / Google 地理编码都不返回时区，统一用经纬度向 Open-Meteo 查询补齐；
+// 单个地点失败只留空时区，不影响搜索结果。
+// ponytail: 无缓存的逐点查询，并发 4；搜索结果命中率高了再加 TTL 缓存。
+func fillPhotographyLocationTimezones(locations []PhotographyLocation) {
+	semaphore := make(chan struct{}, 4)
+	var waitGroup sync.WaitGroup
+	for index := range locations {
+		if strings.TrimSpace(locations[index].Timezone) != "" {
+			continue
+		}
+		waitGroup.Add(1)
+		semaphore <- struct{}{}
+		go func(target int) {
+			defer waitGroup.Done()
+			defer func() { <-semaphore }()
+			timezone, err := fetchOpenMeteoTimezone(locations[target].Latitude, locations[target].Longitude)
+			if err != nil || timezone == "" {
+				return
+			}
+			locations[target].Timezone = timezone
+		}(index)
+	}
+	waitGroup.Wait()
+}
+
+func fetchOpenMeteoTimezone(latitude, longitude float64) (string, error) {
+	endpoint, err := url.Parse(photographyForecastBaseURL())
+	if err != nil {
+		return "", fmt.Errorf("Open-Meteo 天气接口地址无效: %w", err)
+	}
+	params := endpoint.Query()
+	params.Set("latitude", formatPhotographyCoordinate(latitude))
+	params.Set("longitude", formatPhotographyCoordinate(longitude))
+	params.Set("timezone", "auto")
+	params.Set("forecast_days", "1")
+	appendOpenMeteoAPIKey(params)
+	endpoint.RawQuery = params.Encode()
+
+	var response struct {
+		Timezone string `json:"timezone"`
+	}
+	if err := fetchPhotographyJSON(endpoint.String(), &response); err != nil {
+		return "", err
+	}
+	timezone := strings.TrimSpace(response.Timezone)
+	if timezone == "" {
+		return "", fmt.Errorf("Open-Meteo 未返回地点时区")
+	}
+	return timezone, nil
+}
+
+// FetchPhotographyTimezone 暴露给接口层：仅按经纬度取地点时区，用于高德 JS API 搜索结果补全。
+func FetchPhotographyTimezone(latitude, longitude float64) (string, error) {
+	if err := ValidatePhotographyCoordinates(latitude, longitude); err != nil {
+		return "", err
+	}
+	return fetchOpenMeteoTimezone(latitude, longitude)
+}
+
+func searchPhotographyLocations(query string, countryCodes ...string) ([]PhotographyLocation, error) {
 	query = strings.TrimSpace(query)
 	if len([]rune(query)) < 2 {
 		return nil, newPhotographyValidationError("地点关键词至少需要 2 个字符")
@@ -374,12 +449,37 @@ func SearchPhotographyLocations(query string, countryCodes ...string) ([]Photogr
 		countryCode = strings.TrimSpace(countryCodes[0])
 	}
 	provider := SelectPhotographyMapProvider(countryCode)
-	if locations, configured, err := searchPhotographyLocationsByMapProvider(query, provider, countryCode); configured {
+	locations, configured, err := searchPhotographyLocationsByMapProvider(query, provider, countryCode)
+	if configured {
+		if err != nil {
+			LogBackendError("http", "/api/photography-tools/geocode", provider+"-geocode", 502, err.Error())
+		}
 		return locations, err
+	}
+	if provider == "amap" {
+		// 中国大陆（含未指定地区）强制使用高德地理编码：不降级到其他数据源，
+		// 避免同一地区出现来源不一致、精度不一的地址结果。
+		return nil, fmt.Errorf("未配置高德 Web服务 Key，请在「系统管理 → 气象数据源 → 地图服务」中配置高德『Web服务』类型的 Key")
 	}
 
 	// 地图服务未配置 Key 时保留 Open-Meteo 作为无 Key 降级方案，避免天气查询入口完全不可用。
 	return searchPhotographyLocationsByOpenMeteo(query)
+}
+
+// amapGeocodingErrorMessage 把高德接口返回的错误码翻译成可执行的配置提示。
+func amapGeocodingErrorMessage(info string) string {
+	switch info {
+	case "USERKEY_PLAT_NOMATCH", "INVALID_USER_SCODE":
+		return "Key 与接口平台不匹配，地址搜索需要在系统管理中配置高德『Web服务』类型的 Key"
+	case "INVALID_USER_KEY", "USER_KEY_RECYCLED":
+		return "高德 Web服务 Key 无效或已删除，请在系统管理中重新配置"
+	case "SERVICE_NOT_AVAILABLE":
+		return "高德 Web服务 Key 未开通地理编码服务"
+	case "DAILY_QUERY_OVER_LIMIT", "USER_DAILY_QUERY_OVER_LIMIT":
+		return "高德地址搜索今日调用量已用尽"
+	default:
+		return info
+	}
 }
 
 func searchPhotographyLocationsByMapProvider(query, provider, countryCode string) ([]PhotographyLocation, bool, error) {
@@ -387,7 +487,9 @@ func searchPhotographyLocationsByMapProvider(query, provider, countryCode string
 	var endpoint, key, source string
 	switch provider {
 	case "amap":
-		key, source = secrets.AMapWebKey, "amap-geocoding"
+		// 高德「Web端(JS API)」Key 与「Web服务」Key 平台不互通，
+		// 服务端地理编码必须使用 Web服务 Key，否则会返回 USERKEY_PLAT_NOMATCH。
+		key, source = secrets.AMapWebServiceKey, "amap-geocoding"
 		endpoint = strings.TrimSpace(os.Getenv("AMAP_GEOCODING_BASE_URL"))
 		if endpoint == "" {
 			endpoint = "https://restapi.amap.com/v3/geocode/geo"
@@ -432,7 +534,7 @@ func searchPhotographyLocationsByMapProvider(query, provider, countryCode string
 			if message == "" {
 				message = "高德地址搜索未返回有效结果"
 			}
-			return nil, true, fmt.Errorf("高德地址搜索失败: %s", message)
+			return nil, true, fmt.Errorf("高德地址搜索失败: %s", amapGeocodingErrorMessage(message))
 		}
 		locations := make([]PhotographyLocation, 0, len(response.Geocodes))
 		for _, result := range response.Geocodes {
@@ -440,11 +542,17 @@ func searchPhotographyLocationsByMapProvider(query, provider, countryCode string
 			if !ok {
 				continue
 			}
+			// 高德在城市级结果里会把 province / city / district 返回成空数组，统一按文本解析。
+			country := parsePhotographyMapText(result.Country)
+			province := parsePhotographyMapText(result.Province)
 			city := parsePhotographyMapText(result.City)
-			name := firstPhotographyNonEmpty(result.District, city, result.Province, result.FormattedAddress)
+			district := parsePhotographyMapText(result.District)
+			name := firstPhotographyNonEmpty(district, city, province, result.FormattedAddress)
 			locations = append(locations, PhotographyLocation{
-				Name: name, DisplayName: buildLocationDisplayName(name, result.Province, result.Country),
-				Country: result.Country, CountryCode: "CN", Admin1: result.Province,
+				Name: name, DisplayName: buildLocationDisplayName(name, province, country),
+				Detail:  strings.TrimSpace(result.FormattedAddress),
+				Country: country, CountryCode: "CN", Admin1: province,
+				CityCode: strings.TrimSpace(result.CityCode), AdCode: strings.TrimSpace(result.AdCode),
 				Latitude: latitude, Longitude: longitude, MapProvider: "amap",
 			})
 		}
@@ -467,13 +575,13 @@ func searchPhotographyLocationsByMapProvider(query, provider, countryCode string
 	}
 	locations := make([]PhotographyLocation, 0, len(response.Results))
 	for _, result := range response.Results {
-		country, resultCountryCode, admin1 := "", "", ""
+		country, resultCountryCode, admin1, cityCode := "", "", "", ""
 		for _, component := range result.AddressComponents {
 			if containsPhotographyString(component.Types, "country") {
 				country, resultCountryCode = component.LongName, component.ShortName
 			}
 			if containsPhotographyString(component.Types, "administrative_area_level_1") {
-				admin1 = component.LongName
+				admin1, cityCode = component.LongName, component.ShortName
 			}
 		}
 		if resultCountryCode == "" {
@@ -481,7 +589,9 @@ func searchPhotographyLocationsByMapProvider(query, provider, countryCode string
 		}
 		locations = append(locations, PhotographyLocation{
 			Name: result.FormattedAddress, DisplayName: result.FormattedAddress,
+			Detail:  strings.TrimSpace(result.FormattedAddress),
 			Country: country, CountryCode: resultCountryCode, Admin1: admin1,
+			CityCode: cityCode,
 			Latitude: result.Geometry.Location.Latitude, Longitude: result.Geometry.Location.Longitude,
 			MapProvider: "google",
 		})

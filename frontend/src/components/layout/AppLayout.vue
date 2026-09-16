@@ -64,12 +64,14 @@ import { useRouter } from 'vue-router'
 import AppSidebar from './AppSidebar.vue'
 import AppHeader from './AppHeader.vue'
 import { useUserStore } from '@/stores/user'
+import { useLocationStore } from '@/stores/location'
 import { useNotificationRealtime } from '@/composables/useNotificationRealtime'
 
 const isSidebarCollapsed = ref(false)
 const isMobileSidebarOpen = ref(false)
 const isMobile = ref(false)
 const userStore = useUserStore()
+const locationStore = useLocationStore()
 const router = useRouter()
 const realtime = useNotificationRealtime()
 
@@ -105,6 +107,7 @@ onMounted(() => {
   if (!userStore.userInfo) {
     userStore.fetchUserInfo().catch(() => {})
   }
+  locationStore.locate().catch(() => {})
   realtime.start()
 })
 

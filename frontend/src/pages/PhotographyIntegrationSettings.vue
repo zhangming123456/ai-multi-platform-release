@@ -24,15 +24,37 @@
             <a-card :bordered="false" class="h-full shadow-sm">
               <template #title>地图服务</template>
               <a-form :model="form" layout="vertical">
-                <a-form-item label="高德 Web Key">
+                <a-form-item label="高德 Web Key（Web端 JS API）">
                   <a-input-password
                     v-model="form.amap_web_key"
                     :placeholder="placeholder(config?.amap_web_key_masked)"
                     allow-clear
                   />
+                  <template #extra>
+                    <span class="text-[12px] text-[#86868B]">
+                      用于浏览器地图显示。高德要求区分平台，这里必须填「Web端(JS API)」类型的 Key。
+                    </span>
+                  </template>
                 </a-form-item>
                 <a-checkbox v-model="form.clear_amap_web_key">清除高德 Web Key</a-checkbox>
-                <a-form-item label="高德安全密钥">
+                <a-form-item label="高德 Web 服务 Key（服务端）">
+                  <a-input-password
+                    v-model="form.amap_web_service_key"
+                    :placeholder="placeholder(config?.amap_web_service_key_masked)"
+                    allow-clear
+                  />
+                  <template #extra>
+                    <span class="text-[12px] text-[#86868B]">
+                      用于服务端地址搜索（地理编码）。必须填「Web服务」类型的 Key；若误填 Web端
+                      Key，高德会返回 USERKEY_PLAT_NOMATCH。中国大陆强制使用高德，未配置时
+                      地址搜索将不可用（不会降级到其他数据源）。
+                    </span>
+                  </template>
+                </a-form-item>
+                <a-checkbox v-model="form.clear_amap_web_service_key">
+                  清除高德 Web 服务 Key
+                </a-checkbox>
+                <a-form-item label="高德安全密钥（Web端 JS API）">
                   <a-input-password
                     v-model="form.amap_security_key"
                     :placeholder="placeholder(config?.amap_security_key_masked)"
@@ -236,6 +258,7 @@ const sectionNames: Record<PhotographyIntegrationSection, string> = {
 
 const form = reactive<PhotographyIntegrationForm>({
   amap_web_key: '',
+  amap_web_service_key: '',
   amap_security_key: '',
   google_maps_key: '',
   open_meteo_key: '',
@@ -252,6 +275,7 @@ const form = reactive<PhotographyIntegrationForm>({
   noaa_enabled: true,
   tide_enabled: true,
   clear_amap_web_key: false,
+  clear_amap_web_service_key: false,
   clear_amap_security_key: false,
   clear_google_maps_key: false,
   clear_open_meteo_key: false,
@@ -266,6 +290,7 @@ function placeholder(value?: string) {
 
 function resetSecretFields() {
   form.amap_web_key = ''
+  form.amap_web_service_key = ''
   form.amap_security_key = ''
   form.google_maps_key = ''
   form.open_meteo_key = ''
@@ -273,6 +298,7 @@ function resetSecretFields() {
   form.noaa_key = ''
   form.tide_key = ''
   form.clear_amap_web_key = false
+  form.clear_amap_web_service_key = false
   form.clear_amap_security_key = false
   form.clear_google_maps_key = false
   form.clear_open_meteo_key = false
@@ -302,9 +328,11 @@ function syncSavedSection(
   config.value = value
   if (section === 'map') {
     form.amap_web_key = ''
+    form.amap_web_service_key = ''
     form.amap_security_key = ''
     form.google_maps_key = ''
     form.clear_amap_web_key = false
+    form.clear_amap_web_service_key = false
     form.clear_amap_security_key = false
     form.clear_google_maps_key = false
   } else if (section === 'weather') {
@@ -335,9 +363,11 @@ function buildPayload(section: PhotographyIntegrationSection): PhotographyIntegr
     return {
       section,
       amap_web_key: form.amap_web_key,
+      amap_web_service_key: form.amap_web_service_key,
       amap_security_key: form.amap_security_key,
       google_maps_key: form.google_maps_key,
       clear_amap_web_key: form.clear_amap_web_key,
+      clear_amap_web_service_key: form.clear_amap_web_service_key,
       clear_amap_security_key: form.clear_amap_security_key,
       clear_google_maps_key: form.clear_google_maps_key,
     }

@@ -5,7 +5,7 @@
         <a-button size="mini" :loading="loading" @click="runQuery"
           ><template #icon><IconRefresh :size="13" /></template>刷新</a-button
         >
-        <a-button type="primary" size="mini" :loading="locating" @click="useCurrentLocation"
+        <a-button type="primary" size="mini" :loading="locating" @click="useCurrentLocation()"
           ><template #icon><IconLocation :size="13" /></template>使用当前位置</a-button
         >
       </template>
@@ -34,37 +34,43 @@
         <a-row :gutter="16">
           <a-col :xs="24" :lg="10">
             <a-form-item label="搜索地址或城市">
-              <a-trigger :popup-visible="searchVisible && searchResults.length > 0">
-                <template #content
-                  ><div v-if="searchVisible && searchResults.length" class="search-popover">
-                    <button
-                      v-for="item in searchResults"
-                      :key="item.display_name + item.latitude"
-                      type="button"
-                      class="search-result"
-                      @click="selectLocation(item)"
-                    >
-                      <IconLocation class="mt-0.5 shrink-0 text-[#007AFF]" /><span class="min-w-0"
-                        ><span class="block truncate text-[13px]">{{
-                          item.display_name || item.name
-                        }}</span
-                        ><span class="block text-[11px] text-[#86868B]"
-                          >{{ item.latitude.toFixed(4) }}, {{ item.longitude.toFixed(4) }} ·
-                          {{ item.timezone || '自动时区' }}</span
-                        ></span
-                      >
-                    </button>
-                  </div></template
+              <el-select
+                v-model="selectedLocationKey"
+                class="w-full"
+                popper-class="photography-location-select"
+                filterable
+                remote
+                reserve-keyword
+                clearable
+                :remote-method="remoteSearch"
+                :loading="searchLoading"
+                placeholder="搜索城市或地址，例如：杭州西湖"
+                @change="handleLocationChange"
+                @clear="clearSearch"
+              >
+                <el-option
+                  v-for="item in locationOptions"
+                  :key="locationOptionKey(item)"
+                  :label="item.display_name || item.name"
+                  :value="locationOptionKey(item)"
                 >
-                <a-input
-                  v-model="searchText"
-                  allow-clear
-                  placeholder="搜索城市或地址，例如：杭州西湖"
-                  @focus="searchVisible = searchResults.length > 0"
-                  @clear="clearSearch"
-                  ><template #suffix><IconSearch class="text-[#86868B]" /></template
-                ></a-input>
-              </a-trigger>
+                  <div class="flex flex-col gap-0.5">
+                    <div class="flex items-center justify-between gap-3">
+                      <span class="truncate">{{ item.display_name || item.name }}</span>
+                      <span class="shrink-0 text-[11px] text-[#86868B]">
+                        {{ item.latitude.toFixed(4) }}, {{ item.longitude.toFixed(4) }} ·
+                        {{ item.timezone || '自动时区' }}
+                      </span>
+                    </div>
+                    <span class="truncate text-[11px] text-[#86868B]">
+                      {{ item.detail || '无详细地址' }}
+                      <template v-if="item.adcode || item.city_code">
+                        · {{ item.adcode || item.city_code }}
+                      </template>
+                    </span>
+                  </div>
+                </el-option>
+              </el-select>
             </a-form-item>
             <div class="mb-3 flex flex-wrap items-center gap-2 text-xs text-[#5D5D63]">
               <a-tag color="arcoblue">{{ selectedLocationName || '自定义坐标' }}</a-tag
@@ -494,8 +500,15 @@ import { Message } from '@arco-design/web-vue'
 import { IconLocation, IconRefresh, IconSearch } from '@arco-design/web-vue/es/icon'
 import PageHeader from '@/components/layout/PageHeader.vue'
 import api, { WEATHER_API_TIMEOUT, getApiErrorDetail } from '@/utils/api'
+import {
+  amapTipToLocation,
+  ensureAmapJS,
+  reverseGeocodeByAmapJS,
+  searchLocationsByAmapJS,
+} from '@/utils/amapSearch'
 import { countryCodeForRegion } from '@/utils/time'
 import { normalizePhotographyOverview } from './PhotographyWeatherOverview.types'
+import { useLocationStore } from '@/stores/location'
 import { useRegionStore } from '@/stores/region'
 import type {
   PhotographyForecastHour,
@@ -570,6 +583,7 @@ declare global {
 }
 
 const mapScriptPromises: Partial<Record<'amap' | 'google', Promise<void>>> = {}
+const locationStore = useLocationStore()
 const { selectedTz } = useRegionStore()
 const overview = ref<PhotographyOverview | null>(null)
 const weatherSources = ref<PhotographyWeatherSource[]>([])
@@ -577,17 +591,28 @@ const weatherSource = ref('open-meteo-best-match')
 const tideSource = ref('noaa-coops')
 const latitude = ref<number>()
 const longitude = ref<number>()
-const searchText = ref('')
 const searchResults = ref<PhotographyLocationResult[]>([])
-const searchVisible = ref(false)
+const selectedLocation = ref<PhotographyLocationResult | null>(null)
+const selectedLocationKey = ref('')
+const searchLoading = ref(false)
+const locationOptions = computed(() => {
+  const list = [...searchResults.value]
+  const current = selectedLocation.value
+  if (current && !list.some((item) => locationOptionKey(item) === selectedLocationKey.value)) {
+    list.unshift(current)
+  }
+  return list
+})
 const selectedLocationName = ref('')
+// 逆地理编码得到的地址，用于在天气结果返回后覆盖「当前位置 / 地图选点」这类占位名称。
+const resolvedAddressName = ref('')
 const countryCode = ref('')
 const locationCountryCodeLocked = ref(false)
 const timezone = ref('')
 const mapConfig = ref<PhotographyMapConfig | null>(null)
 const mapCanvas = ref<HTMLElement | null>(null)
 const loading = ref(false)
-const locating = ref(false)
+const locating = computed(() => locationStore.isLocating)
 const sourcesLoading = ref(false)
 const mapReady = ref(false)
 const mapError = ref('')
@@ -598,6 +623,8 @@ let amapMarker: AMapMarkerInstance | null = null
 let googleMapInstance: GoogleMapInstance | null = null
 let googleMarker: GoogleMarkerInstance | null = null
 let activeMapProvider: 'amap' | 'google' | null = null
+// 进入页面时立即发起的定位，地图首次初始化会等它返回，避免先落在 (0,0) 再跳。
+let enterLocatePromise: Promise<unknown> | null = null
 const hourlyChartRef = ref<HTMLDivElement | null>(null)
 let hourlyChart: echarts.ECharts | null = null
 
@@ -767,10 +794,12 @@ function applyMapCoordinate(lat: number, lon: number) {
   latitude.value = Number(lat.toFixed(6))
   longitude.value = Number(lon.toFixed(6))
   selectedLocationName.value = '地图选点'
+  resolvedAddressName.value = ''
   countryCode.value = ''
   locationCountryCodeLocked.value = false
   timezone.value = ''
   syncMapPosition()
+  void fillAddressFromCoordinates(latitude.value, longitude.value)
   void runQuery()
 }
 function syncMapPosition() {
@@ -792,37 +821,31 @@ async function loadMapSdk(config: PhotographyMapConfig) {
     disposeMap()
     return
   }
-  const provider = config.provider
-  if (!mapScriptPromises[provider]) {
-    mapScriptPromises[provider] = new Promise<void>((resolve, reject) => {
-      if (provider === 'amap' && window.AMap) {
+  // 高德统一交给 utils/amapSearch（带 AutoComplete / Geocoder 插件），Google 单独加载脚本。
+  if (config.provider === 'amap') {
+    await ensureAmapJS(config)
+    return
+  }
+  if (!mapScriptPromises.google) {
+    mapScriptPromises.google = new Promise<void>((resolve, reject) => {
+      if (window.google?.maps) {
         resolve()
         return
       }
-      if (provider === 'google' && window.google?.maps) {
-        resolve()
-        return
-      }
-      if (provider === 'amap' && config.security_key)
-        window._AMapSecurityConfig = { securityJsCode: config.security_key }
       const script = document.createElement('script')
       script.async = true
-      script.dataset.photographyMap = provider
+      script.dataset.photographyMap = 'google'
       script.src =
-        provider === 'amap'
-          ? 'https://webapi.amap.com/maps?v=2.0&key=' + encodeURIComponent(config.browser_key)
-          : 'https://maps.googleapis.com/maps/api/js?key=' + encodeURIComponent(config.browser_key)
+        'https://maps.googleapis.com/maps/api/js?key=' + encodeURIComponent(config.browser_key)
       script.onload = () => {
-        if ((provider === 'amap' && window.AMap) || (provider === 'google' && window.google?.maps))
-          resolve()
-        else reject(new Error((provider === 'amap' ? '高德' : 'Google') + ' 地图 SDK 未正确初始化'))
+        if (window.google?.maps) resolve()
+        else reject(new Error('Google 地图 SDK 未正确初始化'))
       }
-      script.onerror = () =>
-        reject(new Error((provider === 'amap' ? '高德' : 'Google') + ' 地图 SDK 加载失败'))
+      script.onerror = () => reject(new Error('Google 地图 SDK 加载失败'))
       document.head.appendChild(script)
     })
   }
-  await mapScriptPromises[provider]
+  await mapScriptPromises.google
 }
 async function initializeMap(config: PhotographyMapConfig) {
   await nextTick()
@@ -831,6 +854,9 @@ async function initializeMap(config: PhotographyMapConfig) {
     syncMapPosition()
     return
   }
+  // 首次定位完成后，地图和 marker 才能直接落在当前经纬度上。
+  if (!hasCoordinates() && enterLocatePromise) await enterLocatePromise.catch(() => {})
+  if (!mapCanvas.value) return
   disposeMap()
   const center = currentMapCenter()
   if (config.provider === 'amap') {
@@ -862,7 +888,17 @@ async function initializeMap(config: PhotographyMapConfig) {
   activeMapProvider = config.provider
   mapReady.value = true
 }
-async function loadMapConfig() {
+let mapConfigPromise: Promise<void> | null = null
+// 挂载预加载与定位后查询会并发调用，复用同一次地图配置请求。
+function loadMapConfig() {
+  if (!mapConfigPromise) {
+    mapConfigPromise = doLoadMapConfig().finally(() => {
+      mapConfigPromise = null
+    })
+  }
+  return mapConfigPromise
+}
+async function doLoadMapConfig() {
   try {
     const response = await api.get<PhotographyMapConfig>('/photography-tools/map-config', {
       params: { country_code: mapCountryCode.value },
@@ -882,7 +918,7 @@ async function loadMapConfig() {
 }
 async function runQuery() {
   if (!hasCoordinates()) {
-    if (!locating.value) await useCurrentLocation()
+    await useCurrentLocation(false)
     return
   }
   loading.value = true
@@ -900,6 +936,7 @@ async function runQuery() {
       timeout: WEATHER_API_TIMEOUT,
     })
     overview.value = normalizePhotographyOverview(response.data)
+    if (resolvedAddressName.value) overview.value.location.name = resolvedAddressName.value
     timezone.value = overview.value.location.timezone
     countryCode.value = overview.value.location.country_code
     updatedAt.value = new Date().toLocaleString('zh-CN', { hour12: false })
@@ -910,60 +947,94 @@ async function runQuery() {
     loading.value = false
   }
 }
-function getCurrentPosition(): Promise<GeolocationPosition> {
-  return new Promise((resolve, reject) => {
-    navigator.geolocation.getCurrentPosition(resolve, reject, {
-      enableHighAccuracy: true,
-      timeout: 10000,
-      maximumAge: 300000,
-    })
-  })
-}
-async function useCurrentLocation() {
-  if (!navigator.geolocation) {
-    Message.error('当前浏览器不支持定位，请搜索地址或填写经纬度')
+async function useCurrentLocation(force = true) {
+  const location = await locationStore.locate(force)
+  if (!location) {
+    Message.error(locationStore.error || '暂时无法获取当前位置，请稍后重试')
     return
   }
-  if (locating.value) return
-  locating.value = true
-  try {
-    const position = await getCurrentPosition()
-    latitude.value = Number(position.coords.latitude.toFixed(6))
-    longitude.value = Number(position.coords.longitude.toFixed(6))
-    selectedLocationName.value = '当前位置'
-    countryCode.value = ''
-    locationCountryCodeLocked.value = false
-    timezone.value = ''
-    searchText.value = ''
-    syncMapPosition()
-    await runQuery()
-  } catch (error) {
-    const positionError = error as GeolocationPositionError
-    const message =
-      positionError?.code === 1
-        ? '无法获取当前位置，请允许浏览器定位权限'
-        : positionError?.message || '暂时无法获取当前位置，请稍后重试'
-    Message.error(message)
-  } finally {
-    locating.value = false
-  }
+  latitude.value = Number(location.latitude.toFixed(6))
+  longitude.value = Number(location.longitude.toFixed(6))
+  selectedLocationName.value = '当前位置'
+  resolvedAddressName.value = ''
+  countryCode.value = ''
+  locationCountryCodeLocked.value = false
+  timezone.value = ''
+  clearSearch()
+  syncMapPosition()
+  void fillAddressFromCoordinates(latitude.value, longitude.value)
+  await runQuery()
 }
 function handleCoordinateInput() {
   selectedLocationName.value = '自定义坐标'
+  resolvedAddressName.value = ''
   countryCode.value = ''
   locationCountryCodeLocked.value = false
   timezone.value = ''
   syncMapPosition()
+  if (latitude.value !== undefined && longitude.value !== undefined) {
+    void fillAddressFromCoordinates(latitude.value, longitude.value)
+  }
+}
+// 当前定位、地图选点或手填坐标都只有经纬度，没有地址信息时用高德逆地理编码补全。
+let lastReverseGeocodeKey = ''
+async function fillAddressFromCoordinates(lat: number, lon: number) {
+  const current = selectedLocation.value
+  if (current?.detail && current.latitude === lat && current.longitude === lon) return
+  const config = mapConfig.value ?? (await loadMapConfig())
+  if (config?.provider !== 'amap') return
+  const key = `${lat},${lon}`
+  if (key === lastReverseGeocodeKey) return
+  lastReverseGeocodeKey = key
+  try {
+    const address = await reverseGeocodeByAmapJS(lat, lon)
+    if (!address || latitude.value !== lat || longitude.value !== lon) return
+    selectedLocationName.value = address.display_name
+    resolvedAddressName.value = address.display_name
+    const shown = overview.value?.location
+    if (shown && Math.abs(shown.latitude - lat) < 1e-6 && Math.abs(shown.longitude - lon) < 1e-6) {
+      shown.name = address.display_name
+    }
+    countryCode.value = 'CN'
+    selectedLocation.value = {
+      name: address.name,
+      display_name: address.display_name,
+      detail: address.detail,
+      country: '',
+      country_code: 'CN',
+      admin1: address.district,
+      city_code: address.city_code,
+      adcode: address.adcode,
+      latitude: lat,
+      longitude: lon,
+      timezone: timezone.value,
+      elevation: null,
+      map_provider: 'amap',
+    }
+  } catch {
+    // 逆地理编码失败不影响天气查询，保留「当前位置 / 地图选点」提示。
+  }
+}
+// el-select 的 option value 必须是稳定字符串，用它反查完整地点对象。
+function locationOptionKey(item: PhotographyLocationResult) {
+  return `${item.latitude},${item.longitude},${item.display_name || item.name}`
 }
 function clearSearch() {
-  searchVisible.value = false
+  selectedLocationKey.value = ''
+  selectedLocation.value = null
   searchResults.value = []
+  searchLoading.value = false
+}
+function handleLocationChange(key: string) {
+  const item = locationOptions.value.find((entry) => locationOptionKey(entry) === key)
+  if (item) selectLocation(item)
 }
 function resetLocation() {
   disposeMap()
   latitude.value = undefined
   longitude.value = undefined
   selectedLocationName.value = ''
+  resolvedAddressName.value = ''
   countryCode.value = ''
   locationCountryCodeLocked.value = false
   timezone.value = ''
@@ -976,14 +1047,32 @@ function selectLocation(item: PhotographyLocationResult) {
   latitude.value = item.latitude
   longitude.value = item.longitude
   selectedLocationName.value = item.display_name || item.name
+  resolvedAddressName.value = ''
   countryCode.value = item.country_code || ''
   locationCountryCodeLocked.value = Boolean(item.country_code)
   timezone.value = item.timezone || ''
-  searchText.value = item.display_name || item.name
+  selectedLocation.value = item
+  selectedLocationKey.value = locationOptionKey(item)
   searchResults.value = []
-  searchVisible.value = false
-  syncMapPosition()
+  void focusMapOnLocation()
   void runQuery()
+  void fillLocationTimezone(item)
+}
+
+// 高德 JS API 搜索结果没有时区，按经纬度向 Open-Meteo 补一次，用于展示与日期校验。
+async function fillLocationTimezone(item: PhotographyLocationResult) {
+  if (item.timezone) return
+  try {
+    const response = await api.get<{ timezone: string }>('/photography-tools/timezone', {
+      params: { latitude: item.latitude, longitude: item.longitude },
+    })
+    const tz = response.data?.timezone || ''
+    if (!tz || selectedLocationKey.value !== locationOptionKey(item)) return
+    selectedLocation.value = { ...item, timezone: tz }
+    timezone.value = tz
+  } catch {
+    // 时区只是辅助信息，查询结果里仍会带回地点时区，静默忽略。
+  }
 }
 function pickMapCoordinate(event: MouseEvent) {
   if (!(event.currentTarget instanceof HTMLElement)) return
@@ -992,21 +1081,41 @@ function pickMapCoordinate(event: MouseEvent) {
   const y = Math.min(1, Math.max(0, (event.clientY - rect.top) / rect.height))
   applyMapCoordinate(90 - y * 180, -180 + x * 360)
 }
-function searchLocations() {
+// 选中搜索结果后，确保地图已初始化，并把中心点与 marker 移到该坐标。
+async function focusMapOnLocation() {
+  if (!mapReady.value) await loadMapConfig()
+  syncMapPosition()
+}
+// 中国大陆直接调用高德 JS API 2.0 的 AutoComplete，其他地区走服务端 Google 地理编码。
+async function locateByKeyword(query: string): Promise<PhotographyLocationResult[]> {
+  if (!mapConfig.value) await loadMapConfig()
+  if (mapConfig.value?.provider === 'google') {
+    const response = await api.get<PhotographyLocationResult[]>('/photography-tools/geocode', {
+      params: { query, country_code: mapCountryCode.value },
+    })
+    return response.data || []
+  }
+  await ensureAmapJS(mapConfig.value)
+  const tips = await searchLocationsByAmapJS(query)
+  return tips.map((tip) => amapTipToLocation(tip))
+}
+function remoteSearch(keyword: string) {
   if (searchTimer) window.clearTimeout(searchTimer)
-  if (searchText.value.trim().length < 2) {
+  const query = keyword.trim()
+  if (query.length < 2) {
     searchResults.value = []
+    searchLoading.value = false
     return
   }
+  searchLoading.value = true
   searchTimer = window.setTimeout(async () => {
     try {
-      const response = await api.get<PhotographyLocationResult[]>('/photography-tools/geocode', {
-        params: { query: searchText.value.trim(), country_code: mapCountryCode.value },
-      })
-      searchResults.value = response.data || []
-      searchVisible.value = searchResults.value.length > 0
+      searchResults.value = await locateByKeyword(query)
     } catch (error) {
-      Message.warning(getApiErrorDetail(error) || '地址搜索失败')
+      searchResults.value = []
+      Message.error(getApiErrorDetail(error) || '地址搜索失败，请检查地图服务配置')
+    } finally {
+      searchLoading.value = false
     }
   }, 350)
 }
@@ -1070,13 +1179,17 @@ async function renderHourlyChart() {
 function handleHourlyChartResize() {
   hourlyChart?.resize()
 }
-watch(searchText, () => searchLocations())
 watch([latitude, longitude], () => syncMapPosition())
 watch(selectedTz, () => {
   if (!locationCountryCodeLocked.value && hasCoordinates()) void runQuery()
 })
 onMounted(() => {
   void loadSources()
+  // 进入天气页立即获取当前位置（全局 store 去重），拿到坐标后自动查询并同步地图标记。
+  enterLocatePromise = locationStore.locate()
+  void useCurrentLocation(false)
+  // 进入页面即加载地图 SDK，保证搜索走 JS API 2.0 且选中后能立刻标记。
+  void loadMapConfig()
   window.addEventListener('resize', handleHourlyChartResize)
 })
 onBeforeUnmount(() => {
@@ -1088,28 +1201,6 @@ onBeforeUnmount(() => {
 })
 </script>
 <style scoped lang="scss">
-.search-popover {
-  width: min(420px, calc(100vw - 48px));
-  border: 1px solid #e5e5ea;
-  border-radius: 10px;
-  background: #fff;
-  padding: 4px;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.12);
-}
-.search-result {
-  display: flex;
-  width: 100%;
-  gap: 8px;
-  border: 0;
-  border-radius: 8px;
-  background: transparent;
-  padding: 9px 10px;
-  text-align: left;
-  cursor: pointer;
-}
-.search-result:hover {
-  background: #f5f7fa;
-}
 .coordinate-map {
   position: relative;
   min-height: 220px;

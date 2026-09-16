@@ -142,21 +142,75 @@ func TestSearchPhotographyLocationsUsesAMapWhenConfigured(t *testing.T) {
 		if got := r.URL.Query().Get("address"); got != "杭州西湖" {
 			t.Errorf("address query = %q, want 杭州西湖", got)
 		}
-		_, _ = w.Write([]byte(`{"status":"1","info":"OK","geocodes":[{"formatted_address":"浙江省杭州市西湖区","province":"浙江省","city":"杭州市","district":"西湖区","location":"120.148,30.242"}]}`))
+		// 第二条是高德城市级结果：province / city / district 会返回空数组。
+		_, _ = w.Write([]byte(`{"status":"1","info":"OK","geocodes":[` +
+			`{"formatted_address":"浙江省杭州市西湖区西湖街道","province":"浙江省","city":"杭州市","district":"西湖区","location":"120.148,30.242","adcode":"330106","citycode":"0571"},` +
+			`{"formatted_address":"浙江省杭州市","province":[],"city":[],"district":[],"location":"120.153,30.287","adcode":"330100","citycode":"0571"}]}`))
 	}))
 	defer server.Close()
-	t.Setenv("AMAP_WEB_KEY", "amap-test-key")
+	// 时区由经纬度向 Open-Meteo 查询补齐，用桩服务避免测试访问外网。
+	timezoneServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.Query().Get("timezone"); got != "auto" {
+			t.Errorf("timezone query = %q, want auto", got)
+		}
+		_, _ = w.Write([]byte(`{"timezone":"Asia/Shanghai"}`))
+	}))
+	defer timezoneServer.Close()
+	// 地理编码必须使用高德『Web服务』Key，Web端(JS API) Key 会返回 USERKEY_PLAT_NOMATCH。
+	t.Setenv("AMAP_WEB_KEY", "amap-js-key")
+	t.Setenv("AMAP_WEB_SERVICE_KEY", "amap-test-key")
 	t.Setenv("AMAP_GEOCODING_BASE_URL", server.URL)
+	t.Setenv("OPEN_METEO_FORECAST_BASE_URL", timezoneServer.URL)
 
 	locations, err := SearchPhotographyLocations("杭州西湖", "CN")
 	if err != nil {
 		t.Fatalf("SearchPhotographyLocations() error = %v", err)
 	}
-	if len(locations) != 1 || locations[0].MapProvider != "amap" || locations[0].CountryCode != "CN" {
+	if len(locations) != 2 || locations[0].MapProvider != "amap" || locations[0].CountryCode != "CN" {
 		t.Fatalf("locations = %+v", locations)
 	}
 	if locations[0].Latitude != 30.242 || locations[0].Longitude != 120.148 {
 		t.Fatalf("coordinates = %v,%v", locations[0].Latitude, locations[0].Longitude)
+	}
+	if locations[0].Detail != "浙江省杭州市西湖区西湖街道" || locations[0].AdCode != "330106" ||
+		locations[0].CityCode != "0571" || locations[0].Timezone != "Asia/Shanghai" {
+		t.Fatalf("location = %+v, want formatted address, adcode, citycode and open-meteo timezone", locations[0])
+	}
+	if locations[1].Name != "浙江省杭州市" || locations[1].AdCode != "330100" {
+		t.Fatalf("city level location = %+v, want array district tolerated", locations[1])
+	}
+}
+
+func TestSearchPhotographyLocationsDoesNotFallBackInMainlandChina(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"status":"0","info":"USERKEY_PLAT_NOMATCH","infocode":"10001"}`))
+	}))
+	defer server.Close()
+	fallback := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("中国大陆不应降级到 Open-Meteo")
+		_, _ = w.Write([]byte(`{"results":[{"name":"杭州","country":"中国","country_code":"CN","admin1":"浙江省","latitude":30.25,"longitude":120.17,"timezone":"Asia/Shanghai"}]}`))
+	}))
+	defer fallback.Close()
+	t.Setenv("AMAP_WEB_SERVICE_KEY", "wrong-platform-key")
+	t.Setenv("AMAP_GEOCODING_BASE_URL", server.URL)
+	t.Setenv("OPEN_METEO_GEOCODING_BASE_URL", fallback.URL)
+
+	_, err := SearchPhotographyLocations("杭州", "CN")
+	if err == nil {
+		t.Fatal("SearchPhotographyLocations() error = nil, want hard failure in mainland China")
+	}
+	if !strings.Contains(err.Error(), "Key 与接口平台不匹配") {
+		t.Fatalf("error = %v, want actionable amap platform message", err)
+	}
+}
+
+func TestSearchPhotographyLocationsRequiresAMapKeyInMainlandChina(t *testing.T) {
+	t.Setenv("AMAP_WEB_KEY", "amap-js-key")
+	t.Setenv("AMAP_WEB_SERVICE_KEY", "")
+
+	_, err := SearchPhotographyLocations("杭州西湖", "CN")
+	if err == nil || !strings.Contains(err.Error(), "未配置高德 Web服务 Key") {
+		t.Fatalf("error = %v, want missing amap web service key", err)
 	}
 }
 
@@ -168,11 +222,16 @@ func TestSearchPhotographyLocationsUsesGoogleWhenConfigured(t *testing.T) {
 		if got := r.URL.Query().Get("region"); got != "us" {
 			t.Errorf("region query = %q, want us", got)
 		}
-		_, _ = w.Write([]byte(`{"status":"OK","results":[{"formatted_address":"1600 Amphitheatre Parkway, Mountain View, CA","address_components":[{"long_name":"United States","short_name":"US","types":["country"]}],"geometry":{"location":{"lat":37.422,"lng":-122.084}}}]}`))
+		_, _ = w.Write([]byte(`{"status":"OK","results":[{"formatted_address":"1600 Amphitheatre Parkway, Mountain View, CA","address_components":[{"long_name":"United States","short_name":"US","types":["country"]},{"long_name":"California","short_name":"CA","types":["administrative_area_level_1"]}],"geometry":{"location":{"lat":37.422,"lng":-122.084}}}]}`))
 	}))
 	defer server.Close()
+	timezoneServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"timezone":"America/Los_Angeles"}`))
+	}))
+	defer timezoneServer.Close()
 	t.Setenv("GOOGLE_MAPS_BROWSER_KEY", "google-test-key")
 	t.Setenv("GOOGLE_GEOCODING_BASE_URL", server.URL)
+	t.Setenv("OPEN_METEO_FORECAST_BASE_URL", timezoneServer.URL)
 
 	locations, err := SearchPhotographyLocations("Googleplex", "US")
 	if err != nil {
@@ -184,8 +243,12 @@ func TestSearchPhotographyLocationsUsesGoogleWhenConfigured(t *testing.T) {
 	if locations[0].Latitude != 37.422 || locations[0].Longitude != -122.084 {
 		t.Fatalf("coordinates = %v,%v", locations[0].Latitude, locations[0].Longitude)
 	}
+	if locations[0].Detail == "" || locations[0].CityCode != "CA" || locations[0].Timezone != "America/Los_Angeles" {
+		t.Fatalf("location = %+v, want detail, state code and timezone", locations[0])
+	}
 }
 
+// 中国大陆强制走高德，因此 Open-Meteo 地理编码只作为其他地区的无 Key 兜底路径被覆盖。
 func TestSearchPhotographyLocationsParsesOpenMeteoResponse(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if got := r.URL.Query().Get("name"); got != "杭州西湖" {
@@ -204,7 +267,7 @@ func TestSearchPhotographyLocationsParsesOpenMeteoResponse(t *testing.T) {
 	defer server.Close()
 	t.Setenv("OPEN_METEO_GEOCODING_BASE_URL", server.URL)
 
-	locations, err := SearchPhotographyLocations(" 杭州西湖 ")
+	locations, err := SearchPhotographyLocations(" 杭州西湖 ", "US")
 	if err != nil {
 		t.Fatalf("SearchPhotographyLocations() error = %v", err)
 	}

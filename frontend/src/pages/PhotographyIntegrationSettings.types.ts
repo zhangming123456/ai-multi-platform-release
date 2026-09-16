@@ -12,6 +12,7 @@ export interface PhotographyIntegrationProvider {
 
 export interface PhotographyIntegrationConfig {
   amap_web_key_masked: string
+  amap_web_service_key_masked: string
   amap_security_key_masked: string
   google_maps_key_masked: string
   open_meteo_key_masked: string
@@ -34,6 +35,7 @@ export interface PhotographyIntegrationConfig {
 
 export interface PhotographyIntegrationForm {
   amap_web_key: string
+  amap_web_service_key: string
   amap_security_key: string
   google_maps_key: string
   open_meteo_key: string
@@ -50,6 +52,7 @@ export interface PhotographyIntegrationForm {
   noaa_enabled: boolean
   tide_enabled: boolean
   clear_amap_web_key: boolean
+  clear_amap_web_service_key: boolean
   clear_amap_security_key: boolean
   clear_google_maps_key: boolean
   clear_open_meteo_key: boolean
@@ -61,6 +64,7 @@ export interface PhotographyIntegrationForm {
 export interface PhotographyIntegrationPayload {
   section?: PhotographyIntegrationSection
   amap_web_key?: string
+  amap_web_service_key?: string
   amap_security_key?: string
   google_maps_key?: string
   open_meteo_key?: string
@@ -77,6 +81,7 @@ export interface PhotographyIntegrationPayload {
   noaa_enabled?: boolean
   tide_enabled?: boolean
   clear_amap_web_key?: boolean
+  clear_amap_web_service_key?: boolean
   clear_amap_security_key?: boolean
   clear_google_maps_key?: boolean
   clear_open_meteo_key?: boolean

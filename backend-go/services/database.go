@@ -115,6 +115,7 @@ func migrateSchema() error {
 		{"contents", "event_meta", "ALTER TABLE contents ADD COLUMN event_meta text"},
 		{"ai_generation_records", "campaign_id", "ALTER TABLE ai_generation_records ADD COLUMN campaign_id varchar(36) DEFAULT ''"},
 		{"ai_generation_records", "content_form", "ALTER TABLE ai_generation_records ADD COLUMN content_form varchar(30) DEFAULT ''"},
+		{"photography_integration_configs", "amap_web_service_key_encrypted", "ALTER TABLE photography_integration_configs ADD COLUMN amap_web_service_key_encrypted text"},
 	}
 	for _, m := range migrations {
 		exists, err := columnExists(db, m.table, m.column)

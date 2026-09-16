@@ -14,9 +14,12 @@ export type PhotographyAssessmentLevel = 'excellent' | 'good' | 'fair' | 'poor'
 export interface PhotographyLocation {
   name: string
   display_name: string
+  detail: string
   country: string
   country_code: string
   admin1: string
+  city_code: string
+  adcode: string
   latitude: number
   longitude: number
   timezone: string

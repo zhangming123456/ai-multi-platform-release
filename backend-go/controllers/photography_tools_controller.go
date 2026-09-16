@@ -54,6 +54,24 @@ func (c *PhotographyToolsController) MapConfig() {
 	c.OK(services.GetPhotographyMapConfig(c.GetQuery("country_code")))
 }
 
+// Timezone 供前端高德 JS API 搜索完成后，按经纬度补齐 Open-Meteo 地点时区。
+func (c *PhotographyToolsController) Timezone() {
+	if !c.CheckPermission("photography_tool:read") {
+		return
+	}
+	latitude, longitude, err := parsePhotographyToolCoordinates(c)
+	if err != nil {
+		c.WriteError(http.StatusBadRequest, err.Error())
+		return
+	}
+	timezone, err := services.FetchPhotographyTimezone(latitude, longitude)
+	if err != nil {
+		c.WriteError(http.StatusBadGateway, err.Error())
+		return
+	}
+	c.OK(map[string]string{"timezone": timezone})
+}
+
 func parsePhotographyToolCoordinates(c *PhotographyToolsController) (float64, float64, error) {
 	latitude, err := strconv.ParseFloat(strings.TrimSpace(c.GetQuery("latitude")), 64)
 	if err != nil {

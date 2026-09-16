@@ -483,3 +483,11 @@ body {
     margin: 4px !important;
   }
 }
+
+/* 地址搜索下拉：选项需要展示详细地址与城市码，放开固定行高 */
+.photography-location-select .el-select-dropdown__item {
+  height: auto;
+  min-height: 34px;
+  padding: 6px 12px;
+  line-height: 1.5;
+}

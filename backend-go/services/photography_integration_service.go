@@ -39,29 +39,31 @@ type PhotographyIntegrationProviderView struct {
 }
 
 type PhotographyIntegrationConfigView struct {
-	AMapWebKeyMasked       string                               `json:"amap_web_key_masked"`
-	AMapSecurityKeyMasked  string                               `json:"amap_security_key_masked"`
-	GoogleMapsKeyMasked    string                               `json:"google_maps_key_masked"`
-	OpenMeteoKeyMasked     string                               `json:"open_meteo_key_masked"`
-	QWeatherKeyMasked      string                               `json:"qweather_key_masked"`
-	QWeatherCredentialType string                               `json:"qweather_credential_type"`
-	NOAAKeyMasked          string                               `json:"noaa_key_masked"`
-	TideKeyMasked          string                               `json:"tide_key_masked"`
-	OpenMeteoHost          string                               `json:"open_meteo_host"`
-	QWeatherHost           string                               `json:"qweather_host"`
-	NOAAHost               string                               `json:"noaa_host"`
-	TideHost               string                               `json:"tide_host"`
-	OpenMeteoEnabled       bool                                 `json:"open_meteo_enabled"`
-	QWeatherEnabled        bool                                 `json:"qweather_enabled"`
-	NOAAEnabled            bool                                 `json:"noaa_enabled"`
-	TideEnabled            bool                                 `json:"tide_enabled"`
-	WeatherProviders       []PhotographyIntegrationProviderView `json:"weather_providers"`
-	TideProviders          []PhotographyIntegrationProviderView `json:"tide_providers"`
-	AuroraProviders        []PhotographyIntegrationProviderView `json:"aurora_providers"`
+	AMapWebKeyMasked        string                               `json:"amap_web_key_masked"`
+	AMapWebServiceKeyMasked string                               `json:"amap_web_service_key_masked"`
+	AMapSecurityKeyMasked   string                               `json:"amap_security_key_masked"`
+	GoogleMapsKeyMasked     string                               `json:"google_maps_key_masked"`
+	OpenMeteoKeyMasked      string                               `json:"open_meteo_key_masked"`
+	QWeatherKeyMasked       string                               `json:"qweather_key_masked"`
+	QWeatherCredentialType  string                               `json:"qweather_credential_type"`
+	NOAAKeyMasked           string                               `json:"noaa_key_masked"`
+	TideKeyMasked           string                               `json:"tide_key_masked"`
+	OpenMeteoHost           string                               `json:"open_meteo_host"`
+	QWeatherHost            string                               `json:"qweather_host"`
+	NOAAHost                string                               `json:"noaa_host"`
+	TideHost                string                               `json:"tide_host"`
+	OpenMeteoEnabled        bool                                 `json:"open_meteo_enabled"`
+	QWeatherEnabled         bool                                 `json:"qweather_enabled"`
+	NOAAEnabled             bool                                 `json:"noaa_enabled"`
+	TideEnabled             bool                                 `json:"tide_enabled"`
+	WeatherProviders        []PhotographyIntegrationProviderView `json:"weather_providers"`
+	TideProviders           []PhotographyIntegrationProviderView `json:"tide_providers"`
+	AuroraProviders         []PhotographyIntegrationProviderView `json:"aurora_providers"`
 }
 
 type PhotographyIntegrationConfigPayload struct {
 	AMapWebKey             string `json:"amap_web_key"`
+	AMapWebServiceKey      string `json:"amap_web_service_key"`
 	AMapSecurityKey        string `json:"amap_security_key"`
 	GoogleMapsKey          string `json:"google_maps_key"`
 	OpenMeteoKey           string `json:"open_meteo_key"`
@@ -79,6 +81,7 @@ type PhotographyIntegrationConfigPayload struct {
 	NOAAEnabled            *bool  `json:"noaa_enabled"`
 	TideEnabled            *bool  `json:"tide_enabled"`
 	ClearAMapWebKey        bool   `json:"clear_amap_web_key"`
+	ClearAMapWebServiceKey bool   `json:"clear_amap_web_service_key"`
 	ClearAMapSecurityKey   bool   `json:"clear_amap_security_key"`
 	ClearGoogleMapsKey     bool   `json:"clear_google_maps_key"`
 	ClearOpenMeteoKey      bool   `json:"clear_open_meteo_key"`
@@ -88,11 +91,11 @@ type PhotographyIntegrationConfigPayload struct {
 }
 
 type photographyIntegrationSecrets struct {
-	AMapWebKey, AMapSecurityKey, GoogleMapsKey                  string
-	OpenMeteoKey, QWeatherKey, NOAAKey, TideKey                 string
-	QWeatherCredentialType                                      string
-	OpenMeteoHost, QWeatherHost, NOAAHost, TideHost             string
-	OpenMeteoEnabled, QWeatherEnabled, NOAAEnabled, TideEnabled bool
+	AMapWebKey, AMapWebServiceKey, AMapSecurityKey, GoogleMapsKey string
+	OpenMeteoKey, QWeatherKey, NOAAKey, TideKey                   string
+	QWeatherCredentialType                                        string
+	OpenMeteoHost, QWeatherHost, NOAAHost, TideHost               string
+	OpenMeteoEnabled, QWeatherEnabled, NOAAEnabled, TideEnabled   bool
 }
 
 var integrationEncryptionKeyMu sync.Mutex
@@ -240,6 +243,7 @@ func photographyStoredSecret(encrypted string) string {
 func photographyIntegrationSecretsForUse() photographyIntegrationSecrets {
 	secrets := photographyIntegrationSecrets{
 		AMapWebKey:             strings.TrimSpace(os.Getenv("AMAP_WEB_KEY")),
+		AMapWebServiceKey:      strings.TrimSpace(os.Getenv("AMAP_WEB_SERVICE_KEY")),
 		AMapSecurityKey:        strings.TrimSpace(os.Getenv("AMAP_SECURITY_KEY")),
 		GoogleMapsKey:          strings.TrimSpace(os.Getenv("GOOGLE_MAPS_BROWSER_KEY")),
 		OpenMeteoKey:           strings.TrimSpace(os.Getenv("OPEN_METEO_API_KEY")),
@@ -260,6 +264,9 @@ func photographyIntegrationSecretsForUse() photographyIntegrationSecrets {
 	if config, err := LoadPhotographyIntegrationConfig(); err == nil && config != nil {
 		if value := photographyStoredSecret(config.AMapWebKeyEncrypted); value != "" {
 			secrets.AMapWebKey = value
+		}
+		if value := photographyStoredSecret(config.AMapWebServiceKeyEncrypted); value != "" {
+			secrets.AMapWebServiceKey = value
 		}
 		if value := photographyStoredSecret(config.AMapSecurityKeyEncrypted); value != "" {
 			secrets.AMapSecurityKey = value
@@ -315,7 +322,7 @@ func integrationSecretForWeatherSource(source string) (string, string, bool) {
 func ListPhotographyIntegrationConfig() PhotographyIntegrationConfigView {
 	secrets := photographyIntegrationSecretsForUse()
 	return PhotographyIntegrationConfigView{
-		AMapWebKeyMasked: maskPhotographyAPIKey(secrets.AMapWebKey), AMapSecurityKeyMasked: maskPhotographyAPIKey(secrets.AMapSecurityKey),
+		AMapWebKeyMasked: maskPhotographyAPIKey(secrets.AMapWebKey), AMapWebServiceKeyMasked: maskPhotographyAPIKey(secrets.AMapWebServiceKey), AMapSecurityKeyMasked: maskPhotographyAPIKey(secrets.AMapSecurityKey),
 		GoogleMapsKeyMasked: maskPhotographyAPIKey(secrets.GoogleMapsKey), OpenMeteoKeyMasked: maskPhotographyAPIKey(secrets.OpenMeteoKey),
 		QWeatherKeyMasked: maskPhotographyAPIKey(secrets.QWeatherKey), QWeatherCredentialType: secrets.QWeatherCredentialType, NOAAKeyMasked: maskPhotographyAPIKey(secrets.NOAAKey), TideKeyMasked: maskPhotographyAPIKey(secrets.TideKey),
 		OpenMeteoHost: secrets.OpenMeteoHost, QWeatherHost: secrets.QWeatherHost, NOAAHost: secrets.NOAAHost, TideHost: secrets.TideHost,
@@ -413,6 +420,9 @@ func applyPhotographyIntegrationConfig(config *models.PhotographyIntegrationConf
 
 	if applyMap {
 		if err := updateEncryptedSecret(&config.AMapWebKeyEncrypted, payload.AMapWebKey, payload.ClearAMapWebKey); err != nil {
+			return err
+		}
+		if err := updateEncryptedSecret(&config.AMapWebServiceKeyEncrypted, payload.AMapWebServiceKey, payload.ClearAMapWebServiceKey); err != nil {
 			return err
 		}
 		if err := updateEncryptedSecret(&config.AMapSecurityKeyEncrypted, payload.AMapSecurityKey, payload.ClearAMapSecurityKey); err != nil {
