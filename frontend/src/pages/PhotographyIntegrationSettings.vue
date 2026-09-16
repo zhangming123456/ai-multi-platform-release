@@ -1,8 +1,8 @@
 <template>
   <div class="page-main photography-settings-page">
     <PageHeader
-      title="摄影工具集成"
-      subtitle="配置地图、天气、潮汐和极光服务；密钥由后端 AES-GCM 加密保存"
+      title="第三方服务配置"
+      subtitle="配置地图、天气、潮汐、极光与日历订阅服务；密钥由后端 AES-GCM 加密保存"
     >
       <template #actions>
         <a-button size="mini" :loading="loading" @click="loadConfig">
@@ -20,57 +20,130 @@
 
       <a-spin :loading="loading" class="w-full">
         <a-row :gutter="[16, 16]">
-          <a-col :xs="24" :lg="12">
+          <a-col :xs="24">
             <a-card :bordered="false" class="h-full shadow-sm">
               <template #title>地图服务</template>
-              <a-form :model="form" layout="vertical">
-                <a-form-item label="高德 Web Key（Web端 JS API）">
-                  <a-input-password
-                    v-model="form.amap_web_key"
-                    :placeholder="placeholder(config?.amap_web_key_masked)"
-                    allow-clear
-                  />
-                  <template #extra>
-                    <span class="text-[12px] text-[#86868B]">
-                      用于浏览器地图显示。高德要求区分平台，这里必须填「Web端(JS API)」类型的 Key。
-                    </span>
-                  </template>
-                </a-form-item>
-                <a-checkbox v-model="form.clear_amap_web_key">清除高德 Web Key</a-checkbox>
-                <a-form-item label="高德 Web 服务 Key（服务端）">
-                  <a-input-password
-                    v-model="form.amap_web_service_key"
-                    :placeholder="placeholder(config?.amap_web_service_key_masked)"
-                    allow-clear
-                  />
-                  <template #extra>
-                    <span class="text-[12px] text-[#86868B]">
-                      用于服务端地址搜索（地理编码）。必须填「Web服务」类型的 Key；若误填 Web端
-                      Key，高德会返回 USERKEY_PLAT_NOMATCH。中国大陆强制使用高德，未配置时
-                      地址搜索将不可用（不会降级到其他数据源）。
-                    </span>
-                  </template>
-                </a-form-item>
-                <a-checkbox v-model="form.clear_amap_web_service_key">
-                  清除高德 Web 服务 Key
-                </a-checkbox>
-                <a-form-item label="高德安全密钥（Web端 JS API）">
-                  <a-input-password
-                    v-model="form.amap_security_key"
-                    :placeholder="placeholder(config?.amap_security_key_masked)"
-                    allow-clear
-                  />
-                </a-form-item>
-                <a-checkbox v-model="form.clear_amap_security_key">清除高德安全密钥</a-checkbox>
-                <a-form-item label="Google Maps Browser Key">
-                  <a-input-password
-                    v-model="form.google_maps_key"
-                    :placeholder="placeholder(config?.google_maps_key_masked)"
-                    allow-clear
-                  />
-                </a-form-item>
-                <a-checkbox v-model="form.clear_google_maps_key">清除 Google Maps Key</a-checkbox>
-              </a-form>
+              <div class="provider-blocks">
+                <div class="provider-block">
+                  <div class="provider-block-head">
+                    <div>
+                      <div class="provider-block-title">高德地图</div>
+                      <div class="provider-block-desc">
+                        中国大陆（含港澳台）默认使用，不自动降级。需要分别申请「Web端(JS
+                        API)」与「Web服务」两种 Key。
+                      </div>
+                    </div>
+                  </div>
+                  <a-form :model="form" layout="vertical">
+                    <a-form-item>
+                      <template #label>
+                        高德 Web Key（Web端 JS API）
+                        <a
+                          class="key-guide"
+                          href="https://console.amap.com/dev/key/app"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          如何获取
+                        </a>
+                      </template>
+                      <a-input-password
+                        v-model="form.amap_web_key"
+                        :placeholder="placeholder(config?.amap_web_key_masked)"
+                        allow-clear
+                      />
+                      <template #extra>
+                        <span class="text-[12px] text-[#86868B]">
+                          用于浏览器地图显示。高德要求区分平台，这里必须填「Web端(JS API)」类型的
+                          Key。
+                        </span>
+                      </template>
+                    </a-form-item>
+                    <a-checkbox v-model="form.clear_amap_web_key">清除高德 Web Key</a-checkbox>
+                    <a-form-item>
+                      <template #label>
+                        高德 Web 服务 Key（服务端）
+                        <a
+                          class="key-guide"
+                          href="https://console.amap.com/dev/key/app"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          如何获取
+                        </a>
+                      </template>
+                      <a-input-password
+                        v-model="form.amap_web_service_key"
+                        :placeholder="placeholder(config?.amap_web_service_key_masked)"
+                        allow-clear
+                      />
+                      <template #extra>
+                        <span class="text-[12px] text-[#86868B]">
+                          用于服务端地址搜索（地理编码）。必须填「Web服务」类型的 Key；若误填 Web端
+                          Key，高德会返回 USERKEY_PLAT_NOMATCH。未配置时地址搜索将不可用。
+                        </span>
+                      </template>
+                    </a-form-item>
+                    <a-checkbox v-model="form.clear_amap_web_service_key">
+                      清除高德 Web 服务 Key
+                    </a-checkbox>
+                    <a-form-item>
+                      <template #label>
+                        高德安全密钥（Web端 JS API）
+                        <a
+                          class="key-guide"
+                          href="https://lbs.amap.com/api/javascript-api-v2/guide/abc/prepare"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          如何获取
+                        </a>
+                      </template>
+                      <a-input-password
+                        v-model="form.amap_security_key"
+                        :placeholder="placeholder(config?.amap_security_key_masked)"
+                        allow-clear
+                      />
+                    </a-form-item>
+                    <a-checkbox v-model="form.clear_amap_security_key">清除高德安全密钥</a-checkbox>
+                  </a-form>
+                </div>
+
+                <div class="provider-block">
+                  <div class="provider-block-head">
+                    <div>
+                      <div class="provider-block-title">Google 地图</div>
+                      <div class="provider-block-desc">
+                        非中国大陆地区默认使用。浏览器端 Key 请在 Google Cloud 配置来源（HTTP
+                        referrer）限制。
+                      </div>
+                    </div>
+                  </div>
+                  <a-form :model="form" layout="vertical">
+                    <a-form-item>
+                      <template #label>
+                        Google Maps Browser Key
+                        <a
+                          class="key-guide"
+                          href="https://console.cloud.google.com/google/maps-apis/credentials"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          如何获取
+                        </a>
+                      </template>
+                      <a-input-password
+                        v-model="form.google_maps_key"
+                        :placeholder="placeholder(config?.google_maps_key_masked)"
+                        allow-clear
+                      />
+                    </a-form-item>
+                    <a-checkbox v-model="form.clear_google_maps_key">
+                      清除 Google Maps Key
+                    </a-checkbox>
+                  </a-form>
+                </div>
+              </div>
               <div class="mt-5 flex justify-end">
                 <a-button
                   v-perm="'photography_tool:config:update'"
@@ -84,56 +157,111 @@
             </a-card>
           </a-col>
 
-          <a-col :xs="24" :lg="12">
+          <a-col :xs="24">
             <a-card :bordered="false" class="h-full shadow-sm">
               <template #title>天气服务</template>
-              <a-form :model="form" layout="vertical">
-                <div
-                  v-for="provider in config?.weather_providers || []"
-                  :key="provider.id"
-                  class="provider-row"
+              <template #extra>
+                <router-link
+                  v-perm="'photography_weather_config:read'"
+                  class="key-guide"
+                  to="/settings/photography-weather"
                 >
-                  <div>
-                    <div class="font-medium">{{ provider.name }}</div>
-                    <div class="text-xs text-[#86868B]">
-                      {{ provider.configured ? provider.api_key_masked || '无需 Key' : '未配置' }}
+                  按模型 / 数据源配置
+                </router-link>
+              </template>
+              <div class="provider-blocks">
+                <div class="provider-block">
+                  <div class="provider-block-head">
+                    <div>
+                      <div class="provider-block-title">Open-Meteo</div>
+                      <div class="provider-block-desc">
+                        日出日落、云量、降水概率与空间分布的核心数据来源；不配置 Key 也可以使用。
+                      </div>
+                      <div class="provider-block-status">
+                        {{ providerHint('weather_providers', 'open-meteo') }}
+                      </div>
                     </div>
+                    <a-switch v-model="form.open_meteo_enabled" />
                   </div>
-                  <a-switch v-if="provider.id === 'open-meteo'" v-model="form.open_meteo_enabled" />
-                  <a-switch v-else v-model="form.qweather_enabled" />
+                  <a-form :model="form" layout="vertical">
+                    <a-form-item label="Open-Meteo API Host">
+                      <a-input
+                        v-model="form.open_meteo_host"
+                        placeholder="https://api.open-meteo.com/v1/forecast"
+                      />
+                    </a-form-item>
+                    <a-form-item>
+                      <template #label>
+                        Open-Meteo API Key（可选）
+                        <a
+                          class="key-guide"
+                          href="https://open-meteo.com/en/pricing"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          如何获取
+                        </a>
+                      </template>
+                      <a-input-password
+                        v-model="form.open_meteo_key"
+                        :placeholder="placeholder(config?.open_meteo_key_masked)"
+                        allow-clear
+                      />
+                    </a-form-item>
+                    <a-checkbox v-model="form.clear_open_meteo_key">清除 Open-Meteo Key</a-checkbox>
+                  </a-form>
                 </div>
-                <a-form-item label="Open-Meteo API Host">
-                  <a-input
-                    v-model="form.open_meteo_host"
-                    placeholder="https://api.open-meteo.com/v1/forecast"
-                  />
-                </a-form-item>
-                <a-form-item label="Open-Meteo API Key（可选）">
-                  <a-input-password
-                    v-model="form.open_meteo_key"
-                    :placeholder="placeholder(config?.open_meteo_key_masked)"
-                    allow-clear
-                  />
-                </a-form-item>
-                <a-checkbox v-model="form.clear_open_meteo_key">清除 Open-Meteo Key</a-checkbox>
-                <a-form-item label="和风天气认证方式">
-                  <a-radio-group v-model="form.qweather_credential_type" type="button">
-                    <a-radio value="api_key">API Key</a-radio>
-                    <a-radio value="token">JWT Token</a-radio>
-                  </a-radio-group>
-                </a-form-item>
-                <a-form-item label="和风天气 API Key / Token">
-                  <a-input-password
-                    v-model="form.qweather_key"
-                    :placeholder="placeholder(config?.qweather_key_masked)"
-                    allow-clear
-                  />
-                </a-form-item>
-                <a-checkbox v-model="form.clear_qweather_key">清除和风天气 Key / Token</a-checkbox>
-                <a-form-item label="和风天气 API Host">
-                  <a-input v-model="form.qweather_host" placeholder="https://devapi.qweather.com" />
-                </a-form-item>
-              </a-form>
+
+                <div class="provider-block">
+                  <div class="provider-block-head">
+                    <div>
+                      <div class="provider-block-title">和风天气</div>
+                      <div class="provider-block-desc">
+                        支持 API Key 与 JWT Token 两种认证方式，逐日与逐小时数据最多未来 10 天。
+                      </div>
+                      <div class="provider-block-status">
+                        {{ providerHint('weather_providers', 'qweather') }}
+                      </div>
+                    </div>
+                    <a-switch v-model="form.qweather_enabled" />
+                  </div>
+                  <a-form :model="form" layout="vertical">
+                    <a-form-item label="和风天气认证方式">
+                      <a-radio-group v-model="form.qweather_credential_type" type="button">
+                        <a-radio value="api_key">API Key</a-radio>
+                        <a-radio value="token">JWT Token</a-radio>
+                      </a-radio-group>
+                    </a-form-item>
+                    <a-form-item>
+                      <template #label>
+                        和风天气 API Key / Token
+                        <a
+                          class="key-guide"
+                          href="https://console.qweather.com/project"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          如何获取
+                        </a>
+                      </template>
+                      <a-input-password
+                        v-model="form.qweather_key"
+                        :placeholder="placeholder(config?.qweather_key_masked)"
+                        allow-clear
+                      />
+                    </a-form-item>
+                    <a-checkbox v-model="form.clear_qweather_key">
+                      清除和风天气 Key / Token
+                    </a-checkbox>
+                    <a-form-item label="和风天气 API Host">
+                      <a-input
+                        v-model="form.qweather_host"
+                        placeholder="https://devapi.qweather.com"
+                      />
+                    </a-form-item>
+                  </a-form>
+                </div>
+              </div>
               <div class="mt-5 flex justify-end">
                 <a-button
                   v-perm="'photography_tool:config:update'"
@@ -150,26 +278,58 @@
           <a-col :xs="24" :lg="12">
             <a-card :bordered="false" class="h-full shadow-sm">
               <template #title>潮汐服务</template>
-              <a-form :model="form" layout="vertical">
-                <div class="provider-row">
-                  <div>
-                    <div class="font-medium">NOAA CO-OPS</div>
-                    <div class="text-xs text-[#86868B]">美国海域公共站点，无需 Key</div>
+              <template #extra>
+                <a-space :size="8">
+                  <span class="text-xs text-[#86868B]">启用潮汐服务</span>
+                  <a-switch v-model="form.tide_enabled" size="small" />
+                </a-space>
+              </template>
+              <div class="provider-blocks">
+                <div class="provider-block">
+                  <div class="provider-block-head">
+                    <div>
+                      <div class="provider-block-title">NOAA CO-OPS</div>
+                      <div class="provider-block-desc">美国海域官方站点，无需 Key。</div>
+                    </div>
                   </div>
-                  <a-switch v-model="form.tide_enabled" />
                 </div>
-                <a-form-item label="全球潮汐服务 Key（Stormglass 等）">
-                  <a-input-password
-                    v-model="form.tide_key"
-                    :placeholder="placeholder(config?.tide_key_masked)"
-                    allow-clear
-                  />
-                </a-form-item>
-                <a-checkbox v-model="form.clear_tide_key">清除潮汐服务 Key</a-checkbox>
-                <a-form-item label="全球潮汐 API Host">
-                  <a-input v-model="form.tide_host" placeholder="可选，由后端适配器使用" />
-                </a-form-item>
-              </a-form>
+
+                <div class="provider-block">
+                  <div class="provider-block-head">
+                    <div>
+                      <div class="provider-block-title">Stormglass（全球潮汐）</div>
+                      <div class="provider-block-desc">覆盖美国以外海域，需要 API Key。</div>
+                      <div class="provider-block-status">
+                        {{ providerHint('tide_providers', 'stormglass') }}
+                      </div>
+                    </div>
+                  </div>
+                  <a-form :model="form" layout="vertical">
+                    <a-form-item>
+                      <template #label>
+                        全球潮汐服务 Key（Stormglass 等）
+                        <a
+                          class="key-guide"
+                          href="https://dashboard.stormglass.io/"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          如何获取
+                        </a>
+                      </template>
+                      <a-input-password
+                        v-model="form.tide_key"
+                        :placeholder="placeholder(config?.tide_key_masked)"
+                        allow-clear
+                      />
+                    </a-form-item>
+                    <a-checkbox v-model="form.clear_tide_key">清除潮汐服务 Key</a-checkbox>
+                    <a-form-item label="全球潮汐 API Host">
+                      <a-input v-model="form.tide_host" placeholder="可选，由后端适配器使用" />
+                    </a-form-item>
+                  </a-form>
+                </div>
+              </div>
               <div class="mt-5 flex justify-end">
                 <a-button
                   v-perm="'photography_tool:config:update'"
@@ -186,29 +346,49 @@
           <a-col :xs="24" :lg="12">
             <a-card :bordered="false" class="h-full shadow-sm">
               <template #title>极光服务</template>
-              <a-form :model="form" layout="vertical">
-                <div class="provider-row">
-                  <div>
-                    <div class="font-medium">NOAA SWPC</div>
-                    <div class="text-xs text-[#86868B]">公开 Kp 指数；Key 可选</div>
+              <div class="provider-blocks">
+                <div class="provider-block">
+                  <div class="provider-block-head">
+                    <div>
+                      <div class="provider-block-title">NOAA SWPC</div>
+                      <div class="provider-block-desc">
+                        公开 Kp 指数预报，Key 可选，仅用于提高配额。
+                      </div>
+                      <div class="provider-block-status">
+                        {{ providerHint('aurora_providers', 'noaa-swpc') }}
+                      </div>
+                    </div>
+                    <a-switch v-model="form.noaa_enabled" />
                   </div>
-                  <a-switch v-model="form.noaa_enabled" />
+                  <a-form :model="form" layout="vertical">
+                    <a-form-item>
+                      <template #label>
+                        NOAA API Key（可选）
+                        <a
+                          class="key-guide"
+                          href="https://www.ncei.noaa.gov/cdo-web/token"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          如何获取
+                        </a>
+                      </template>
+                      <a-input-password
+                        v-model="form.noaa_key"
+                        :placeholder="placeholder(config?.noaa_key_masked)"
+                        allow-clear
+                      />
+                    </a-form-item>
+                    <a-checkbox v-model="form.clear_noaa_key">清除 NOAA Key</a-checkbox>
+                    <a-form-item label="NOAA Host">
+                      <a-input
+                        v-model="form.noaa_host"
+                        placeholder="可选，默认 services.swpc.noaa.gov"
+                      />
+                    </a-form-item>
+                  </a-form>
                 </div>
-                <a-form-item label="NOAA API Key（可选）">
-                  <a-input-password
-                    v-model="form.noaa_key"
-                    :placeholder="placeholder(config?.noaa_key_masked)"
-                    allow-clear
-                  />
-                </a-form-item>
-                <a-checkbox v-model="form.clear_noaa_key">清除 NOAA Key</a-checkbox>
-                <a-form-item label="NOAA Host">
-                  <a-input
-                    v-model="form.noaa_host"
-                    placeholder="可选，默认 services.swpc.noaa.gov"
-                  />
-                </a-form-item>
-              </a-form>
+              </div>
               <div class="mt-5 flex justify-end">
                 <a-button
                   v-perm="'photography_tool:config:update'"
@@ -221,6 +401,23 @@
               </div>
             </a-card>
           </a-col>
+
+          <a-col v-if="canReadHolidaySource" :xs="24">
+            <a-card :bordered="false" class="shadow-sm">
+              <template #title>日历订阅源</template>
+              <template #extra>
+                <a
+                  class="key-guide"
+                  href="https://support.apple.com/zh-cn/guide/calendar/icl1022/mac"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  如何获取订阅地址
+                </a>
+              </template>
+              <HolidaySourceManager />
+            </a-card>
+          </a-col>
         </a-row>
       </a-spin>
     </div>
@@ -228,11 +425,13 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { Message } from '@arco-design/web-vue'
 import { IconRefresh } from '@arco-design/web-vue/es/icon'
 import PageHeader from '@/components/layout/PageHeader.vue'
+import HolidaySourceManager from '@/components/HolidaySourceManager.vue'
 import api, { getApiErrorDetail } from '@/utils/api'
+import { usePermissionStore } from '@/stores/permission'
 import type {
   PhotographyIntegrationConfig,
   PhotographyIntegrationForm,
@@ -242,6 +441,20 @@ import type {
 
 const config = ref<PhotographyIntegrationConfig | null>(null)
 const loading = ref(false)
+const permStore = usePermissionStore()
+// 日历订阅源有自己的权限位，无权限时不渲染该卡片。
+const canReadHolidaySource = computed(() => permStore.hasPermission('holiday_source:read'))
+
+type ProviderGroup = 'weather_providers' | 'tide_providers' | 'aurora_providers'
+
+// 小区域头部展示凭据状态：已配置脱敏值 / 未配置 / 无需 Key。
+function providerHint(group: ProviderGroup, id: string): string {
+  const provider = (config.value?.[group] || []).find((item) => item.id === id)
+  if (!provider) return ''
+  if (provider.api_key_masked) return `已配置 ${provider.api_key_masked}`
+  return provider.requires_key ? '未配置' : '无需 Key'
+}
+
 const savingSections = reactive<Record<PhotographyIntegrationSection, boolean>>({
   map: false,
   weather: false,
@@ -436,13 +649,60 @@ onMounted(loadConfig)
 </script>
 
 <style scoped lang="scss">
-.provider-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 14px;
+.key-guide {
+  margin-left: 6px;
+  font-size: 12px;
+  font-weight: 400;
+  color: #007aff;
+  text-decoration: none;
+}
+
+.key-guide:hover {
+  color: #0071e3;
+  text-decoration: underline;
+}
+
+.provider-blocks {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 14px;
+}
+
+.provider-block {
+  border: 1px solid #e5e5ea;
   border-radius: 12px;
-  background: #f5f5f7;
-  padding: 11px 13px;
+  background: #fafafa;
+  padding: 14px 16px;
+}
+
+.provider-block-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.provider-block-head > div:first-child {
+  min-width: 0;
+}
+
+.provider-block-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1d1d1f;
+}
+
+.provider-block-desc {
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #86868b;
+}
+
+.provider-block-status {
+  margin-top: 6px;
+  font-size: 12px;
+  color: #007aff;
 }
 </style>

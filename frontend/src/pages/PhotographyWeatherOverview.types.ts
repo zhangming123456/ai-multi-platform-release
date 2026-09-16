@@ -134,6 +134,32 @@ export interface PhotographyMapConfig {
   security_key: string
   message: string
 }
+/** 空间分布图（概率图 / 云量质量图的地图模式）单个网格。 */
+export interface PhotographySpatialCell {
+  latitude: number
+  longitude: number
+  cloud_cover: number | null
+  precipitation_probability: number | null
+  probability: number | null
+  probability_level: PhotographyEstimateLevel | ''
+  cloud_quality: number | null
+  cloud_quality_level: PhotographyEstimateLevel | ''
+}
+export interface PhotographySpatialGrid {
+  date: string
+  period: 'sunrise' | 'sunset'
+  rows: number
+  cols: number
+  step_latitude: number
+  step_longitude: number
+  latitude: number
+  longitude: number
+  timezone: string
+  source: string
+  source_name: string
+  message: string
+  cells: PhotographySpatialCell[]
+}
 export interface PhotographyWeatherSource {
   id: string
   name: string

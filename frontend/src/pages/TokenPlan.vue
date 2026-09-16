@@ -275,7 +275,18 @@
         </template>
 
         <div class="tp-row">
-          <label class="tp-label"><i class="tp-req">*</i>API 密钥</label>
+          <div class="tp-labelrow">
+            <label class="tp-label"><i class="tp-req">*</i>API 密钥</label>
+            <a
+              v-if="apiKeyGuideUrl"
+              class="tp-inline tp-guide"
+              :href="apiKeyGuideUrl"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <IconLink :size="14" />前往获取密钥
+            </a>
+          </div>
           <input
             v-model="form.apiKey"
             class="tp-field"
@@ -658,6 +669,20 @@ const providerOptions = [
   { value: 'gemini', label: 'Google Gemini' },
   { value: 'volcengine', label: '火山方舟' },
 ]
+
+// 各服务商控制台的密钥申请入口；自定义配置模式没有固定入口，不展示链接。
+const API_KEY_GUIDES: Record<string, string> = {
+  openai: 'https://platform.openai.com/api-keys',
+  deepseek: 'https://platform.deepseek.com/api_keys',
+  moonshot: 'https://platform.moonshot.cn/console/api-keys',
+  zhipu: 'https://bigmodel.cn/usercenter/apikeys',
+  gemini: 'https://aistudio.google.com/app/apikey',
+  volcengine: 'https://console.volcengine.com/ark',
+}
+
+const apiKeyGuideUrl = computed(() =>
+  form.value.mode === 'provider' ? API_KEY_GUIDES[form.value.provider] || '' : '',
+)
 
 const apiFormatOptions = [
   { value: 'openai_chat', label: 'OpenAI Chat Completions 格式' },
@@ -1445,6 +1470,14 @@ body.tp-cabin-open .tp-opt-meta {
   gap: 7px;
   color: #86868b;
   font-size: 13px;
+}
+.tp-guide {
+  color: #007aff;
+  text-decoration: none;
+}
+.tp-guide:hover {
+  color: #0071e3;
+  text-decoration: underline;
 }
 
 .tp-field {

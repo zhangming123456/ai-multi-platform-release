@@ -134,17 +134,22 @@
           >
           <a-col :xs="24" :lg="6">
             <div class="coordinate-map">
-              <div
-                ref="mapCanvas"
+              <PhotographyMapPanel
+                v-if="mapConfig && mapPanelVisible"
                 class="map-canvas"
-                :class="{ 'map-canvas-hidden': !mapReady }"
-              ></div>
+                :config="mapConfig"
+                :center="mapCenter"
+                :zoom="14"
+                @ready="mapReady = true"
+                @pick="applyMapCoordinate"
+                @error="handleMapError"
+              />
               <div v-if="!mapReady" class="map-fallback" @click="pickMapCoordinate">
                 <div class="map-grid"></div>
                 <div class="map-marker" :style="markerStyle"><IconLocation :size="22" /></div>
                 <div class="map-label"><IconLocation :size="13" /> 点击地图区域选点</div>
               </div>
-              <div v-else class="map-label map-sdk-label">
+              <div v-else-if="mapPanelVisible" class="map-label map-sdk-label">
                 <IconLocation :size="13" /> 点击地图选点
               </div>
             </div>
@@ -415,60 +420,78 @@
           <a-row :gutter="16" class="mb-4"
             ><a-col :xs="24" :lg="12"
               ><a-card :bordered="false" class="shadow-sm"
-                ><template #title>概率图</template>
-                <div class="chart-bars">
-                  <div
-                    v-for="series in overview.charts.probability"
-                    :key="series.name"
-                    class="chart-series"
-                  >
-                    <span class="chart-name" :style="{ color: series.color }">{{
-                      series.name
-                    }}</span>
-                    <div class="chart-columns">
-                      <div
-                        v-for="(value, index) in series.values"
-                        :key="index"
-                        class="chart-column"
-                      >
-                        <span
-                          class="chart-bar"
-                          :style="{ height: value + '%', background: series.color }"
-                        ></span
-                        ><small>{{ value }}</small>
-                      </div>
-                    </div>
-                  </div>
-                </div></a-card
-              ></a-col
+                ><template #title>概率图</template
+                ><template #extra
+                  ><a-radio-group v-model="spatialPeriod" size="mini" type="button"
+                    ><a-radio value="sunrise">朝霞</a-radio
+                    ><a-radio value="sunset">晚霞</a-radio></a-radio-group
+                  ></template
+                >
+                <div class="spatial-map-wrap">
+                  <PhotographySpatialMap
+                    v-if="mapConfig && spatialCenter"
+                    :config="mapConfig"
+                    :center="spatialCenter"
+                    :zoom="spatialZoom"
+                    :step-latitude="spatialStepLatitude"
+                    :step-longitude="spatialStepLongitude"
+                    :cells="probabilityCells"
+                    @error="handleSpatialMapError"
+                  />
+                  <a-empty v-else :description="spatialPlaceholder" class="spatial-map-empty" />
+                  <div v-if="spatialLoading" class="spatial-map-loading">正在计算周边分布…</div>
+                </div>
+                <div class="spatial-legend">
+                  <span v-for="item in spatialLegend" :key="item.label">
+                    <i :style="{ background: item.color }"></i>{{ item.label }}
+                  </span>
+                  <span><i style="background: #e5e7eb"></i>无数据</span>
+                </div>
+                <div class="mt-2 text-xs text-[#86868B]">
+                  周边网格估算，色块越绿越适合拍摄；{{ spatialPeriodLabel }}时段，{{
+                    spatialGrid?.date || overview.days[0]?.date || '今天'
+                  }}。
+                </div>
+                <div v-if="spatialGrid?.message" class="mt-1 text-xs text-[#86868B]">
+                  {{ spatialGrid.message }}
+                </div>
+                <div v-if="spatialError" class="mt-1 text-xs text-[#B45309]">
+                  {{ spatialError }}
+                </div>
+              </a-card></a-col
             ><a-col :xs="24" :lg="12"
               ><a-card :bordered="false" class="shadow-sm"
-                ><template #title>云量质量图</template>
-                <div class="chart-bars">
-                  <div
-                    v-for="series in overview.charts.cloud_quality"
-                    :key="series.name"
-                    class="chart-series"
-                  >
-                    <span class="chart-name" :style="{ color: series.color }">{{
-                      series.name
-                    }}</span>
-                    <div class="chart-columns">
-                      <div
-                        v-for="(value, index) in series.values"
-                        :key="index"
-                        class="chart-column"
-                      >
-                        <span
-                          class="chart-bar"
-                          :style="{ height: value + '%', background: series.color }"
-                        ></span
-                        ><small>{{ value }}</small>
-                      </div>
-                    </div>
-                  </div>
-                </div></a-card
-              ></a-col
+                ><template #title>云量质量图</template
+                ><template #extra
+                  ><span class="text-xs text-[#86868B]"
+                    >{{ spatialPeriodLabel }}时段</span
+                  ></template
+                >
+                <div class="spatial-map-wrap">
+                  <PhotographySpatialMap
+                    v-if="mapConfig && spatialCenter"
+                    :config="mapConfig"
+                    :center="spatialCenter"
+                    :zoom="spatialZoom"
+                    :step-latitude="spatialStepLatitude"
+                    :step-longitude="spatialStepLongitude"
+                    :cells="cloudQualityCells"
+                    @error="handleSpatialMapError"
+                  />
+                  <a-empty v-else :description="spatialPlaceholder" class="spatial-map-empty" />
+                  <div v-if="spatialLoading" class="spatial-map-loading">正在计算周边分布…</div>
+                </div>
+                <div class="spatial-legend">
+                  <span v-for="item in spatialLegend" :key="item.label">
+                    <i :style="{ background: item.color }"></i>{{ item.label }}
+                  </span>
+                  <span><i style="background: #e5e7eb"></i>无数据</span>
+                </div>
+                <div class="mt-2 text-xs text-[#86868B]">
+                  云量质量按 50% 云量最佳估算；网格步长约
+                  {{ (spatialStepLatitude * 111).toFixed(0) }} km。
+                </div>
+              </a-card></a-col
             ></a-row
           >
           <a-card :bordered="false" class="shadow-sm"
@@ -499,10 +522,13 @@ import * as echarts from 'echarts'
 import { Message } from '@arco-design/web-vue'
 import { IconLocation, IconRefresh, IconSearch } from '@arco-design/web-vue/es/icon'
 import PageHeader from '@/components/layout/PageHeader.vue'
+import PhotographyMapPanel from '@/components/PhotographyMapPanel.vue'
+import PhotographySpatialMap from '@/components/PhotographySpatialMap.vue'
 import api, { WEATHER_API_TIMEOUT, getApiErrorDetail } from '@/utils/api'
 import {
   amapTipToLocation,
   ensureAmapJS,
+  isValidPhotographyCoordinate,
   reverseGeocodeByAmapJS,
   searchLocationsByAmapJS,
 } from '@/utils/amapSearch'
@@ -515,74 +541,10 @@ import type {
   PhotographyLocationResult,
   PhotographyMapConfig,
   PhotographyOverview,
+  PhotographySpatialGrid,
   PhotographyWeatherSource,
 } from './PhotographyWeatherOverview.types'
 
-interface AMapLngLat {
-  getLng(): number
-  getLat(): number
-}
-interface AMapClickEvent {
-  lnglat: AMapLngLat
-}
-interface AMapInstance {
-  on(event: string, handler: (event: AMapClickEvent) => void): void
-  setCenter(center: [number, number]): void
-  setZoom(zoom: number): void
-  destroy?(): void
-}
-interface AMapMarkerInstance {
-  setPosition(position: [number, number]): void
-  setMap(map: AMapInstance | null): void
-}
-interface AMapApi {
-  Map: new (
-    container: HTMLElement,
-    options: { zoom: number; center: [number, number] },
-  ) => AMapInstance
-  Marker: new (options: { position: [number, number] }) => AMapMarkerInstance
-}
-interface GoogleLatLng {
-  lat(): number
-  lng(): number
-}
-interface GoogleMapClickEvent {
-  latLng?: GoogleLatLng
-}
-interface GoogleMapInstance {
-  setCenter(center: { lat: number; lng: number }): void
-  setZoom(zoom: number): void
-  addListener(event: string, handler: (event: GoogleMapClickEvent) => void): void
-}
-interface GoogleMarkerInstance {
-  setPosition(position: { lat: number; lng: number }): void
-  setMap(map: GoogleMapInstance | null): void
-}
-interface GoogleMapsApi {
-  Map: new (
-    container: HTMLElement,
-    options: {
-      center: { lat: number; lng: number }
-      zoom: number
-      mapTypeControl: boolean
-      streetViewControl: boolean
-      fullscreenControl: boolean
-    },
-  ) => GoogleMapInstance
-  Marker: new (options: {
-    position: { lat: number; lng: number }
-    map: GoogleMapInstance
-  }) => GoogleMarkerInstance
-}
-declare global {
-  interface Window {
-    AMap?: AMapApi
-    google?: { maps?: GoogleMapsApi }
-    _AMapSecurityConfig?: { securityJsCode: string }
-  }
-}
-
-const mapScriptPromises: Partial<Record<'amap' | 'google', Promise<void>>> = {}
 const locationStore = useLocationStore()
 const { selectedTz } = useRegionStore()
 const overview = ref<PhotographyOverview | null>(null)
@@ -610,7 +572,6 @@ const countryCode = ref('')
 const locationCountryCodeLocked = ref(false)
 const timezone = ref('')
 const mapConfig = ref<PhotographyMapConfig | null>(null)
-const mapCanvas = ref<HTMLElement | null>(null)
 const loading = ref(false)
 const locating = computed(() => locationStore.isLocating)
 const sourcesLoading = ref(false)
@@ -618,13 +579,6 @@ const mapReady = ref(false)
 const mapError = ref('')
 const updatedAt = ref('—')
 let searchTimer: number | undefined
-let amapInstance: AMapInstance | null = null
-let amapMarker: AMapMarkerInstance | null = null
-let googleMapInstance: GoogleMapInstance | null = null
-let googleMarker: GoogleMarkerInstance | null = null
-let activeMapProvider: 'amap' | 'google' | null = null
-// 进入页面时立即发起的定位，地图首次初始化会等它返回，避免先落在 (0,0) 再跳。
-let enterLocatePromise: Promise<unknown> | null = null
 const hourlyChartRef = ref<HTMLDivElement | null>(null)
 let hourlyChart: echarts.ECharts | null = null
 
@@ -772,23 +726,108 @@ async function loadSources() {
     sourcesLoading.value = false
   }
 }
-function currentMapCenter() {
-  return { lat: latitude.value || 0, lng: longitude.value || 0 }
-}
 function hasCoordinates() {
-  return latitude.value !== undefined && longitude.value !== undefined
+  return isValidPhotographyCoordinate(latitude.value ?? NaN, longitude.value ?? NaN)
 }
-function disposeMap() {
-  if (amapMarker) amapMarker.setMap(null)
-  amapInstance?.destroy?.()
-  googleMarker?.setMap(null)
-  amapInstance = null
-  amapMarker = null
-  googleMapInstance = null
-  googleMarker = null
-  activeMapProvider = null
+// 有配置且有坐标才挂载地图组件，加载、创建与销毁都交给组件自身的生命周期。
+const mapPanelVisible = computed(
+  () =>
+    Boolean(
+      mapConfig.value?.configured && mapConfig.value.provider && mapConfig.value.browser_key,
+    ) && hasCoordinates(),
+)
+const mapCenter = computed<[number, number]>(() => [longitude.value ?? 0, latitude.value ?? 0])
+
+// —— 概率图 / 云量质量图的地图模式：周边网格色块 ——
+const spatialGrid = ref<PhotographySpatialGrid | null>(null)
+const spatialPeriod = ref<'sunrise' | 'sunset'>('sunset')
+const spatialLoading = ref(false)
+const spatialError = ref('')
+const spatialZoom = 9
+const spatialLegend = [
+  { label: '优', color: '#22C55E' },
+  { label: '良', color: '#3B82F6' },
+  { label: '一般', color: '#F59E0B' },
+  { label: '不建议', color: '#EF4444' },
+]
+const spatialPeriodLabel = computed(() => (spatialPeriod.value === 'sunrise' ? '朝霞' : '晚霞'))
+const spatialCenter = computed<[number, number] | null>(() =>
+  hasCoordinates() ? [longitude.value as number, latitude.value as number] : null,
+)
+const spatialStepLatitude = computed(() => spatialGrid.value?.step_latitude || 0.2)
+const spatialStepLongitude = computed(() => spatialGrid.value?.step_longitude || 0.2)
+const spatialPlaceholder = computed(() => {
+  if (!hasCoordinates()) return '先获取当前位置或搜索一个地点'
+  if (!mapConfig.value?.configured) return '地图服务未配置，无法显示分布图'
+  return '暂无周边分布数据'
+})
+
+function spatialLevelColor(level: string) {
+  return (
+    (
+      {
+        excellent: '#22C55E',
+        good: '#3B82F6',
+        fair: '#F59E0B',
+        poor: '#EF4444',
+      } as Record<string, string>
+    )[level] || '#E5E7EB'
+  )
+}
+
+function paintSpatialCells(metric: 'probability' | 'cloud_quality') {
+  const grid = spatialGrid.value
+  if (!grid) return []
+  return grid.cells
+    .filter((cell) => isValidPhotographyCoordinate(cell.latitude, cell.longitude))
+    .map((cell) => {
+      const value = metric === 'probability' ? cell.probability : cell.cloud_quality
+      const level = metric === 'probability' ? cell.probability_level : cell.cloud_quality_level
+      return {
+        latitude: cell.latitude,
+        longitude: cell.longitude,
+        color: value === null || value === undefined ? '#E5E7EB' : spatialLevelColor(level),
+        label: `${value ?? '—'} · ${levelLabel(level)}`,
+      }
+    })
+}
+
+const probabilityCells = computed(() => paintSpatialCells('probability'))
+const cloudQualityCells = computed(() => paintSpatialCells('cloud_quality'))
+
+function handleSpatialMapError(message: string) {
+  spatialError.value = message || '地图服务不可用'
+}
+
+async function runSpatialQuery() {
+  if (!hasCoordinates()) return
+  spatialLoading.value = true
+  spatialError.value = ''
+  try {
+    const response = await api.get<PhotographySpatialGrid>('/photography-tools/spatial', {
+      params: {
+        latitude: latitude.value,
+        longitude: longitude.value,
+        date: overview.value?.days[0]?.date,
+        period: spatialPeriod.value,
+        weather_source: weatherSource.value,
+      },
+      timeout: WEATHER_API_TIMEOUT,
+    })
+    spatialGrid.value = response.data
+  } catch (error) {
+    // 查询失败保留上一次分布，只提示第三方天气服务不可用。
+    spatialError.value =
+      (getApiErrorDetail(error) || '空间分布服务暂不可用') +
+      (spatialGrid.value ? '，已保留上一次结果' : '')
+  } finally {
+    spatialLoading.value = false
+  }
+}
+
+function handleMapError(message: string) {
   mapReady.value = false
-  if (mapCanvas.value) mapCanvas.value.innerHTML = ''
+  mapError.value = message || '地图服务不可用，仍可使用地址搜索或经纬度输入'
 }
 function applyMapCoordinate(lat: number, lon: number) {
   latitude.value = Number(lat.toFixed(6))
@@ -798,95 +837,8 @@ function applyMapCoordinate(lat: number, lon: number) {
   countryCode.value = ''
   locationCountryCodeLocked.value = false
   timezone.value = ''
-  syncMapPosition()
   void fillAddressFromCoordinates(latitude.value, longitude.value)
   void runQuery()
-}
-function syncMapPosition() {
-  if (!mapReady.value) return
-  const center = currentMapCenter()
-  if (activeMapProvider === 'amap' && amapInstance && amapMarker) {
-    amapInstance.setCenter([center.lng, center.lat])
-    amapInstance.setZoom(14)
-    amapMarker.setPosition([center.lng, center.lat])
-  } else if (activeMapProvider === 'google' && googleMapInstance && googleMarker) {
-    const position = { lat: center.lat, lng: center.lng }
-    googleMapInstance.setCenter(position)
-    googleMapInstance.setZoom(14)
-    googleMarker.setPosition(position)
-  }
-}
-async function loadMapSdk(config: PhotographyMapConfig) {
-  if (!config.configured) {
-    disposeMap()
-    return
-  }
-  // 高德统一交给 utils/amapSearch（带 AutoComplete / Geocoder 插件），Google 单独加载脚本。
-  if (config.provider === 'amap') {
-    await ensureAmapJS(config)
-    return
-  }
-  if (!mapScriptPromises.google) {
-    mapScriptPromises.google = new Promise<void>((resolve, reject) => {
-      if (window.google?.maps) {
-        resolve()
-        return
-      }
-      const script = document.createElement('script')
-      script.async = true
-      script.dataset.photographyMap = 'google'
-      script.src =
-        'https://maps.googleapis.com/maps/api/js?key=' + encodeURIComponent(config.browser_key)
-      script.onload = () => {
-        if (window.google?.maps) resolve()
-        else reject(new Error('Google 地图 SDK 未正确初始化'))
-      }
-      script.onerror = () => reject(new Error('Google 地图 SDK 加载失败'))
-      document.head.appendChild(script)
-    })
-  }
-  await mapScriptPromises.google
-}
-async function initializeMap(config: PhotographyMapConfig) {
-  await nextTick()
-  if (!mapCanvas.value || !config.configured) return
-  if (activeMapProvider === config.provider && mapReady.value) {
-    syncMapPosition()
-    return
-  }
-  // 首次定位完成后，地图和 marker 才能直接落在当前经纬度上。
-  if (!hasCoordinates() && enterLocatePromise) await enterLocatePromise.catch(() => {})
-  if (!mapCanvas.value) return
-  disposeMap()
-  const center = currentMapCenter()
-  if (config.provider === 'amap') {
-    const AMap = window.AMap
-    if (!AMap) throw new Error('高德地图 SDK 不可用')
-    amapInstance = new AMap.Map(mapCanvas.value, { zoom: 14, center: [center.lng, center.lat] })
-    amapMarker = new AMap.Marker({ position: [center.lng, center.lat] })
-    amapMarker.setMap(amapInstance)
-    amapInstance.on('click', (event) =>
-      applyMapCoordinate(event.lnglat.getLat(), event.lnglat.getLng()),
-    )
-  } else {
-    const maps = window.google?.maps
-    if (!maps) throw new Error('Google 地图 SDK 不可用')
-    googleMapInstance = new maps.Map(mapCanvas.value, {
-      center,
-      zoom: 14,
-      mapTypeControl: false,
-      streetViewControl: false,
-      fullscreenControl: false,
-    })
-    googleMarker = new maps.Marker({ position: center, map: googleMapInstance })
-    googleMapInstance.addListener('click', (event) => {
-      const lat = event.latLng?.lat()
-      const lon = event.latLng?.lng()
-      if (lat !== undefined && lon !== undefined) applyMapCoordinate(lat, lon)
-    })
-  }
-  activeMapProvider = config.provider
-  mapReady.value = true
 }
 let mapConfigPromise: Promise<void> | null = null
 // 挂载预加载与定位后查询会并发调用，复用同一次地图配置请求。
@@ -905,14 +857,9 @@ async function doLoadMapConfig() {
     })
     mapConfig.value = response.data || null
     mapError.value = ''
-    if (!mapConfig.value?.configured) {
-      disposeMap()
-      return
-    }
-    await loadMapSdk(mapConfig.value)
-    await initializeMap(mapConfig.value)
   } catch (error) {
-    disposeMap()
+    mapConfig.value = null
+    mapReady.value = false
     mapError.value = getApiErrorDetail(error) || '地图服务不可用，仍可使用地址搜索或经纬度输入'
   }
 }
@@ -941,6 +888,7 @@ async function runQuery() {
     countryCode.value = overview.value.location.country_code
     updatedAt.value = new Date().toLocaleString('zh-CN', { hour12: false })
     await renderHourlyChart()
+    void runSpatialQuery()
   } catch (error) {
     Message.error(getApiErrorDetail(error) || '天气服务暂不可用，已保留上一次结果')
   } finally {
@@ -961,7 +909,6 @@ async function useCurrentLocation(force = true) {
   locationCountryCodeLocked.value = false
   timezone.value = ''
   clearSearch()
-  syncMapPosition()
   void fillAddressFromCoordinates(latitude.value, longitude.value)
   await runQuery()
 }
@@ -971,9 +918,10 @@ function handleCoordinateInput() {
   countryCode.value = ''
   locationCountryCodeLocked.value = false
   timezone.value = ''
-  syncMapPosition()
-  if (latitude.value !== undefined && longitude.value !== undefined) {
-    void fillAddressFromCoordinates(latitude.value, longitude.value)
+  const lat = latitude.value ?? NaN
+  const lon = longitude.value ?? NaN
+  if (isValidPhotographyCoordinate(lat, lon)) {
+    void fillAddressFromCoordinates(lat, lon)
   }
 }
 // 当前定位、地图选点或手填坐标都只有经纬度，没有地址信息时用高德逆地理编码补全。
@@ -1030,7 +978,6 @@ function handleLocationChange(key: string) {
   if (item) selectLocation(item)
 }
 function resetLocation() {
-  disposeMap()
   latitude.value = undefined
   longitude.value = undefined
   selectedLocationName.value = ''
@@ -1039,6 +986,8 @@ function resetLocation() {
   locationCountryCodeLocked.value = false
   timezone.value = ''
   overview.value = null
+  spatialGrid.value = null
+  spatialError.value = ''
   mapConfig.value = null
   mapError.value = ''
   clearSearch()
@@ -1054,7 +1003,6 @@ function selectLocation(item: PhotographyLocationResult) {
   selectedLocation.value = item
   selectedLocationKey.value = locationOptionKey(item)
   searchResults.value = []
-  void focusMapOnLocation()
   void runQuery()
   void fillLocationTimezone(item)
 }
@@ -1080,11 +1028,6 @@ function pickMapCoordinate(event: MouseEvent) {
   const x = Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width))
   const y = Math.min(1, Math.max(0, (event.clientY - rect.top) / rect.height))
   applyMapCoordinate(90 - y * 180, -180 + x * 360)
-}
-// 选中搜索结果后，确保地图已初始化，并把中心点与 marker 移到该坐标。
-async function focusMapOnLocation() {
-  if (!mapReady.value) await loadMapConfig()
-  syncMapPosition()
 }
 // 中国大陆直接调用高德 JS API 2.0 的 AutoComplete，其他地区走服务端 Google 地理编码。
 async function locateByKeyword(query: string): Promise<PhotographyLocationResult[]> {
@@ -1179,16 +1122,21 @@ async function renderHourlyChart() {
 function handleHourlyChartResize() {
   hourlyChart?.resize()
 }
-watch([latitude, longitude], () => syncMapPosition())
+// 坐标被清空或地图配置失效时地图组件会卸载，同步复位就绪状态。
+watch(mapPanelVisible, (visible) => {
+  if (!visible) mapReady.value = false
+})
 watch(selectedTz, () => {
   if (!locationCountryCodeLocked.value && hasCoordinates()) void runQuery()
 })
+watch(spatialPeriod, () => {
+  if (hasCoordinates()) void runSpatialQuery()
+})
 onMounted(() => {
   void loadSources()
-  // 进入天气页立即获取当前位置（全局 store 去重），拿到坐标后自动查询并同步地图标记。
-  enterLocatePromise = locationStore.locate()
+  // 进入天气页立即获取当前位置（全局 store 去重），地图组件挂载时直接用该坐标打点。
   void useCurrentLocation(false)
-  // 进入页面即加载地图 SDK，保证搜索走 JS API 2.0 且选中后能立刻标记。
+  // 进入页面即加载地图配置，保证选中搜索结果后地图能立刻响应。
   void loadMapConfig()
   window.addEventListener('resize', handleHourlyChartResize)
 })
@@ -1197,7 +1145,6 @@ onBeforeUnmount(() => {
   window.removeEventListener('resize', handleHourlyChartResize)
   hourlyChart?.dispose()
   hourlyChart = null
-  disposeMap()
 })
 </script>
 <style scoped lang="scss">
@@ -1213,9 +1160,6 @@ onBeforeUnmount(() => {
 .map-fallback {
   position: absolute;
   inset: 0;
-}
-.map-canvas-hidden {
-  visibility: hidden;
 }
 .map-fallback {
   cursor: crosshair;
@@ -1297,46 +1241,42 @@ onBeforeUnmount(() => {
   font-size: 12px;
   color: #5d5d63;
 }
-.chart-bars {
+.spatial-map-wrap {
+  position: relative;
+  min-height: 320px;
+}
+.spatial-map-empty {
   display: flex;
-  flex-direction: column;
-  gap: 15px;
-  min-height: 190px;
+  min-height: 320px;
+  align-items: center;
   justify-content: center;
 }
-.chart-series {
-  display: grid;
-  grid-template-columns: 110px 1fr;
-  align-items: end;
-  gap: 10px;
-}
-.chart-name {
-  font-size: 11px;
-}
-.chart-columns {
+.spatial-map-loading {
+  position: absolute;
+  inset: 0;
   display: flex;
-  align-items: end;
-  gap: 12px;
-  height: 135px;
-  border-bottom: 1px solid #e5e7eb;
-}
-.chart-column {
-  display: flex;
-  height: 100%;
-  min-width: 26px;
-  flex: 1;
-  flex-direction: column;
   align-items: center;
-  justify-content: end;
-  gap: 2px;
-  font-size: 10px;
-  color: #86868b;
+  justify-content: center;
+  font-size: 12px;
+  color: #5d5d63;
+  background: rgba(255, 255, 255, 0.6);
 }
-.chart-bar {
-  display: block;
-  width: 18px;
-  min-height: 2px;
-  border-radius: 5px 5px 0 0;
-  opacity: 0.8;
+.spatial-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 10px;
+  font-size: 11px;
+  color: #5d5d63;
+}
+.spatial-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.spatial-legend i {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
 }
 </style>

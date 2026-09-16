@@ -71,6 +71,7 @@ func registerRoutes() {
 	web.Router("/api/photography-tools/overview", photographyTools, "get:Overview")
 	web.Router("/api/photography-tools/geocode", photographyTools, "get:Geocode")
 	web.Router("/api/photography-tools/map-config", photographyTools, "get:MapConfig")
+	web.Router("/api/photography-tools/spatial", photographyTools, "get:Spatial")
 	web.Router("/api/photography-tools/timezone", photographyTools, "get:Timezone")
 
 	photographyIntegrations := &controllers.PhotographyIntegrationsController{}

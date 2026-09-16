@@ -54,6 +54,28 @@ func (c *PhotographyToolsController) MapConfig() {
 	c.OK(services.GetPhotographyMapConfig(c.GetQuery("country_code")))
 }
 
+// Spatial 返回以中心点为中心的空间网格，供概率图/云量质量图的地图模式渲染。
+func (c *PhotographyToolsController) Spatial() {
+	if !c.CheckPermission("photography_tool:read") {
+		return
+	}
+	latitude, longitude, err := parsePhotographyToolCoordinates(c)
+	if err != nil {
+		c.WriteError(http.StatusBadRequest, err.Error())
+		return
+	}
+	grid, err := services.FetchPhotographySpatialGrid(latitude, longitude, c.GetQuery("date"), c.GetQuery("period"), c.GetQuery("weather_source"))
+	if err != nil {
+		status := http.StatusBadGateway
+		if services.IsPhotographyValidationError(err) {
+			status = http.StatusBadRequest
+		}
+		c.WriteError(status, err.Error())
+		return
+	}
+	c.OK(grid)
+}
+
 // Timezone 供前端高德 JS API 搜索完成后，按经纬度补齐 Open-Meteo 地点时区。
 func (c *PhotographyToolsController) Timezone() {
 	if !c.CheckPermission("photography_tool:read") {

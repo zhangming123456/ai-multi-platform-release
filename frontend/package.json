@@ -13,6 +13,7 @@
     "format:check": "prettier --check \"src/**/*.{ts,vue,css,scss}\""
   },
   "dependencies": {
+    "@amap/amap-jsapi-loader": "^1.0.1",
     "@arco-design/web-vue": "^2.58.0",
     "@codemirror/autocomplete": "^6.20.3",
     "@codemirror/commands": "^6.11.0",

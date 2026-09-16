@@ -257,7 +257,7 @@ const router = createRouter({
           name: 'PhotographyIntegrationSettings',
           component: () => import('@/pages/PhotographyIntegrationSettings.vue'),
           meta: {
-            title: '气象数据源',
+            title: '第三方服务配置',
             permKey: 'photography_tool:config:read',
             sidebarType: 'system',
             sidebarOrder: 5,
@@ -542,6 +542,7 @@ const router = createRouter({
           meta: {
             title: '日历订阅源',
             permKey: 'holiday_source:read',
+            hideInSidebar: true,
             sidebarType: 'system',
             sidebarOrder: 4,
             icon: 'tool',

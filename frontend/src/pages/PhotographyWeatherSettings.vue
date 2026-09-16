@@ -47,9 +47,18 @@
                     <a-radio value="token">JWT Token</a-radio>
                   </a-radio-group>
                 </a-form-item>
-                <a-form-item
-                  :label="item.requires_key ? 'Key / Token' : 'Open-Meteo API Key（可选）'"
-                >
+                <a-form-item>
+                  <template #label>
+                    {{ item.requires_key ? 'Key / Token' : 'Open-Meteo API Key（可选）' }}
+                    <a
+                      class="key-guide"
+                      :href="keyGuideUrl(item.source)"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      如何获取
+                    </a>
+                  </template>
                   <a-input-password
                     v-model="forms[item.source].api_key"
                     :placeholder="
@@ -116,6 +125,16 @@ const forms = reactive<Record<string, PhotographyWeatherConfigForm>>({})
 const loading = ref(false)
 const savingSource = ref<string | null>(null)
 
+// 需要人工申请凭据的数据源，直接给出对应控制台入口。
+const WEATHER_KEY_GUIDES: Record<string, string> = {
+  qweather: 'https://console.qweather.com/project',
+}
+const DEFAULT_WEATHER_KEY_GUIDE = 'https://open-meteo.com/en/pricing'
+
+function keyGuideUrl(source: string): string {
+  return WEATHER_KEY_GUIDES[source] ?? DEFAULT_WEATHER_KEY_GUIDE
+}
+
 function ensureForm(item: PhotographyWeatherConfig) {
   if (!forms[item.source]) {
     forms[item.source] = {
@@ -175,6 +194,19 @@ onMounted(loadConfigs)
 </script>
 
 <style scoped lang="scss">
+.key-guide {
+  margin-left: 6px;
+  font-size: 12px;
+  font-weight: 400;
+  color: #007aff;
+  text-decoration: none;
+}
+
+.key-guide:hover {
+  color: #0071e3;
+  text-decoration: underline;
+}
+
 .photography-settings-page :deep(.arco-card-header) {
   padding-bottom: 14px;
 }
