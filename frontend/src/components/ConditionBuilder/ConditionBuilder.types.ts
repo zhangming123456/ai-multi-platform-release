@@ -226,7 +226,7 @@ export type ConditionConnectorEmits = {
   (e: 'update:logic', value: ConditionLogic): void
 }
 
-export type ConditionRuleType = 'mutual_exclusive' | 'prerequisite' | 'linkage'
+export type ConditionRuleType = 'mutual_exclusive' | 'prerequisite' | 'linkage' | 'operator_limit'
 
 export interface ConditionRuleSelector {
   field: string
@@ -262,8 +262,19 @@ export interface ConditionLinkageRule extends ConditionRuleBase {
   allowedValues: string[]
 }
 
+/** 运算符限定：命中 when 后，field 只允许使用 operators 中的运算符（至少一个）。 */
+export interface ConditionOperatorLimitRule extends ConditionRuleBase {
+  type: 'operator_limit'
+  when: ConditionRuleSelector
+  field: string
+  operators: ConditionOperator[]
+}
+
 export type ConditionRule =
-  ConditionMutualExclusiveRule | ConditionPrerequisiteRule | ConditionLinkageRule
+  | ConditionMutualExclusiveRule
+  | ConditionPrerequisiteRule
+  | ConditionLinkageRule
+  | ConditionOperatorLimitRule
 
 export interface ConditionRuleFieldLock {
   field: string
@@ -276,6 +287,14 @@ export interface ConditionRuleValueLimit {
   field: string
   operator: ConditionOperator
   value: string
+  ruleId: string
+  ruleName: string
+  reason: string
+}
+
+export interface ConditionRuleOperatorLimit {
+  field: string
+  operators: ConditionOperator[]
   ruleId: string
   ruleName: string
   reason: string
@@ -303,6 +322,7 @@ export interface ConditionRuleContext {
   fieldEffects: ConditionRuleFieldEffect[]
   fieldLocks: ConditionRuleFieldLock[]
   valueLimits: ConditionRuleValueLimit[]
+  operatorLimits: ConditionRuleOperatorLimit[]
   violations: ConditionRuleViolation[]
 }
 
@@ -328,6 +348,8 @@ export interface ConditionRuleDraft {
   linkageField: string
   linkageOperator: ConditionOperator | ''
   linkageValues: string[]
+  operatorField: string
+  operatorValues: ConditionOperator[]
 }
 
 export interface ConditionRuleEditorProps {

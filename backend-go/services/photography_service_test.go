@@ -489,11 +489,11 @@ func TestPhotographyWeatherConfigViewsMaskCredentials(t *testing.T) {
 	t.Setenv("QWEATHER_API_HOST", "https://example.qweather.test")
 
 	configs := ListPhotographyWeatherConfigs()
-	if len(configs) != 2 {
-		t.Fatalf("got %d weather configs, want 2", len(configs))
+	if len(configs) != 4 {
+		t.Fatalf("got %d weather configs, want 4", len(configs))
 	}
 
-	openMeteo := configs[0]
+	openMeteo := photographyConfigBySource(t, configs, "open-meteo")
 	if openMeteo.Source != "open-meteo" || !openMeteo.Configured {
 		t.Fatalf("unexpected Open-Meteo config: %+v", openMeteo)
 	}
@@ -501,7 +501,7 @@ func TestPhotographyWeatherConfigViewsMaskCredentials(t *testing.T) {
 		t.Fatalf("Open-Meteo key was not masked as expected: %q", openMeteo.APIKeyMasked)
 	}
 
-	qweather := configs[1]
+	qweather := photographyConfigBySource(t, configs, PhotographyWeatherSourceQWeather)
 	if qweather.Source != PhotographyWeatherSourceQWeather || !qweather.Configured {
 		t.Fatalf("unexpected QWeather config: %+v", qweather)
 	}
@@ -516,10 +516,21 @@ func TestPhotographyWeatherTokenTakesPrecedence(t *testing.T) {
 	t.Setenv("QWEATHER_API_HOST", "")
 
 	configs := ListPhotographyWeatherConfigs()
-	qweather := configs[1]
+	qweather := photographyConfigBySource(t, configs, PhotographyWeatherSourceQWeather)
 	if qweather.CredentialType != "token" || qweather.APIKeyMasked != "jwt-****oken" {
 		t.Fatalf("JWT token should be the active QWeather credential: %+v", qweather)
 	}
+}
+
+func photographyConfigBySource(t *testing.T, configs []PhotographyWeatherConfigView, source string) PhotographyWeatherConfigView {
+	t.Helper()
+	for _, config := range configs {
+		if config.Source == source {
+			return config
+		}
+	}
+	t.Fatalf("weather config %q not found", source)
+	return PhotographyWeatherConfigView{}
 }
 
 func TestSavePhotographyWeatherConfigValidatesBeforeDatabaseAccess(t *testing.T) {

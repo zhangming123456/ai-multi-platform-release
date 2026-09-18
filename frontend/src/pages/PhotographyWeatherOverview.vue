@@ -139,7 +139,7 @@
                 class="map-canvas"
                 :config="mapConfig"
                 :center="mapCenter"
-                :zoom="14"
+                :zoom="12"
                 @ready="mapReady = true"
                 @pick="applyMapCoordinate"
                 @error="handleMapError"
@@ -190,7 +190,7 @@
           >
           <a-row :gutter="[16, 16]" class="mb-4">
             <a-col :xs="24" :lg="10"
-              ><a-card :bordered="false" class="h-full shadow-sm"
+              ><a-card id="photography-weather-today" :bordered="false" class="h-full shadow-sm"
                 ><template #title>今日天气</template
                 ><template #extra
                   ><a-tag color="green">{{
@@ -231,7 +231,10 @@
               ></a-col
             >
             <a-col :xs="24" :lg="14"
-              ><div class="grid h-full grid-cols-1 gap-4 sm:grid-cols-2">
+              ><div
+                id="photography-weather-phenomena"
+                class="grid h-full grid-cols-1 gap-4 sm:grid-cols-2"
+              >
                 <div v-for="item in todayPhenomena" :key="item.key" class="info-panel">
                   <div class="mb-2 flex items-center justify-between">
                     <span class="font-semibold">{{ item.icon }} {{ item.title }}</span
@@ -373,7 +376,7 @@
               ></a-row
             ></a-card
           >
-          <a-card :bordered="false" class="mb-4 shadow-sm"
+          <a-card id="photography-weather-days" :bordered="false" class="mb-4 shadow-sm"
             ><template #title>未来三天摄影条件</template
             ><template #extra
               ><span class="text-xs text-[#86868B]">概率为天气条件估算</span></template
@@ -417,17 +420,46 @@
               </div>
             </div></a-card
           >
+          <div class="spatial-toolbar mb-3">
+            <div class="metric-strip">
+              <button
+                v-for="tab in weatherMetricTabs"
+                :key="tab.key"
+                type="button"
+                class="metric-tab"
+                :class="{ 'is-active': tab.key === spatialPeriod, 'is-static': !tab.spatial }"
+                @click="selectWeatherMetric(tab.key)"
+              >
+                <span class="metric-tab-label">{{ tab.label }}</span>
+                <span class="metric-tab-value">{{ tab.value }}</span>
+              </button>
+            </div>
+            <div class="spatial-toolbar-row">
+              <div>
+                <div class="text-sm font-semibold">周边空间分布 · {{ spatialPeriodLabel }}</div>
+                <div class="mt-0.5 text-xs text-[#86868B]">
+                  点击上方朝霞/晚霞切换地图指标 · 聚焦拍摄点周边约 {{ spatialSpanText }}
+                </div>
+              </div>
+              <a-radio-group v-model="spatialDayIndex" size="mini" type="button">
+                <a-radio v-for="(day, index) in overview.days" :key="day.date" :value="index">{{
+                  dayLabel(day.date, index)
+                }}</a-radio>
+              </a-radio-group>
+            </div>
+          </div>
           <a-row :gutter="16" class="mb-4"
             ><a-col :xs="24" :lg="12"
               ><a-card :bordered="false" class="shadow-sm"
-                ><template #title>概率图</template
-                ><template #extra
-                  ><a-radio-group v-model="spatialPeriod" size="mini" type="button"
-                    ><a-radio value="sunrise">朝霞</a-radio
-                    ><a-radio value="sunset">晚霞</a-radio></a-radio-group
-                  ></template
+                ><template #title>概率图 · {{ spatialPeriodLabel }}</template
+                ><template #extra>
+                  <a-button size="mini" @click="openSpatialMap('probability')"> 查看大图 </a-button>
+                </template>
+                <div
+                  class="spatial-map-wrap is-clickable"
+                  title="点击查看大图"
+                  @click="openSpatialMap('probability')"
                 >
-                <div class="spatial-map-wrap">
                   <PhotographySpatialMap
                     v-if="mapConfig && spatialCenter"
                     :config="mapConfig"
@@ -436,10 +468,12 @@
                     :step-latitude="spatialStepLatitude"
                     :step-longitude="spatialStepLongitude"
                     :cells="probabilityCells"
+                    mode="probability"
                     @error="handleSpatialMapError"
                   />
                   <a-empty v-else :description="spatialPlaceholder" class="spatial-map-empty" />
                   <div v-if="spatialLoading" class="spatial-map-loading">正在计算周边分布…</div>
+                  <div class="spatial-map-hint">*点击查看大图</div>
                 </div>
                 <div class="spatial-legend">
                   <span v-for="item in spatialLegend" :key="item.label">
@@ -448,9 +482,8 @@
                   <span><i style="background: #e5e7eb"></i>无数据</span>
                 </div>
                 <div class="mt-2 text-xs text-[#86868B]">
-                  周边网格估算，色块越绿越适合拍摄；{{ spatialPeriodLabel }}时段，{{
-                    spatialGrid?.date || overview.days[0]?.date || '今天'
-                  }}。
+                  周边网格估算，色块越绿越适合拍摄；{{ spatialSelectedDate }}，步长约
+                  {{ spatialStepText }}。
                 </div>
                 <div v-if="spatialGrid?.message" class="mt-1 text-xs text-[#86868B]">
                   {{ spatialGrid.message }}
@@ -461,13 +494,17 @@
               </a-card></a-col
             ><a-col :xs="24" :lg="12"
               ><a-card :bordered="false" class="shadow-sm"
-                ><template #title>云量质量图</template
-                ><template #extra
-                  ><span class="text-xs text-[#86868B]"
-                    >{{ spatialPeriodLabel }}时段</span
-                  ></template
+                ><template #title>云量质量图 · {{ spatialPeriodLabel }}</template
+                ><template #extra>
+                  <a-button size="mini" @click="openSpatialMap('cloud_quality')">
+                    查看大图
+                  </a-button>
+                </template>
+                <div
+                  class="spatial-map-wrap is-clickable"
+                  title="点击查看大图"
+                  @click="openSpatialMap('cloud_quality')"
                 >
-                <div class="spatial-map-wrap">
                   <PhotographySpatialMap
                     v-if="mapConfig && spatialCenter"
                     :config="mapConfig"
@@ -476,24 +513,36 @@
                     :step-latitude="spatialStepLatitude"
                     :step-longitude="spatialStepLongitude"
                     :cells="cloudQualityCells"
+                    mode="cloud_quality"
                     @error="handleSpatialMapError"
                   />
                   <a-empty v-else :description="spatialPlaceholder" class="spatial-map-empty" />
                   <div v-if="spatialLoading" class="spatial-map-loading">正在计算周边分布…</div>
+                  <div class="spatial-map-hint">*点击查看大图</div>
                 </div>
                 <div class="spatial-legend">
-                  <span v-for="item in spatialLegend" :key="item.label">
+                  <span v-for="item in cloudQualityLegend" :key="item.label">
                     <i :style="{ background: item.color }"></i>{{ item.label }}
                   </span>
-                  <span><i style="background: #e5e7eb"></i>无数据</span>
                 </div>
                 <div class="mt-2 text-xs text-[#86868B]">
-                  云量质量按 50% 云量最佳估算；网格步长约
-                  {{ (spatialStepLatitude * 111).toFixed(0) }} km。
+                  云量质量按 50% 云量最佳估算，颜色越深质量越高；网格步长约
+                  {{ spatialStepText }}。
                 </div>
               </a-card></a-col
             ></a-row
           >
+          <div class="spatial-range-summary mb-4">
+            <div class="spatial-range-heading">周边网格范围内数据</div>
+            <div>
+              <b>{{ spatialProbabilityRangeText }}</b>
+              <span>范围概率</span>
+            </div>
+            <div>
+              <b>{{ spatialQualityRangeText }}</b>
+              <span>范围质量</span>
+            </div>
+          </div>
           <a-card :bordered="false" class="shadow-sm"
             ><template #title>估算说明</template>
             <div
@@ -513,6 +562,40 @@
         </template>
         <a-empty v-else description="使用当前位置或搜索一个地点开始查询" class="my-16" />
       </a-spin>
+      <a-modal
+        v-model:visible="spatialMapModalVisible"
+        :footer="false"
+        :width="1180"
+        modal-class="spatial-map-modal"
+      >
+        <template #title>{{ spatialMapModalTitle }}</template>
+        <div class="spatial-map-modal-body">
+          <PhotographySpatialMap
+            v-if="mapConfig && spatialCenter"
+            :config="mapConfig"
+            :center="spatialCenter"
+            :zoom="spatialZoom"
+            :step-latitude="spatialStepLatitude"
+            :step-longitude="spatialStepLongitude"
+            :cells="spatialMapModalCells"
+            :mode="spatialMapModalMetric"
+            height="68vh"
+            @error="handleSpatialMapError"
+          />
+          <a-empty v-else :description="spatialPlaceholder" class="spatial-map-modal-empty" />
+        </div>
+        <div class="spatial-range-summary spatial-range-summary-modal">
+          <div class="spatial-range-heading">周边网格范围内数据</div>
+          <div>
+            <b>{{ spatialProbabilityRangeText }}</b>
+            <span>范围概率</span>
+          </div>
+          <div>
+            <b>{{ spatialQualityRangeText }}</b>
+            <span>范围质量</span>
+          </div>
+        </div>
+      </a-modal>
     </div>
   </div>
 </template>
@@ -643,6 +726,9 @@ function formatNumber(value: number | null | undefined) {
 function formatPercent(value: number | null | undefined) {
   return value === null || value === undefined ? '—' : Number(value).toFixed(0) + '%'
 }
+function formatKilometers(value: number) {
+  return Number.isFinite(value) ? `${value >= 10 ? value.toFixed(0) : value.toFixed(1)} km` : '—'
+}
 function formatVisibility(value: number | null | undefined) {
   return value === null || value === undefined ? '—' : (value / 1000).toFixed(1) + ' km'
 }
@@ -741,21 +827,46 @@ const mapCenter = computed<[number, number]>(() => [longitude.value ?? 0, latitu
 // —— 概率图 / 云量质量图的地图模式：周边网格色块 ——
 const spatialGrid = ref<PhotographySpatialGrid | null>(null)
 const spatialPeriod = ref<'sunrise' | 'sunset'>('sunset')
+const spatialDayIndex = ref(0)
 const spatialLoading = ref(false)
 const spatialError = ref('')
-const spatialZoom = 9
+const kilometersPerDegree = 111.32
+const spatialDefaultStepDegrees = 20 / kilometersPerDegree
+// 网格覆盖范围（km）：步长 × 网格行数，地图缩放按它推算，避免改步长后地图尺寸对不上。
+const spatialSpanKilometers = computed(
+  () =>
+    (spatialGrid.value?.step_latitude || spatialDefaultStepDegrees) *
+    (spatialGrid.value?.rows || 11) *
+    kilometersPerDegree,
+)
+// 默认停在 12 级（纬度 20°~40° 时约 20km 视域），缩放范围由地图组件限制在 8~18 级。
+const spatialZoom = 12
 const spatialLegend = [
   { label: '优', color: '#22C55E' },
   { label: '良', color: '#3B82F6' },
   { label: '一般', color: '#F59E0B' },
   { label: '不建议', color: '#EF4444' },
 ]
+const cloudQualityLegend = [
+  { label: '低', color: '#F3E8FF' },
+  { label: '一般', color: '#A78BFA' },
+  { label: '良好', color: '#7C3AED' },
+  { label: '优质', color: '#4C1D95' },
+]
 const spatialPeriodLabel = computed(() => (spatialPeriod.value === 'sunrise' ? '朝霞' : '晚霞'))
+const spatialSelectedDate = computed(
+  () =>
+    overview.value?.days[spatialDayIndex.value]?.date || overview.value?.days[0]?.date || '今天',
+)
 const spatialCenter = computed<[number, number] | null>(() =>
   hasCoordinates() ? [longitude.value as number, latitude.value as number] : null,
 )
-const spatialStepLatitude = computed(() => spatialGrid.value?.step_latitude || 0.2)
-const spatialStepLongitude = computed(() => spatialGrid.value?.step_longitude || 0.2)
+const spatialStepLatitude = computed(
+  () => spatialGrid.value?.step_latitude || spatialDefaultStepDegrees,
+)
+const spatialStepLongitude = computed(
+  () => spatialGrid.value?.step_longitude || spatialDefaultStepDegrees,
+)
 const spatialPlaceholder = computed(() => {
   if (!hasCoordinates()) return '先获取当前位置或搜索一个地点'
   if (!mapConfig.value?.configured) return '地图服务未配置，无法显示分布图'
@@ -788,12 +899,132 @@ function paintSpatialCells(metric: 'probability' | 'cloud_quality') {
         longitude: cell.longitude,
         color: value === null || value === undefined ? '#E5E7EB' : spatialLevelColor(level),
         label: `${value ?? '—'} · ${levelLabel(level)}`,
+        value: typeof value === 'number' && Number.isFinite(value) ? value : null,
       }
     })
 }
 
 const probabilityCells = computed(() => paintSpatialCells('probability'))
 const cloudQualityCells = computed(() => paintSpatialCells('cloud_quality'))
+type SpatialMetric = 'probability' | 'cloud_quality'
+const spatialMapModalVisible = ref(false)
+const spatialMapModalMetric = ref<SpatialMetric>('probability')
+const spatialMapModalTitle = computed(
+  () =>
+    `${spatialMapModalMetric.value === 'probability' ? '概率图' : '云量质量图'} · ${
+      spatialPeriodLabel.value
+    } · ${spatialSelectedDate.value}`,
+)
+const spatialMapModalCells = computed(() =>
+  spatialMapModalMetric.value === 'probability' ? probabilityCells.value : cloudQualityCells.value,
+)
+
+function spatialMetricRange(metric: SpatialMetric) {
+  const values = (spatialGrid.value?.cells || [])
+    .map((cell) => (metric === 'probability' ? cell.probability : cell.cloud_quality))
+    .filter((value): value is number => typeof value === 'number' && Number.isFinite(value))
+  if (!values.length) return null
+  return { min: Math.min(...values), max: Math.max(...values) }
+}
+
+function formatSpatialRange(metric: SpatialMetric) {
+  const range = spatialMetricRange(metric)
+  return range ? `${range.min}% - ${range.max}%` : '—'
+}
+
+const spatialProbabilityRangeText = computed(() => formatSpatialRange('probability'))
+const spatialQualityRangeText = computed(() => formatSpatialRange('cloud_quality'))
+
+// —— 参考「莉景天气」顶部指标行：天气 / 晚霞 / 朝霞 / 云海 / 彩虹 / 雾凇 ——
+// 朝霞、晚霞可切换下方两张地图；其余指标点击后定位到对应卡片（暂不提供空间分布）。
+type WeatherMetricKey = 'weather' | 'sunrise' | 'sunset' | 'cloud_sea' | 'rainbow' | 'frost'
+interface WeatherMetricTab {
+  key: WeatherMetricKey
+  label: string
+  value: string
+  spatial: boolean
+}
+const weatherMetricTabs = computed<WeatherMetricTab[]>(() => {
+  const day = overview.value?.days[spatialDayIndex.value] || overview.value?.days[0] || null
+  const today = overview.value?.today || null
+  const isToday = spatialDayIndex.value === 0
+  const rangeText = (period: 'sunrise' | 'sunset') => {
+    // 只有网格与当前「日期 + 时段」一致时才用范围值，避免切换瞬间显示上一天的区间。
+    if (
+      spatialGrid.value?.period === period &&
+      spatialGrid.value?.date === spatialSelectedDate.value
+    ) {
+      return formatSpatialRange('probability')
+    }
+    const value =
+      period === 'sunrise'
+        ? day?.sunrise_assessment.probability
+        : day?.sunset_assessment.probability
+    return typeof value === 'number' ? `${value}%` : '—'
+  }
+  const percent = (value: number | null | undefined) =>
+    typeof value === 'number' ? `${value}%` : '—'
+  return [
+    {
+      key: 'weather',
+      label: '天气',
+      value: `${weatherIcon(day?.weather_code)} ${weatherLabel(day?.weather_code)}`,
+      spatial: false,
+    },
+    { key: 'sunset', label: '晚霞', value: rangeText('sunset'), spatial: true },
+    { key: 'sunrise', label: '朝霞', value: rangeText('sunrise'), spatial: true },
+    {
+      key: 'cloud_sea',
+      label: '云海',
+      value: percent(day?.cloud_sea.probability),
+      spatial: false,
+    },
+    {
+      key: 'rainbow',
+      label: '彩虹',
+      value: isToday ? percent(today?.rainbow.probability) : '—',
+      spatial: false,
+    },
+    {
+      key: 'frost',
+      label: '雾凇',
+      value: isToday ? percent(today?.frost_rime.probability) : '—',
+      spatial: false,
+    },
+  ]
+})
+const spatialSpanText = computed(() => {
+  return formatKilometers(spatialSpanKilometers.value)
+})
+const spatialStepText = computed(() =>
+  formatKilometers(spatialStepLatitude.value * kilometersPerDegree),
+)
+function scrollToWeatherSection(id: string) {
+  void nextTick(() => {
+    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  })
+}
+function selectWeatherMetric(key: WeatherMetricKey) {
+  if (key === 'sunrise' || key === 'sunset') {
+    spatialPeriod.value = key
+    return
+  }
+  const target =
+    key === 'weather'
+      ? 'photography-weather-today'
+      : key === 'cloud_sea'
+        ? 'photography-weather-days'
+        : 'photography-weather-phenomena'
+  scrollToWeatherSection(target)
+  Message.info(
+    `${weatherMetricTabs.value.find((tab) => tab.key === key)?.label || '该指标'}暂不支持周边空间分布，已定位到对应卡片`,
+  )
+}
+
+function openSpatialMap(metric: SpatialMetric) {
+  spatialMapModalMetric.value = metric
+  spatialMapModalVisible.value = true
+}
 
 function handleSpatialMapError(message: string) {
   spatialError.value = message || '地图服务不可用'
@@ -808,7 +1039,7 @@ async function runSpatialQuery() {
       params: {
         latitude: latitude.value,
         longitude: longitude.value,
-        date: overview.value?.days[0]?.date,
+        date: spatialSelectedDate.value,
         period: spatialPeriod.value,
         weather_source: weatherSource.value,
       },
@@ -884,6 +1115,7 @@ async function runQuery() {
     })
     overview.value = normalizePhotographyOverview(response.data)
     if (resolvedAddressName.value) overview.value.location.name = resolvedAddressName.value
+    if (spatialDayIndex.value >= overview.value.days.length) spatialDayIndex.value = 0
     timezone.value = overview.value.location.timezone
     countryCode.value = overview.value.location.country_code
     updatedAt.value = new Date().toLocaleString('zh-CN', { hour12: false })
@@ -1132,6 +1364,9 @@ watch(selectedTz, () => {
 watch(spatialPeriod, () => {
   if (hasCoordinates()) void runSpatialQuery()
 })
+watch(spatialDayIndex, () => {
+  if (hasCoordinates()) void runSpatialQuery()
+})
 onMounted(() => {
   void loadSources()
   // 进入天气页立即获取当前位置（全局 store 去重），地图组件挂载时直接用该坐标打点。
@@ -1245,6 +1480,118 @@ onBeforeUnmount(() => {
   position: relative;
   min-height: 320px;
 }
+.spatial-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border: 1px solid #eef0f3;
+  border-radius: 12px;
+  background: #fff;
+  padding: 4px 16px 12px;
+}
+.metric-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  border-bottom: 1px solid #eef0f3;
+}
+.metric-tab {
+  display: flex;
+  flex: 1 1 96px;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  padding: 10px 8px 8px;
+  color: #5d5d63;
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+.metric-tab:hover {
+  color: #1d1d1f;
+}
+.metric-tab-label {
+  font-size: 15px;
+  font-weight: 600;
+}
+.metric-tab-value {
+  font-size: 15px;
+  font-weight: 600;
+}
+.metric-tab.is-static .metric-tab-value {
+  color: #5d5d63;
+  font-weight: 500;
+}
+.metric-tab.is-active {
+  border-bottom-color: #007aff;
+}
+.metric-tab.is-active .metric-tab-label,
+.metric-tab.is-active .metric-tab-value {
+  color: #007aff;
+}
+.spatial-toolbar-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.spatial-range-summary {
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) repeat(2, minmax(120px, auto));
+  align-items: center;
+  gap: 16px;
+  border-radius: 12px;
+  background: #f8fafc;
+  padding: 14px 18px;
+}
+.spatial-range-heading {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1d1d1f;
+}
+.spatial-range-summary > div:not(.spatial-range-heading) {
+  display: flex;
+  flex-direction: column;
+}
+.spatial-range-summary b {
+  font-size: 22px;
+  line-height: 1.1;
+  color: #3b82f6;
+}
+.spatial-range-summary span {
+  margin-top: 2px;
+  font-size: 12px;
+  color: #86868b;
+}
+.spatial-range-summary-modal {
+  margin-top: 16px;
+}
+.spatial-map-modal-body {
+  min-height: 420px;
+}
+.spatial-map-modal-empty {
+  display: flex;
+  min-height: 420px;
+  align-items: center;
+  justify-content: center;
+}
+.spatial-map-wrap.is-clickable {
+  cursor: zoom-in;
+}
+.spatial-map-hint {
+  position: absolute;
+  bottom: 8px;
+  left: 12px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.78);
+  padding: 2px 6px;
+  font-size: 11px;
+  color: #5d5d63;
+  pointer-events: none;
+}
 .spatial-map-empty {
   display: flex;
   min-height: 320px;
@@ -1278,5 +1625,10 @@ onBeforeUnmount(() => {
   width: 10px;
   height: 10px;
   border-radius: 3px;
+}
+@media (max-width: 640px) {
+  .spatial-range-summary {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

@@ -18,14 +18,19 @@ export interface PhotographyIntegrationConfig {
   open_meteo_key_masked: string
   qweather_key_masked: string
   qweather_credential_type: 'api_key' | 'token'
+  shenzhen_weather_key_masked: string
   noaa_key_masked: string
   tide_key_masked: string
   open_meteo_host: string
   qweather_host: string
+  cma_host: string
+  shenzhen_weather_host: string
   noaa_host: string
   tide_host: string
   open_meteo_enabled: boolean
   qweather_enabled: boolean
+  cma_enabled: boolean
+  shenzhen_weather_enabled: boolean
   noaa_enabled: boolean
   tide_enabled: boolean
   weather_providers: PhotographyIntegrationProvider[]
@@ -41,14 +46,19 @@ export interface PhotographyIntegrationForm {
   open_meteo_key: string
   qweather_key: string
   qweather_credential_type: 'api_key' | 'token'
+  shenzhen_weather_key: string
   noaa_key: string
   tide_key: string
   open_meteo_host: string
   qweather_host: string
+  cma_host: string
+  shenzhen_weather_host: string
   noaa_host: string
   tide_host: string
   open_meteo_enabled: boolean
   qweather_enabled: boolean
+  cma_enabled: boolean
+  shenzhen_weather_enabled: boolean
   noaa_enabled: boolean
   tide_enabled: boolean
   clear_amap_web_key: boolean
@@ -57,6 +67,7 @@ export interface PhotographyIntegrationForm {
   clear_google_maps_key: boolean
   clear_open_meteo_key: boolean
   clear_qweather_key: boolean
+  clear_shenzhen_weather_key: boolean
   clear_noaa_key: boolean
   clear_tide_key: boolean
 }
@@ -70,14 +81,19 @@ export interface PhotographyIntegrationPayload {
   open_meteo_key?: string
   qweather_key?: string
   qweather_credential_type?: 'api_key' | 'token'
+  shenzhen_weather_key?: string
   noaa_key?: string
   tide_key?: string
   open_meteo_host?: string
   qweather_host?: string
+  cma_host?: string
+  shenzhen_weather_host?: string
   noaa_host?: string
   tide_host?: string
   open_meteo_enabled?: boolean
   qweather_enabled?: boolean
+  cma_enabled?: boolean
+  shenzhen_weather_enabled?: boolean
   noaa_enabled?: boolean
   tide_enabled?: boolean
   clear_amap_web_key?: boolean
@@ -86,6 +102,7 @@ export interface PhotographyIntegrationPayload {
   clear_google_maps_key?: boolean
   clear_open_meteo_key?: boolean
   clear_qweather_key?: boolean
+  clear_shenzhen_weather_key?: boolean
   clear_noaa_key?: boolean
   clear_tide_key?: boolean
 }

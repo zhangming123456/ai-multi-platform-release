@@ -36,7 +36,7 @@ interface AMapMarkerInstance {
 interface AMapApi {
   Map: new (
     container: HTMLElement,
-    options: { zoom: number; center: [number, number] },
+    options: { zoom: number; center: [number, number]; zooms?: [number, number] },
   ) => AMapMapInstance
   Marker: new (options: { position: [number, number] }) => AMapMarkerInstance
 }
@@ -62,6 +62,8 @@ interface GoogleMapsApi {
     options: {
       center: { lat: number; lng: number }
       zoom: number
+      minZoom?: number
+      maxZoom?: number
       mapTypeControl: boolean
       streetViewControl: boolean
       fullscreenControl: boolean
@@ -86,13 +88,17 @@ const props = withDefaults(
     center: [number, number]
     zoom?: number
   }>(),
-  { zoom: 14 },
+  { zoom: 12 },
 )
 const emit = defineEmits<{
   (event: 'ready'): void
   (event: 'pick', latitude: number, longitude: number): void
   (event: 'error', message: string): void
 }>()
+
+/** 地图缩放边界：最远只能缩到 8 级，再放大最多 18 级。 */
+const minZoom = 8
+const maxZoom = 18
 
 const containerRef = ref<HTMLElement | null>(null)
 let amap: AMapMapInstance | null = null
@@ -168,7 +174,11 @@ async function initMap() {
       await ensureAmapJS(props.config)
       const AMap = (window as unknown as { AMap?: AMapApi }).AMap
       if (!AMap) throw new Error('高德地图 SDK 不可用')
-      amap = new AMap.Map(container, { zoom: props.zoom, center: props.center })
+      amap = new AMap.Map(container, {
+        zoom: props.zoom,
+        center: props.center,
+        zooms: [minZoom, maxZoom],
+      })
       amapMarker = new AMap.Marker({ position: props.center })
       amapMarker.setMap(amap)
       amap.on('click', (event) => emit('pick', event.lnglat.getLat(), event.lnglat.getLng()))
@@ -180,6 +190,8 @@ async function initMap() {
       googleMap = new maps.Map(container, {
         center: position,
         zoom: props.zoom,
+        minZoom,
+        maxZoom,
         mapTypeControl: false,
         streetViewControl: false,
         fullscreenControl: false,

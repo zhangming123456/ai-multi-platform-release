@@ -261,6 +261,81 @@
                     </a-form-item>
                   </a-form>
                 </div>
+
+                <div class="provider-block">
+                  <div class="provider-block-head">
+                    <div>
+                      <div class="provider-block-title">中国气象局</div>
+                      <div class="provider-block-desc">
+                        中国天气网逐日预报与实况，免 Key，仅覆盖中国大陆，最多未来 5 天。
+                      </div>
+                      <div class="provider-block-status">
+                        {{ providerHint('weather_providers', 'cma') }}
+                      </div>
+                    </div>
+                    <a-switch v-model="form.cma_enabled" />
+                  </div>
+                  <a-form :model="form" layout="vertical">
+                    <a-form-item>
+                      <template #label>
+                        中国天气网 API Host
+                        <a
+                          class="key-guide"
+                          href="http://www.weather.com.cn/"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          数据来源
+                        </a>
+                      </template>
+                      <a-input v-model="form.cma_host" placeholder="http://d1.weather.com.cn" />
+                    </a-form-item>
+                  </a-form>
+                </div>
+
+                <div class="provider-block">
+                  <div class="provider-block-head">
+                    <div>
+                      <div class="provider-block-title">深圳气象局</div>
+                      <div class="provider-block-desc">
+                        深圳市数据开放平台数据集地址 + AppKey，仅覆盖深圳，最多未来 10 天。
+                      </div>
+                      <div class="provider-block-status">
+                        {{ providerHint('weather_providers', 'shenzhen-weather') }}
+                      </div>
+                    </div>
+                    <a-switch v-model="form.shenzhen_weather_enabled" />
+                  </div>
+                  <a-form :model="form" layout="vertical">
+                    <a-form-item label="数据集服务地址">
+                      <a-input
+                        v-model="form.shenzhen_weather_host"
+                        placeholder="https://opendata.sz.gov.cn/api/..."
+                      />
+                    </a-form-item>
+                    <a-form-item>
+                      <template #label>
+                        AppKey
+                        <a
+                          class="key-guide"
+                          href="https://opendata.sz.gov.cn/"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          如何获取
+                        </a>
+                      </template>
+                      <a-input-password
+                        v-model="form.shenzhen_weather_key"
+                        :placeholder="placeholder(config?.shenzhen_weather_key_masked)"
+                        allow-clear
+                      />
+                    </a-form-item>
+                    <a-checkbox v-model="form.clear_shenzhen_weather_key">
+                      清除深圳气象局 AppKey
+                    </a-checkbox>
+                  </a-form>
+                </div>
               </div>
               <div class="mt-5 flex justify-end">
                 <a-button
@@ -477,14 +552,19 @@ const form = reactive<PhotographyIntegrationForm>({
   open_meteo_key: '',
   qweather_key: '',
   qweather_credential_type: 'api_key',
+  shenzhen_weather_key: '',
   noaa_key: '',
   tide_key: '',
   open_meteo_host: '',
   qweather_host: '',
+  cma_host: '',
+  shenzhen_weather_host: '',
   noaa_host: '',
   tide_host: '',
   open_meteo_enabled: true,
   qweather_enabled: false,
+  cma_enabled: true,
+  shenzhen_weather_enabled: true,
   noaa_enabled: true,
   tide_enabled: true,
   clear_amap_web_key: false,
@@ -493,6 +573,7 @@ const form = reactive<PhotographyIntegrationForm>({
   clear_google_maps_key: false,
   clear_open_meteo_key: false,
   clear_qweather_key: false,
+  clear_shenzhen_weather_key: false,
   clear_noaa_key: false,
   clear_tide_key: false,
 })
@@ -508,6 +589,7 @@ function resetSecretFields() {
   form.google_maps_key = ''
   form.open_meteo_key = ''
   form.qweather_key = ''
+  form.shenzhen_weather_key = ''
   form.noaa_key = ''
   form.tide_key = ''
   form.clear_amap_web_key = false
@@ -516,6 +598,7 @@ function resetSecretFields() {
   form.clear_google_maps_key = false
   form.clear_open_meteo_key = false
   form.clear_qweather_key = false
+  form.clear_shenzhen_weather_key = false
   form.clear_noaa_key = false
   form.clear_tide_key = false
 }
@@ -524,11 +607,15 @@ function syncForm(value: PhotographyIntegrationConfig) {
   config.value = value
   form.open_meteo_host = value.open_meteo_host || ''
   form.qweather_host = value.qweather_host || ''
+  form.cma_host = value.cma_host || ''
+  form.shenzhen_weather_host = value.shenzhen_weather_host || ''
   form.qweather_credential_type = value.qweather_credential_type || 'api_key'
   form.noaa_host = value.noaa_host || ''
   form.tide_host = value.tide_host || ''
   form.open_meteo_enabled = value.open_meteo_enabled
   form.qweather_enabled = value.qweather_enabled
+  form.cma_enabled = value.cma_enabled
+  form.shenzhen_weather_enabled = value.shenzhen_weather_enabled
   form.noaa_enabled = value.noaa_enabled
   form.tide_enabled = value.tide_enabled
   resetSecretFields()
@@ -551,13 +638,19 @@ function syncSavedSection(
   } else if (section === 'weather') {
     form.open_meteo_host = value.open_meteo_host || ''
     form.qweather_host = value.qweather_host || ''
+    form.cma_host = value.cma_host || ''
+    form.shenzhen_weather_host = value.shenzhen_weather_host || ''
     form.qweather_credential_type = value.qweather_credential_type || 'api_key'
     form.open_meteo_enabled = value.open_meteo_enabled
     form.qweather_enabled = value.qweather_enabled
+    form.cma_enabled = value.cma_enabled
+    form.shenzhen_weather_enabled = value.shenzhen_weather_enabled
     form.open_meteo_key = ''
     form.qweather_key = ''
+    form.shenzhen_weather_key = ''
     form.clear_open_meteo_key = false
     form.clear_qweather_key = false
+    form.clear_shenzhen_weather_key = false
   } else if (section === 'tide') {
     form.tide_host = value.tide_host || ''
     form.tide_enabled = value.tide_enabled
@@ -590,13 +683,19 @@ function buildPayload(section: PhotographyIntegrationSection): PhotographyIntegr
       section,
       open_meteo_key: form.open_meteo_key,
       qweather_key: form.qweather_key,
+      shenzhen_weather_key: form.shenzhen_weather_key,
       qweather_credential_type: form.qweather_credential_type,
       open_meteo_host: form.open_meteo_host,
       qweather_host: form.qweather_host,
+      cma_host: form.cma_host,
+      shenzhen_weather_host: form.shenzhen_weather_host,
       open_meteo_enabled: form.open_meteo_enabled,
       qweather_enabled: form.qweather_enabled,
+      cma_enabled: form.cma_enabled,
+      shenzhen_weather_enabled: form.shenzhen_weather_enabled,
       clear_open_meteo_key: form.clear_open_meteo_key,
       clear_qweather_key: form.clear_qweather_key,
+      clear_shenzhen_weather_key: form.clear_shenzhen_weather_key,
     }
   }
   if (section === 'tide') {

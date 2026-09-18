@@ -177,8 +177,10 @@ import {
   resolveGranularityForType,
 } from './conditionOperator'
 import {
+  conditionRuleAllowedOperators,
   conditionRuleFieldEffectMap,
   conditionRuleFieldLockMap,
+  conditionRuleOperatorLimits,
   conditionRuleValueDisabled,
   conditionRuleValueLimits,
   conditionRuleWarning,
@@ -300,6 +302,12 @@ function fieldWarning(fieldValue: string): string {
 
 const valueLimits = computed(() => conditionRuleValueLimits(props.ruleContext, props.item.field))
 
+const operatorLimits = computed(() =>
+  conditionRuleOperatorLimits(props.ruleContext, props.item.field),
+)
+
+const allowedOperators = computed(() => conditionRuleAllowedOperators(operatorLimits.value))
+
 const rowViolations = computed(() =>
   (props.ruleContext?.violations ?? []).filter((violation) =>
     violation.itemIds.includes(props.item.id),
@@ -337,7 +345,12 @@ const operatorOptions = computed(() => {
   const operators = fieldInactive.value
     ? CONDITION_OPERATORS
     : conditionOperatorsForType(fieldType.value)
-  return operators.map((operator) => ({ value: operator.value, label: operator.label }))
+  return operators
+    .filter(
+      (operator) =>
+        allowedOperators.value === null || allowedOperators.value.includes(operator.value),
+    )
+    .map((operator) => ({ value: operator.value, label: operator.label }))
 })
 
 const granularityOptions = computed<{ value: ConditionValueGranularity; label: string }[]>(() =>
@@ -366,6 +379,20 @@ function toValueText(value: unknown): string {
 function send(patch: Partial<ConditionItem>): void {
   emit('command', { type: 'update-item', path: props.path, index: props.index, patch })
 }
+
+watch(
+  [() => props.item.operator, operatorOptions],
+  ([operator, options]) => {
+    if (!options.length || options.some((option) => option.value === operator)) return
+    const next = options[0]?.value
+    if (!next || next === operator) return
+    send({
+      operator: next,
+      value: conditionOperatorNeedsValue(next) ? props.item.value : '',
+    })
+  },
+  { immediate: true },
+)
 
 function onLogicChange(logic: ConditionLogic): void {
   emit('command', { type: 'set-logic', path: [...props.path, props.index], logic })

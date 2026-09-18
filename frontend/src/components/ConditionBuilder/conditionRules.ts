@@ -10,6 +10,7 @@ import type {
   ConditionRuleEffect,
   ConditionRuleFieldEffect,
   ConditionRuleFieldLock,
+  ConditionRuleOperatorLimit,
   ConditionRuleSelector,
   ConditionRuleState,
   ConditionRuleType,
@@ -33,6 +34,7 @@ export const CONDITION_RULE_TYPE_LABELS: Record<ConditionRuleType, string> = {
   mutual_exclusive: '互斥',
   prerequisite: '先决',
   linkage: '联动',
+  operator_limit: '运算符限定',
 }
 
 export const CONDITION_RULE_STATE_LABELS: Record<ConditionRuleState, string> = {
@@ -198,6 +200,7 @@ export function resolveConditionRules(
   const fieldEffects: ConditionRuleFieldEffect[] = []
   const fieldLocks: ConditionRuleFieldLock[] = []
   const valueLimits: ConditionRuleValueLimit[] = []
+  const operatorLimits: ConditionRuleOperatorLimit[] = []
   const violations: ConditionRuleViolation[] = []
 
   const markEffect = (rule: ConditionRule, fields: string[]): void => {
@@ -302,6 +305,37 @@ export function resolveConditionRules(
       continue
     }
 
+    if (rule.type === 'operator_limit') {
+      const triggered = matchingItems(items, rule.when, fieldMap).length > 0
+      if (!triggered) continue
+
+      activeRuleIds.push(rule.id)
+      markEffect(rule, [rule.field])
+
+      const allowed = (rule.operators ?? []).filter(Boolean)
+      const limit: ConditionRuleOperatorLimit = {
+        field: rule.field,
+        operators: allowed,
+        ruleId: rule.id,
+        ruleName: rule.name,
+        reason: rule.message ?? `受「${rule.name}」运算符限制`,
+      }
+      operatorLimits.push(limit)
+
+      const conflicted = allowed.length
+        ? items.filter((item) => item.field === rule.field && !allowed.includes(item.operator))
+        : []
+      if (conflicted.length > 0) {
+        violations.push({
+          ruleId: rule.id,
+          ruleName: rule.name,
+          message: rule.message ?? `「${rule.name}」限定的运算符不匹配当前条件`,
+          itemIds: conflicted.map((item) => item.id),
+        })
+      }
+      continue
+    }
+
     const triggered = matchingItems(items, rule.when, fieldMap).length > 0
     if (!triggered) continue
 
@@ -334,7 +368,15 @@ export function resolveConditionRules(
     }
   }
 
-  return { activeRuleIds, ruleEffects, fieldEffects, fieldLocks, valueLimits, violations }
+  return {
+    activeRuleIds,
+    ruleEffects,
+    fieldEffects,
+    fieldLocks,
+    valueLimits,
+    operatorLimits,
+    violations,
+  }
 }
 
 function conditionRuleValueSatisfied(
@@ -438,10 +480,42 @@ export function conditionRuleValueReason(
   )
 }
 
+export function conditionRuleOperatorLimits(
+  context: ConditionRuleContext | undefined,
+  field: string,
+): ConditionRuleOperatorLimit[] {
+  return (context?.operatorLimits ?? []).filter((limit) => limit.field === field)
+}
+
+/** 多条生效规则取交集；返回 null 表示该字段不受运算符限制。 */
+export function conditionRuleAllowedOperators(
+  limits: ConditionRuleOperatorLimit[],
+): ConditionOperator[] | null {
+  const sets = limits
+    .map((limit) => limit.operators.filter(Boolean))
+    .filter((operators) => operators.length > 0)
+  if (!sets.length) return null
+  return sets.reduce((allowed, operators) =>
+    allowed.filter((operator) => operators.includes(operator)),
+  )
+}
+
+/** 通用提示文案：命中原因 + 当前可选运算符；条件行默认不展示。 */
+export function conditionRuleOperatorReason(limits: ConditionRuleOperatorLimit[]): string {
+  if (!limits.length) return ''
+  const allowed = conditionRuleAllowedOperators(limits) ?? []
+  const names = allowed
+    .map((operator) => getConditionOperator(operator)?.label ?? operator)
+    .join(' / ')
+  const reasons = Array.from(new Set(limits.map((limit) => limit.reason).filter(Boolean)))
+  return names ? `${reasons.join('；')}（可选：${names}）` : `${reasons.join('；')}（无可选运算符）`
+}
+
 export const CONDITION_RULE_TYPE_OPTIONS: { value: ConditionRuleType; label: string }[] = [
   { value: 'mutual_exclusive', label: CONDITION_RULE_TYPE_LABELS.mutual_exclusive },
   { value: 'prerequisite', label: CONDITION_RULE_TYPE_LABELS.prerequisite },
   { value: 'linkage', label: CONDITION_RULE_TYPE_LABELS.linkage },
+  { value: 'operator_limit', label: CONDITION_RULE_TYPE_LABELS.operator_limit },
 ]
 
 function conditionFieldValueText(value: string, field?: ConditionFieldOption): string {
@@ -469,6 +543,16 @@ export function conditionRuleSummary(
   fieldOptions: ConditionFieldOption[] = [],
 ): string {
   const when = conditionRuleSelectorText(rule.when, fieldOptions)
+
+  if (rule.type === 'operator_limit') {
+    const field = fieldOptions.find((option) => option.value === rule.field)
+    const name = field ? conditionFieldLabel(field) : rule.field
+    const operators = rule.operators
+      .map((operator) => getConditionOperator(operator)?.label ?? operator)
+      .join(' / ')
+    const hasTrigger = Boolean(rule.when.operator || rule.when.value)
+    return hasTrigger ? `当 ${when} 时，${name} 仅可用 ${operators}` : `${name} 仅可用 ${operators}`
+  }
 
   if (rule.type === 'linkage') {
     const field = fieldOptions.find((option) => option.value === rule.field)
@@ -537,6 +621,8 @@ export function createConditionRuleDraft(
     linkageField: '',
     linkageOperator: '',
     linkageValues: [],
+    operatorField: '',
+    operatorValues: [],
   }
 }
 
@@ -559,6 +645,14 @@ export function conditionRuleToDraft(rule: ConditionRule): ConditionRuleDraft {
       linkageField: rule.field,
       linkageOperator: rule.operator,
       linkageValues: [...rule.allowedValues],
+    }
+  }
+
+  if (rule.type === 'operator_limit') {
+    return {
+      ...draft,
+      operatorField: rule.field,
+      operatorValues: [...rule.operators],
     }
   }
 
@@ -604,6 +698,16 @@ export function conditionRuleFromDraft(draft: ConditionRuleDraft): ConditionRule
       field: draft.linkageField,
       operator: draft.linkageOperator || 'eq',
       allowedValues: [...draft.linkageValues],
+    }
+  }
+
+  if (draft.type === 'operator_limit') {
+    return {
+      ...base,
+      type: 'operator_limit',
+      when,
+      field: draft.operatorField,
+      operators: [...draft.operatorValues],
     }
   }
 

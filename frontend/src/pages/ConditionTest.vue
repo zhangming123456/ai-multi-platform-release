@@ -5,24 +5,19 @@
       subtitle="验证判断条件输入组件：变量提示输入、比较运算符、值编辑器、同层混用 且/或（且 优先）与括号分组嵌套，并即时生成表达式、SQL 与校验结果"
     >
       <template #actions>
-        <a-button
-          type="text"
-          size="mini"
+        <el-button
+          link
+          size="small"
           class="!text-[#007AFF] !px-0 !h-auto"
           @click="openDoc('schema')"
         >
-          <template #icon><IconBook :size="13" /></template>
+          <template #icon><BookOpen :size="13" /></template>
           说明
-        </a-button>
-        <a-button
-          type="text"
-          size="mini"
-          class="!text-[#007AFF] !px-0 !h-auto"
-          @click="resetPreset"
-        >
-          <template #icon><IconRefresh :size="13" /></template>
+        </el-button>
+        <el-button link size="small" class="!text-[#007AFF] !px-0 !h-auto" @click="resetPreset">
+          <template #icon><RefreshCw :size="13" /></template>
           重置示例
-        </a-button>
+        </el-button>
       </template>
     </PageHeader>
 
@@ -33,29 +28,29 @@
             <div class="flex items-center justify-between mb-3 min-h-6">
               <div class="flex items-center gap-2">
                 <h3 class="text-[15px] font-semibold text-[#1D1D1F] m-0">测试数据（JSON）</h3>
-                <a-tag v-if="dataRecords.length" size="small" color="arcoblue" class="!m-0">
+                <el-tag v-if="dataRecords.length" size="small" type="primary" class="!m-0">
                   {{ dataRecords.length }} 条
-                </a-tag>
+                </el-tag>
               </div>
               <div class="flex items-center gap-2">
-                <a-button
+                <el-button
                   v-for="preset in dataPresets"
                   :key="preset.key"
-                  size="mini"
-                  :type="selectedDataPresetKeys.includes(preset.key) ? 'primary' : 'secondary'"
+                  size="small"
+                  :type="selectedDataPresetKeys.includes(preset.key) ? 'primary' : 'default'"
                   @click="toggleDataPreset(preset)"
                 >
                   {{ preset.label }}
-                </a-button>
-                <a-button
+                </el-button>
+                <el-button
                   v-if="selectedDataPresetKeys.length"
-                  size="mini"
-                  type="text"
+                  size="small"
+                  link
                   class="!text-[#007AFF] !px-1"
                   @click="clearDataPresets"
                 >
                   清空
-                </a-button>
+                </el-button>
               </div>
             </div>
             <ConditionJsonInput
@@ -79,20 +74,20 @@
             <div class="flex items-center justify-between mb-4">
               <div class="flex items-center gap-2">
                 <h3 class="text-[15px] font-semibold text-[#1D1D1F] m-0">条件配置</h3>
-                <a-tag size="small" color="arcoblue" class="!m-0">{{ itemCount }} 条</a-tag>
-                <a-tag v-if="groupCount" size="small" color="purple" class="!m-0">
+                <el-tag size="small" type="primary" class="!m-0">{{ itemCount }} 条</el-tag>
+                <el-tag v-if="groupCount" size="small" type="primary" effect="plain" class="!m-0">
                   {{ groupCount }} 个分组
-                </a-tag>
-                <a-tooltip content="条件编辑说明">
-                  <a-button
-                    type="text"
-                    size="mini"
+                </el-tag>
+                <el-tooltip content="条件编辑说明">
+                  <el-button
+                    link
+                    size="small"
                     class="!text-[#86868B] hover:!text-[#007AFF] !px-1 !h-auto"
                     @click="openDoc('condition')"
                   >
-                    <template #icon><IconInfoCircle :size="14" /></template>
-                  </a-button>
-                </a-tooltip>
+                    <template #icon><Info :size="14" /></template>
+                  </el-button>
+                </el-tooltip>
               </div>
               <span class="text-[12px] text-[#86868B]">变量共 {{ fieldOptions.length }} 个</span>
             </div>
@@ -100,40 +95,40 @@
             <div class="flex items-center justify-between gap-3 flex-wrap mb-3">
               <div class="flex items-center gap-2 flex-wrap">
                 <span class="text-[12px] text-[#86868B]">可用变量组</span>
-                <a-button
+                <el-button
                   v-for="fieldGroup in fieldGroupPresets"
                   :key="fieldGroup.key"
-                  size="mini"
-                  :type="selectedFieldGroupKeys.includes(fieldGroup.key) ? 'primary' : 'secondary'"
+                  size="small"
+                  :type="selectedFieldGroupKeys.includes(fieldGroup.key) ? 'primary' : 'default'"
                   @click="toggleFieldGroup(fieldGroup)"
                 >
                   {{ fieldGroup.label }}
-                </a-button>
-                <a-button
+                </el-button>
+                <el-button
                   v-if="selectedFieldGroupKeys.length < fieldGroupPresets.length"
-                  size="mini"
-                  type="text"
+                  size="small"
+                  link
                   class="!text-[#007AFF] !px-1"
                   @click="selectAllFieldGroups"
                 >
                   全选
-                </a-button>
+                </el-button>
               </div>
               <div class="flex items-center gap-3">
                 <div class="flex items-center gap-2">
                   <span class="text-[12px] text-[#86868B]">连接模式</span>
-                  <a-radio-group v-model="logicMode" type="button" size="mini">
-                    <a-radio value="mixed">混合</a-radio>
-                    <a-radio value="uniform">全且或</a-radio>
-                  </a-radio-group>
+                  <el-radio-group v-model="logicMode" size="small">
+                    <el-radio-button value="mixed">混合</el-radio-button>
+                    <el-radio-button value="uniform">全且或</el-radio-button>
+                  </el-radio-group>
                 </div>
                 <div class="flex items-center gap-2">
                   <span class="text-[12px] text-[#86868B]">嵌套上限</span>
-                  <a-input-number
+                  <el-input-number
                     v-model="maxDepth"
                     :min="1"
                     :max="6"
-                    size="mini"
+                    size="small"
                     style="width: 76px"
                   />
                   <span class="text-[12px] text-[#86868B]">层</span>
@@ -160,32 +155,32 @@
             <div class="mt-5">
               <div class="text-[13px] font-semibold text-[#1D1D1F] mb-2">示例条件（点击载入）</div>
               <div class="flex flex-wrap gap-2 contain-inline-size">
-                <a-button
+                <el-button
                   v-for="preset in presets"
                   :key="preset.key"
-                  size="mini"
+                  size="small"
                   @click="applyPreset(preset)"
                 >
                   {{ preset.label }}
-                </a-button>
+                </el-button>
               </div>
             </div>
           </div>
 
           <div class="bg-white/80 backdrop-blur-xl rounded-2xl border border-black/[0.05] p-5">
             <div class="flex items-center gap-2 mb-3">
-              <h3 class="text-[15px] font-semibold text-[#1D1D1F] m-0">互斥与关联规则</h3>
-              <a-tag size="small" color="arcoblue" class="!m-0">{{ rules.length }} 条</a-tag>
-              <a-tooltip content="互斥与关联规则说明">
-                <a-button
-                  type="text"
-                  size="mini"
+              <h3 class="text-[15px] font-semibold text-[#1D1D1F] m-0">条件组合规则</h3>
+              <el-tag size="small" type="primary" class="!m-0">{{ rules.length }} 条</el-tag>
+              <el-tooltip content="互斥与关联规则说明">
+                <el-button
+                  link
+                  size="small"
                   class="!text-[#86868B] hover:!text-[#007AFF] !px-1 !h-auto"
                   @click="openDoc('rule')"
                 >
-                  <template #icon><IconInfoCircle :size="14" /></template>
-                </a-button>
-              </a-tooltip>
+                  <template #icon><Info :size="14" /></template>
+                </el-button>
+              </el-tooltip>
               <span class="text-[12px] text-[#86868B] ml-auto">
                 变量范围：全量可用变量（{{ allFieldOptions.length }} 个）
               </span>
@@ -218,16 +213,16 @@
 
             <div class="flex items-center gap-2 mt-4 mb-2">
               <span class="text-[13px] font-semibold text-[#1D1D1F]">校验结果</span>
-              <a-tag v-if="dataResults.length > 1" size="small" color="arcoblue" class="!m-0">
+              <el-tag v-if="dataResults.length > 1" size="small" type="primary" class="!m-0">
                 {{ dataResults.length }} 条数据
-              </a-tag>
+              </el-tag>
             </div>
 
             <div v-if="!hasConditions" class="py-4">
-              <a-empty description="暂无可校验的条件" />
+              <el-empty description="暂无可校验的条件" :image-size="64" />
             </div>
             <div v-else-if="!dataResults.length" class="py-4">
-              <a-empty description="暂无可校验的测试数据" />
+              <el-empty description="暂无可校验的测试数据" :image-size="64" />
             </div>
             <div v-else class="data-results">
               <div
@@ -237,13 +232,13 @@
               >
                 <div class="data-result__head">
                   <span v-if="result.label" class="data-result__label">{{ result.label }}</span>
-                  <a-tag
-                    :color="result.evaluation.passed ? 'green' : 'red'"
+                  <el-tag
+                    :type="result.evaluation.passed ? 'success' : 'danger'"
                     size="small"
                     class="!m-0"
                   >
                     {{ result.evaluation.passed ? '命中' : '未命中' }}
-                  </a-tag>
+                  </el-tag>
                 </div>
                 <div class="result-table">
                   <div class="result-row result-row--head">
@@ -262,7 +257,7 @@
                     <span class="result-logic" :class="{ 'result-logic--first': row.isFirst }">
                       {{ row.isFirst ? 'IF' : CONDITION_LOGIC_SYMBOL[row.item.logic] }}
                     </span>
-                    <a-tooltip
+                    <el-tooltip
                       :content="row.fieldLabel"
                       :disabled="!overflowKeys.has(`${resultIndex}-${row.item.id}-field`)"
                     >
@@ -274,9 +269,9 @@
                         <span v-if="row.depth > 1" class="result-depth">└ </span
                         >{{ row.fieldLabel }}
                       </span>
-                    </a-tooltip>
+                    </el-tooltip>
                     <span>{{ row.operatorLabel }}</span>
-                    <a-tooltip
+                    <el-tooltip
                       :content="row.expected || '—'"
                       :disabled="!overflowKeys.has(`${resultIndex}-${row.item.id}-expected`)"
                     >
@@ -286,8 +281,8 @@
                       >
                         {{ row.expected || '—' }}
                       </span>
-                    </a-tooltip>
-                    <a-tooltip
+                    </el-tooltip>
+                    <el-tooltip
                       :content="row.actual"
                       :disabled="!overflowKeys.has(`${resultIndex}-${row.item.id}-actual`)"
                     >
@@ -297,7 +292,7 @@
                       >
                         {{ row.actual }}
                       </span>
-                    </a-tooltip>
+                    </el-tooltip>
                     <span :class="row.passed ? 'result-pass' : 'result-fail'">
                       {{ row.passed ? '通过' : '不通过' }}
                     </span>
@@ -308,9 +303,9 @@
 
             <div class="flex items-center gap-2 mt-5 mb-2">
               <span class="text-[13px] font-semibold text-[#1D1D1F]">互斥与关联命中结果</span>
-              <a-tag v-if="rules.length" :color="ruleResultTagColor" class="!m-0">
+              <el-tag v-if="rules.length" :type="ruleResultTagType" class="!m-0">
                 {{ ruleResultTagText }}
-              </a-tag>
+              </el-tag>
               <span class="text-[11px] text-[#86868B]">仅取决于条件配置，与测试数据无关</span>
             </div>
 
@@ -322,22 +317,22 @@
                 <span>说明</span>
               </div>
               <div v-for="row in ruleResultRows" :key="row.id" class="result-row result-row--rule">
-                <a-tooltip :content="row.name" :disabled="!overflowKeys.has(`${row.id}-name`)">
+                <el-tooltip :content="row.name" :disabled="!overflowKeys.has(`${row.id}-name`)">
                   <span class="truncate" :data-overflow-key="`${row.id}-name`">
                     {{ row.name }}
                   </span>
-                </a-tooltip>
+                </el-tooltip>
                 <span>{{ row.typeLabel }}</span>
                 <span :class="row.stateClass">{{ row.stateLabel }}</span>
-                <a-tooltip :content="row.detail" :disabled="!overflowKeys.has(`${row.id}-detail`)">
+                <el-tooltip :content="row.detail" :disabled="!overflowKeys.has(`${row.id}-detail`)">
                   <span class="truncate" :data-overflow-key="`${row.id}-detail`">
                     {{ row.detail }}
                   </span>
-                </a-tooltip>
+                </el-tooltip>
               </div>
             </div>
             <div v-else class="py-4">
-              <a-empty description="暂无规则配置" />
+              <el-empty description="暂无规则配置" :image-size="64" />
             </div>
           </div>
 
@@ -345,31 +340,31 @@
             <div class="flex items-center justify-between mb-3">
               <div class="flex items-center gap-2">
                 <h3 class="text-[15px] font-semibold text-[#1D1D1F] m-0">生成 SQL</h3>
-                <a-tag color="gray" class="!m-0">{{ CONDITION_SQL_TABLE }}</a-tag>
-                <a-tag :color="sqlStatement.hasConditions ? 'arcoblue' : 'gray'" class="!m-0">
+                <el-tag type="info" class="!m-0">{{ CONDITION_SQL_TABLE }}</el-tag>
+                <el-tag :type="sqlStatement.hasConditions ? 'primary' : 'info'" class="!m-0">
                   {{ sqlStatement.params.length }} 个参数
-                </a-tag>
-                <a-tooltip content="SQL 翻译说明">
-                  <a-button
-                    type="text"
-                    size="mini"
+                </el-tag>
+                <el-tooltip content="SQL 翻译说明">
+                  <el-button
+                    link
+                    size="small"
                     class="!text-[#86868B] hover:!text-[#007AFF] !px-1 !h-auto"
                     @click="openDoc('sql')"
                   >
-                    <template #icon><IconInfoCircle :size="14" /></template>
-                  </a-button>
-                </a-tooltip>
+                    <template #icon><Info :size="14" /></template>
+                  </el-button>
+                </el-tooltip>
               </div>
-              <a-button
-                type="text"
-                size="mini"
+              <el-button
+                link
+                size="small"
                 class="!text-[#007AFF] !px-0 !h-auto"
                 :disabled="!sqlStatement.hasConditions"
                 @click="copySql"
               >
-                <template #icon><IconCopy :size="13" /></template>
+                <template #icon><Copy :size="13" /></template>
                 复制 SQL
-              </a-button>
+              </el-button>
             </div>
 
             <template v-if="sqlStatement.hasConditions">
@@ -378,7 +373,7 @@
               </div>
               <pre class="sql-output sql-output--statement">{{ sqlText }}</pre>
               <div v-if="sqlStatement.skipped.length" class="sql-skipped">
-                <IconExclamationCircle :size="14" />
+                <CircleAlert :size="14" />
                 <span>
                   已跳过 {{ sqlStatement.skipped.length }} 个无对应真实列的变量：{{
                     sqlStatement.skipped.join('、')
@@ -389,12 +384,13 @@
               <pre class="sql-output">{{ sqlParamsText }}</pre>
             </template>
             <div v-else-if="sqlStatement.skipped.length" class="py-4">
-              <a-empty
+              <el-empty
                 :description="`当前条件全部使用了无真实列的变量：${sqlStatement.skipped.join('、')}，无法生成 SQL`"
+                :image-size="64"
               />
             </div>
             <div v-else class="py-4">
-              <a-empty description="暂无可转换的条件" />
+              <el-empty description="暂无可转换的条件" :image-size="64" />
             </div>
           </div>
 
@@ -417,14 +413,8 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, onUpdated, ref } from 'vue'
-import { Message } from '@arco-design/web-vue'
-import {
-  IconBook,
-  IconCopy,
-  IconExclamationCircle,
-  IconInfoCircle,
-  IconRefresh,
-} from '@arco-design/web-vue/es/icon'
+import { ElMessage } from 'element-plus'
+import { BookOpen, CircleAlert, Copy, Info, RefreshCw } from 'lucide-vue-next'
 import PageHeader from '@/components/layout/PageHeader.vue'
 import ConditionBuilder from '@/components/ConditionBuilder/ConditionBuilder.vue'
 import ConditionDocDrawer from '@/components/ConditionBuilder/ConditionDocDrawer.vue'
@@ -1078,6 +1068,16 @@ const rules = ref<ConditionRule[]>([
     message: '平台含抖音时「内容状态」仅可选 草稿 / 待发布',
   },
   {
+    id: 'rule-douyin-title-operator-limit',
+    type: 'operator_limit',
+    name: '抖音标题运算符限定',
+    description: '平台包含 抖音 时，「标题」仅允许使用 包含 / 不包含 运算符',
+    when: { field: 'platform', operator: 'contains', value: 'douyin' },
+    field: 'title',
+    operators: ['contains', 'not_contains'],
+    message: '平台含抖音时「标题」仅可使用 包含 / 不包含',
+  },
+  {
     id: 'rule-fans-count-nonnegative',
     type: 'linkage',
     name: '粉丝数不得为负',
@@ -1373,11 +1373,11 @@ const ruleResultTagText = computed(() => {
   return '未命中'
 })
 
-const ruleResultTagColor = computed(() => {
-  if (violationCount.value) return 'red'
-  if (ineffectiveCount.value) return 'orange'
-  if (activeRuleCount.value) return 'green'
-  return 'gray'
+const ruleResultTagType = computed(() => {
+  if (violationCount.value) return 'danger'
+  if (ineffectiveCount.value) return 'warning'
+  if (activeRuleCount.value) return 'success'
+  return 'info'
 })
 
 function presetScopes(node: ConditionNode, scopes: string[] = []): string[] {
@@ -1399,9 +1399,9 @@ async function copySql(): Promise<void> {
   const text = `${sqlText.value}\n-- params: ${sqlParamsText.value}`
   try {
     await navigator.clipboard.writeText(text)
-    Message.success('已复制到剪贴板')
+    ElMessage.success('已复制到剪贴板')
   } catch {
-    Message.error('复制失败，请手动选择文本复制')
+    ElMessage.error('复制失败，请手动选择文本复制')
   }
 }
 
@@ -1444,7 +1444,7 @@ function toggleFieldGroup(group: ConditionFieldGroup): void {
     return
   }
   if (keys.length <= 1) {
-    Message.warning('至少需要保留一个可用变量组')
+    ElMessage.warning('至少需要保留一个可用变量组')
     return
   }
   selectedFieldGroupKeys.value = keys.filter((key) => key !== group.key)

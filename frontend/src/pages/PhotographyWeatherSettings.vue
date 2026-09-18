@@ -47,9 +47,9 @@
                     <a-radio value="token">JWT Token</a-radio>
                   </a-radio-group>
                 </a-form-item>
-                <a-form-item>
+                <a-form-item v-if="item.requires_key || item.api_key_masked">
                   <template #label>
-                    {{ item.requires_key ? 'Key / Token' : 'Open-Meteo API Key（可选）' }}
+                    {{ item.requires_key ? 'Key / Token' : 'API Key（可选）' }}
                     <a
                       class="key-guide"
                       :href="keyGuideUrl(item.source)"
@@ -128,6 +128,8 @@ const savingSource = ref<string | null>(null)
 // 需要人工申请凭据的数据源，直接给出对应控制台入口。
 const WEATHER_KEY_GUIDES: Record<string, string> = {
   qweather: 'https://console.qweather.com/project',
+  cma: 'http://www.weather.com.cn/',
+  'shenzhen-weather': 'https://opendata.sz.gov.cn/',
 }
 const DEFAULT_WEATHER_KEY_GUIDE = 'https://open-meteo.com/en/pricing'
 

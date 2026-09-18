@@ -46,7 +46,9 @@ func TestFetchPhotographySpatialGridUsesMultiCoordinateResponse(t *testing.T) {
 	if grid.Message != "" {
 		t.Fatalf("grid.Message = %q, want empty for Open-Meteo source", grid.Message)
 	}
-	if grid.StepLatitude != photographySpatialStepDegrees || grid.StepLongitude <= 0 {
+	// 步长以千米定义，换算成度后纬度方向约 0.5km。
+	wantStepLatitude := photographySpatialStepKilometers / photographyKilometersPerDegree
+	if grid.StepLatitude != wantStepLatitude || grid.StepLongitude <= 0 {
 		t.Fatalf("unexpected grid steps: %v / %v", grid.StepLatitude, grid.StepLongitude)
 	}
 	if len(grid.Cells) != photographySpatialRows*photographySpatialCols {

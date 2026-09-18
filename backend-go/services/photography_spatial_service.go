@@ -18,10 +18,13 @@ const (
 	PhotographySpatialPeriodSunrise = "sunrise"
 	PhotographySpatialPeriodSunset  = "sunset"
 
-	photographySpatialRows        = 5
-	photographySpatialCols        = 5
-	photographySpatialStepDegrees = 0.2
-	photographySpatialMaxCells    = 121
+	photographySpatialRows = 11
+	photographySpatialCols = 11
+	// 20km 步长：11×11 = 121 个点，整体约 220km 见方，用于区域尺度的霞情分布。
+	// 点数上限来自 URL 长度：Open-Meteo 多坐标查询 441 个点会被返回 414。
+	photographySpatialStepKilometers = 20
+	photographyKilometersPerDegree   = 111.32
+	photographySpatialMaxCells       = 121
 )
 
 type PhotographySpatialCell struct {
@@ -148,8 +151,8 @@ func fillPhotographySpatialCell(cell *PhotographySpatialCell, response *openMete
 }
 
 func photographySpatialCenters(latitude, longitude float64) (centers [][2]float64, stepLatitude, stepLongitude float64) {
-	stepLatitude = photographySpatialStepDegrees
-	stepLongitude = photographySpatialStepDegrees / math.Max(0.25, math.Cos(latitude*math.Pi/180))
+	stepLatitude = photographySpatialStepKilometers / photographyKilometersPerDegree
+	stepLongitude = stepLatitude / math.Max(0.25, math.Cos(latitude*math.Pi/180))
 	halfRows := (photographySpatialRows - 1) / 2
 	halfCols := (photographySpatialCols - 1) / 2
 	for row := -halfRows; row <= halfRows; row++ {

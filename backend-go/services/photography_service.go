@@ -100,6 +100,8 @@ const (
 	PhotographyWeatherSourceGFS       = "open-meteo-gfs"
 	PhotographyWeatherSourceICON      = "open-meteo-icon"
 	PhotographyWeatherSourceQWeather  = "qweather"
+	PhotographyWeatherSourceCMA       = "cma"
+	PhotographyWeatherSourceShenzhen  = "shenzhen-weather"
 )
 
 type PhotographyWeatherConfigView struct {
@@ -135,12 +137,16 @@ type photographyWeatherProviderConfig struct {
 const (
 	photographyWeatherConfigOpenMeteo = "open-meteo"
 	photographyWeatherConfigQWeather  = PhotographyWeatherSourceQWeather
+	photographyWeatherConfigCMA       = PhotographyWeatherSourceCMA
+	photographyWeatherConfigShenzhen  = PhotographyWeatherSourceShenzhen
 )
 
 func photographyWeatherConfigDefinitions() []photographyWeatherConfigDefinition {
 	return []photographyWeatherConfigDefinition{
 		{Source: photographyWeatherConfigOpenMeteo, Name: "Open-Meteo", Provider: "Open-Meteo", Description: "Open-Meteo 模型共享此配置；API Key 可选。", RequiresKey: false, SupportsHost: false},
 		{Source: photographyWeatherConfigQWeather, Name: "和风天气", Provider: "QWeather", Description: "用于和风天气逐日、逐小时接口。", RequiresKey: true, SupportsHost: true},
+		{Source: photographyWeatherConfigCMA, Name: "中国气象局（中国天气网）", Provider: "CMA / 中国天气网", Description: "中国气象局公共气象服务中心数据，含未来 5 天逐日预报与实况；免 Key，仅覆盖中国大陆。", RequiresKey: false, SupportsHost: true},
+		{Source: photographyWeatherConfigShenzhen, Name: "深圳气象局", Provider: "深圳市气象局 / 数据开放平台", Description: "填写深圳市数据开放平台（opendata.sz.gov.cn）的数据集服务地址与 AppKey，仅覆盖深圳。", RequiresKey: true, SupportsHost: true},
 	}
 }
 
@@ -186,6 +192,11 @@ func SavePhotographyWeatherConfig(source, credentialType, apiKey, apiHost string
 	if source == PhotographyWeatherSourceQWeather {
 		payload.QWeatherKey, payload.QWeatherHost, payload.QWeatherCredentialType, payload.QWeatherEnabled = apiKey, apiHost, credentialType, &enabled
 		payload.ClearQWeatherKey = clearAPIKey
+	} else if source == PhotographyWeatherSourceShenzhen {
+		payload.ShenzhenWeatherKey, payload.ShenzhenWeatherHost, payload.ShenzhenWeatherEnabled = apiKey, apiHost, &enabled
+		payload.ClearShenzhenWeatherKey = clearAPIKey
+	} else if source == PhotographyWeatherSourceCMA {
+		payload.CMAHost, payload.CMAEnabled = apiHost, &enabled
 	} else {
 		payload.OpenMeteoKey, payload.OpenMeteoHost, payload.OpenMeteoEnabled = apiKey, apiHost, &enabled
 		payload.ClearOpenMeteoKey = clearAPIKey
@@ -670,6 +681,8 @@ func ListPhotographyWeatherSources() []PhotographyWeatherSource {
 		{ID: PhotographyWeatherSourceGFS, Name: "NOAA GFS", Provider: "Open-Meteo", Model: "gfs_seamless", Description: "美国 NOAA 全球预报模型", Available: secrets.OpenMeteoEnabled, MaxDays: PhotographyForecastDays},
 		{ID: PhotographyWeatherSourceICON, Name: "DWD ICON", Provider: "Open-Meteo", Model: "icon_seamless", Description: "德国气象局全球预报模型", Available: secrets.OpenMeteoEnabled, MaxDays: PhotographyForecastDays},
 		{ID: PhotographyWeatherSourceQWeather, Name: "和风天气", Provider: "QWeather", Description: "逐日与逐小时天气数据，最多支持未来 10 天", Available: qweatherConfigured(), MaxDays: photographyQWeatherDays},
+		{ID: PhotographyWeatherSourceCMA, Name: "中国气象局（中国天气网）", Provider: "CMA", Description: "中国气象局公共气象服务中心的官方逐日预报与实况，最多未来 5 天", Available: cmaConfigured(), MaxDays: photographyCMADays},
+		{ID: PhotographyWeatherSourceShenzhen, Name: "深圳气象局", Provider: "深圳市气象局", Description: "深圳市数据开放平台的气象数据，仅覆盖深圳，需配置 AppKey", Available: shenzhenWeatherConfigured(), MaxDays: photographyShenzhenDays},
 	}
 }
 
@@ -693,7 +706,7 @@ func ValidatePhotographyWeatherSource(value string) error {
 	}
 	for _, source := range ListPhotographyWeatherSources() {
 		if source.ID == sourceID && !source.Available {
-			return newPhotographyValidationError("和风天气未配置凭据，请先在系统管理 > 天气数据源 / 模型中配置 API Key 或 JWT Token")
+			return newPhotographyValidationError(fmt.Sprintf("%s 未配置凭据或已停用，请先在系统管理 > 天气数据源 / 模型中完成配置", source.Name))
 		}
 	}
 	return nil
@@ -726,6 +739,12 @@ func FetchPhotographyForecastWithSource(latitude, longitude float64, targetDate,
 	}
 	if source == PhotographyWeatherSourceQWeather {
 		return fetchQWeatherPhotographyForecast(latitude, longitude, targetDate)
+	}
+	if source == PhotographyWeatherSourceCMA {
+		return fetchCMAPhotographyForecast(latitude, longitude, targetDate)
+	}
+	if source == PhotographyWeatherSourceShenzhen {
+		return fetchShenzhenPhotographyForecast(latitude, longitude, targetDate)
 	}
 	if source != PhotographyWeatherSourceBestMatch {
 		return fetchOpenMeteoPhotographyForecast(latitude, longitude, targetDate, source)

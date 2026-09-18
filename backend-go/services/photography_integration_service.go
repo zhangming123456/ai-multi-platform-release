@@ -39,63 +39,77 @@ type PhotographyIntegrationProviderView struct {
 }
 
 type PhotographyIntegrationConfigView struct {
-	AMapWebKeyMasked        string                               `json:"amap_web_key_masked"`
-	AMapWebServiceKeyMasked string                               `json:"amap_web_service_key_masked"`
-	AMapSecurityKeyMasked   string                               `json:"amap_security_key_masked"`
-	GoogleMapsKeyMasked     string                               `json:"google_maps_key_masked"`
-	OpenMeteoKeyMasked      string                               `json:"open_meteo_key_masked"`
-	QWeatherKeyMasked       string                               `json:"qweather_key_masked"`
-	QWeatherCredentialType  string                               `json:"qweather_credential_type"`
-	NOAAKeyMasked           string                               `json:"noaa_key_masked"`
-	TideKeyMasked           string                               `json:"tide_key_masked"`
-	OpenMeteoHost           string                               `json:"open_meteo_host"`
-	QWeatherHost            string                               `json:"qweather_host"`
-	NOAAHost                string                               `json:"noaa_host"`
-	TideHost                string                               `json:"tide_host"`
-	OpenMeteoEnabled        bool                                 `json:"open_meteo_enabled"`
-	QWeatherEnabled         bool                                 `json:"qweather_enabled"`
-	NOAAEnabled             bool                                 `json:"noaa_enabled"`
-	TideEnabled             bool                                 `json:"tide_enabled"`
-	WeatherProviders        []PhotographyIntegrationProviderView `json:"weather_providers"`
-	TideProviders           []PhotographyIntegrationProviderView `json:"tide_providers"`
-	AuroraProviders         []PhotographyIntegrationProviderView `json:"aurora_providers"`
+	AMapWebKeyMasked         string                               `json:"amap_web_key_masked"`
+	AMapWebServiceKeyMasked  string                               `json:"amap_web_service_key_masked"`
+	AMapSecurityKeyMasked    string                               `json:"amap_security_key_masked"`
+	GoogleMapsKeyMasked      string                               `json:"google_maps_key_masked"`
+	OpenMeteoKeyMasked       string                               `json:"open_meteo_key_masked"`
+	QWeatherKeyMasked        string                               `json:"qweather_key_masked"`
+	QWeatherCredentialType   string                               `json:"qweather_credential_type"`
+	ShenzhenWeatherKeyMasked string                               `json:"shenzhen_weather_key_masked"`
+	NOAAKeyMasked            string                               `json:"noaa_key_masked"`
+	TideKeyMasked            string                               `json:"tide_key_masked"`
+	OpenMeteoHost            string                               `json:"open_meteo_host"`
+	QWeatherHost             string                               `json:"qweather_host"`
+	CMAHost                  string                               `json:"cma_host"`
+	ShenzhenWeatherHost      string                               `json:"shenzhen_weather_host"`
+	NOAAHost                 string                               `json:"noaa_host"`
+	TideHost                 string                               `json:"tide_host"`
+	OpenMeteoEnabled         bool                                 `json:"open_meteo_enabled"`
+	QWeatherEnabled          bool                                 `json:"qweather_enabled"`
+	CMAEnabled               bool                                 `json:"cma_enabled"`
+	ShenzhenWeatherEnabled   bool                                 `json:"shenzhen_weather_enabled"`
+	NOAAEnabled              bool                                 `json:"noaa_enabled"`
+	TideEnabled              bool                                 `json:"tide_enabled"`
+	WeatherProviders         []PhotographyIntegrationProviderView `json:"weather_providers"`
+	TideProviders            []PhotographyIntegrationProviderView `json:"tide_providers"`
+	AuroraProviders          []PhotographyIntegrationProviderView `json:"aurora_providers"`
 }
 
 type PhotographyIntegrationConfigPayload struct {
-	AMapWebKey             string `json:"amap_web_key"`
-	AMapWebServiceKey      string `json:"amap_web_service_key"`
-	AMapSecurityKey        string `json:"amap_security_key"`
-	GoogleMapsKey          string `json:"google_maps_key"`
-	OpenMeteoKey           string `json:"open_meteo_key"`
-	QWeatherKey            string `json:"qweather_key"`
-	QWeatherCredentialType string `json:"qweather_credential_type"`
-	NOAAKey                string `json:"noaa_key"`
-	TideKey                string `json:"tide_key"`
-	OpenMeteoHost          string `json:"open_meteo_host"`
-	QWeatherHost           string `json:"qweather_host"`
-	NOAAHost               string `json:"noaa_host"`
-	TideHost               string `json:"tide_host"`
-	Section                string `json:"section,omitempty"`
-	OpenMeteoEnabled       *bool  `json:"open_meteo_enabled"`
-	QWeatherEnabled        *bool  `json:"qweather_enabled"`
-	NOAAEnabled            *bool  `json:"noaa_enabled"`
-	TideEnabled            *bool  `json:"tide_enabled"`
-	ClearAMapWebKey        bool   `json:"clear_amap_web_key"`
-	ClearAMapWebServiceKey bool   `json:"clear_amap_web_service_key"`
-	ClearAMapSecurityKey   bool   `json:"clear_amap_security_key"`
-	ClearGoogleMapsKey     bool   `json:"clear_google_maps_key"`
-	ClearOpenMeteoKey      bool   `json:"clear_open_meteo_key"`
-	ClearQWeatherKey       bool   `json:"clear_qweather_key"`
-	ClearNOAAKey           bool   `json:"clear_noaa_key"`
-	ClearTideKey           bool   `json:"clear_tide_key"`
+	AMapWebKey              string `json:"amap_web_key"`
+	AMapWebServiceKey       string `json:"amap_web_service_key"`
+	AMapSecurityKey         string `json:"amap_security_key"`
+	GoogleMapsKey           string `json:"google_maps_key"`
+	OpenMeteoKey            string `json:"open_meteo_key"`
+	QWeatherKey             string `json:"qweather_key"`
+	QWeatherCredentialType  string `json:"qweather_credential_type"`
+	ShenzhenWeatherKey      string `json:"shenzhen_weather_key"`
+	NOAAKey                 string `json:"noaa_key"`
+	TideKey                 string `json:"tide_key"`
+	OpenMeteoHost           string `json:"open_meteo_host"`
+	QWeatherHost            string `json:"qweather_host"`
+	CMAHost                 string `json:"cma_host"`
+	ShenzhenWeatherHost     string `json:"shenzhen_weather_host"`
+	NOAAHost                string `json:"noaa_host"`
+	TideHost                string `json:"tide_host"`
+	Section                 string `json:"section,omitempty"`
+	OpenMeteoEnabled        *bool  `json:"open_meteo_enabled"`
+	QWeatherEnabled         *bool  `json:"qweather_enabled"`
+	CMAEnabled              *bool  `json:"cma_enabled"`
+	ShenzhenWeatherEnabled  *bool  `json:"shenzhen_weather_enabled"`
+	NOAAEnabled             *bool  `json:"noaa_enabled"`
+	TideEnabled             *bool  `json:"tide_enabled"`
+	ClearAMapWebKey         bool   `json:"clear_amap_web_key"`
+	ClearAMapWebServiceKey  bool   `json:"clear_amap_web_service_key"`
+	ClearAMapSecurityKey    bool   `json:"clear_amap_security_key"`
+	ClearGoogleMapsKey      bool   `json:"clear_google_maps_key"`
+	ClearOpenMeteoKey       bool   `json:"clear_open_meteo_key"`
+	ClearQWeatherKey        bool   `json:"clear_qweather_key"`
+	ClearShenzhenWeatherKey bool   `json:"clear_shenzhen_weather_key"`
+	ClearNOAAKey            bool   `json:"clear_noaa_key"`
+	ClearTideKey            bool   `json:"clear_tide_key"`
 }
 
 type photographyIntegrationSecrets struct {
 	AMapWebKey, AMapWebServiceKey, AMapSecurityKey, GoogleMapsKey string
 	OpenMeteoKey, QWeatherKey, NOAAKey, TideKey                   string
+	ShenzhenWeatherKey                                            string
 	QWeatherCredentialType                                        string
-	OpenMeteoHost, QWeatherHost, NOAAHost, TideHost               string
+	OpenMeteoHost, QWeatherHost, CMAHost, ShenzhenWeatherHost     string
+	NOAAHost, TideHost                                            string
 	OpenMeteoEnabled, QWeatherEnabled, NOAAEnabled, TideEnabled   bool
+	CMAEnabled, ShenzhenWeatherEnabled                            bool
 }
 
 var integrationEncryptionKeyMu sync.Mutex
@@ -253,9 +267,13 @@ func photographyIntegrationSecretsForUse() photographyIntegrationSecrets {
 		TideKey:                strings.TrimSpace(os.Getenv("TIDE_API_KEY")),
 		OpenMeteoHost:          strings.TrimSpace(os.Getenv("OPEN_METEO_FORECAST_BASE_URL")),
 		QWeatherHost:           strings.TrimSpace(os.Getenv("QWEATHER_API_HOST")),
+		CMAHost:                strings.TrimSpace(os.Getenv("CMA_WEATHER_BASE_URL")),
+		ShenzhenWeatherHost:    strings.TrimSpace(os.Getenv("SHENZHEN_WEATHER_API_HOST")),
+		ShenzhenWeatherKey:     strings.TrimSpace(os.Getenv("SHENZHEN_WEATHER_APP_KEY")),
 		NOAAHost:               strings.TrimSpace(os.Getenv("NOAA_SWPC_BASE_URL")),
 		TideHost:               strings.TrimSpace(os.Getenv("TIDE_API_HOST")),
 		OpenMeteoEnabled:       true, QWeatherEnabled: true, NOAAEnabled: true, TideEnabled: true,
+		CMAEnabled: true, ShenzhenWeatherEnabled: true,
 	}
 	if token := strings.TrimSpace(os.Getenv("QWEATHER_API_TOKEN")); token != "" {
 		secrets.QWeatherKey = token
@@ -280,6 +298,9 @@ func photographyIntegrationSecretsForUse() photographyIntegrationSecrets {
 		if value := photographyStoredSecret(config.QWeatherKeyEncrypted); value != "" {
 			secrets.QWeatherKey = value
 		}
+		if value := photographyStoredSecret(config.ShenzhenWeatherKeyEncrypted); value != "" {
+			secrets.ShenzhenWeatherKey = value
+		}
 		if config.QWeatherCredentialType == "token" || config.QWeatherCredentialType == "api_key" {
 			secrets.QWeatherCredentialType = config.QWeatherCredentialType
 		}
@@ -295,6 +316,12 @@ func photographyIntegrationSecretsForUse() photographyIntegrationSecrets {
 		if config.QWeatherHost != "" {
 			secrets.QWeatherHost = config.QWeatherHost
 		}
+		if config.CMAHost != "" {
+			secrets.CMAHost = config.CMAHost
+		}
+		if config.ShenzhenWeatherHost != "" {
+			secrets.ShenzhenWeatherHost = config.ShenzhenWeatherHost
+		}
 		if config.NOAAHost != "" {
 			secrets.NOAAHost = config.NOAAHost
 		}
@@ -303,6 +330,8 @@ func photographyIntegrationSecretsForUse() photographyIntegrationSecrets {
 		}
 		secrets.OpenMeteoEnabled = config.OpenMeteoEnabled
 		secrets.QWeatherEnabled = config.QWeatherEnabled
+		secrets.CMAEnabled = config.CMAEnabled
+		secrets.ShenzhenWeatherEnabled = config.ShenzhenWeatherEnabled
 		secrets.NOAAEnabled = config.NOAAEnabled
 		secrets.TideEnabled = config.TideEnabled
 	}
@@ -314,6 +343,10 @@ func integrationSecretForWeatherSource(source string) (string, string, bool) {
 	switch source {
 	case PhotographyWeatherSourceQWeather:
 		return secrets.QWeatherKey, secrets.QWeatherHost, secrets.QWeatherEnabled
+	case PhotographyWeatherSourceCMA:
+		return "", secrets.CMAHost, secrets.CMAEnabled
+	case PhotographyWeatherSourceShenzhen:
+		return secrets.ShenzhenWeatherKey, secrets.ShenzhenWeatherHost, secrets.ShenzhenWeatherEnabled
 	default:
 		return secrets.OpenMeteoKey, secrets.OpenMeteoHost, secrets.OpenMeteoEnabled
 	}
@@ -324,12 +357,15 @@ func ListPhotographyIntegrationConfig() PhotographyIntegrationConfigView {
 	return PhotographyIntegrationConfigView{
 		AMapWebKeyMasked: maskPhotographyAPIKey(secrets.AMapWebKey), AMapWebServiceKeyMasked: maskPhotographyAPIKey(secrets.AMapWebServiceKey), AMapSecurityKeyMasked: maskPhotographyAPIKey(secrets.AMapSecurityKey),
 		GoogleMapsKeyMasked: maskPhotographyAPIKey(secrets.GoogleMapsKey), OpenMeteoKeyMasked: maskPhotographyAPIKey(secrets.OpenMeteoKey),
-		QWeatherKeyMasked: maskPhotographyAPIKey(secrets.QWeatherKey), QWeatherCredentialType: secrets.QWeatherCredentialType, NOAAKeyMasked: maskPhotographyAPIKey(secrets.NOAAKey), TideKeyMasked: maskPhotographyAPIKey(secrets.TideKey),
-		OpenMeteoHost: secrets.OpenMeteoHost, QWeatherHost: secrets.QWeatherHost, NOAAHost: secrets.NOAAHost, TideHost: secrets.TideHost,
-		OpenMeteoEnabled: secrets.OpenMeteoEnabled, QWeatherEnabled: secrets.QWeatherEnabled, NOAAEnabled: secrets.NOAAEnabled, TideEnabled: secrets.TideEnabled,
+		QWeatherKeyMasked: maskPhotographyAPIKey(secrets.QWeatherKey), QWeatherCredentialType: secrets.QWeatherCredentialType, ShenzhenWeatherKeyMasked: maskPhotographyAPIKey(secrets.ShenzhenWeatherKey),
+		NOAAKeyMasked: maskPhotographyAPIKey(secrets.NOAAKey), TideKeyMasked: maskPhotographyAPIKey(secrets.TideKey),
+		OpenMeteoHost: secrets.OpenMeteoHost, QWeatherHost: secrets.QWeatherHost, CMAHost: secrets.CMAHost, ShenzhenWeatherHost: secrets.ShenzhenWeatherHost, NOAAHost: secrets.NOAAHost, TideHost: secrets.TideHost,
+		OpenMeteoEnabled: secrets.OpenMeteoEnabled, QWeatherEnabled: secrets.QWeatherEnabled, CMAEnabled: secrets.CMAEnabled, ShenzhenWeatherEnabled: secrets.ShenzhenWeatherEnabled, NOAAEnabled: secrets.NOAAEnabled, TideEnabled: secrets.TideEnabled,
 		WeatherProviders: []PhotographyIntegrationProviderView{
 			{ID: "open-meteo", Name: "Open-Meteo", APIKeyMasked: maskPhotographyAPIKey(secrets.OpenMeteoKey), APIHost: secrets.OpenMeteoHost, Configured: secrets.OpenMeteoKey != "" || secrets.OpenMeteoEnabled, Enabled: secrets.OpenMeteoEnabled, RequiresKey: false},
 			{ID: "qweather", Name: "和风天气", APIKeyMasked: maskPhotographyAPIKey(secrets.QWeatherKey), APIHost: secrets.QWeatherHost, Configured: secrets.QWeatherKey != "" && secrets.QWeatherEnabled, Enabled: secrets.QWeatherEnabled, RequiresKey: true},
+			{ID: PhotographyWeatherSourceCMA, Name: "中国气象局（中国天气网）", APIHost: secrets.CMAHost, Configured: secrets.CMAEnabled, Enabled: secrets.CMAEnabled, RequiresKey: false},
+			{ID: PhotographyWeatherSourceShenzhen, Name: "深圳气象局（数据开放平台）", APIKeyMasked: maskPhotographyAPIKey(secrets.ShenzhenWeatherKey), APIHost: secrets.ShenzhenWeatherHost, Configured: secrets.ShenzhenWeatherKey != "" && secrets.ShenzhenWeatherHost != "" && secrets.ShenzhenWeatherEnabled, Enabled: secrets.ShenzhenWeatherEnabled, RequiresKey: true},
 		},
 		TideProviders:   []PhotographyIntegrationProviderView{{ID: "noaa-coops", Name: "NOAA CO-OPS", APIKeyMasked: maskPhotographyAPIKey(secrets.TideKey), APIHost: secrets.TideHost, Configured: secrets.TideEnabled, Enabled: secrets.TideEnabled, RequiresKey: false}, {ID: "stormglass", Name: "Stormglass", APIKeyMasked: maskPhotographyAPIKey(secrets.TideKey), APIHost: secrets.TideHost, Configured: secrets.TideKey != "" && secrets.TideEnabled, Enabled: secrets.TideEnabled, RequiresKey: true}},
 		AuroraProviders: []PhotographyIntegrationProviderView{{ID: "noaa-swpc", Name: "NOAA SWPC", APIKeyMasked: maskPhotographyAPIKey(secrets.NOAAKey), APIHost: secrets.NOAAHost, Configured: secrets.NOAAEnabled, Enabled: secrets.NOAAEnabled, RequiresKey: false}},
@@ -366,7 +402,7 @@ func validatePhotographyIntegrationSection(section string) error {
 }
 
 func validatePhotographyIntegrationHosts(payload PhotographyIntegrationConfigPayload) error {
-	for _, host := range []string{payload.OpenMeteoHost, payload.QWeatherHost, payload.NOAAHost, payload.TideHost} {
+	for _, host := range []string{payload.OpenMeteoHost, payload.QWeatherHost, payload.CMAHost, payload.ShenzhenWeatherHost, payload.NOAAHost, payload.TideHost} {
 		if len([]rune(strings.TrimSpace(host))) > 500 {
 			return newPhotographyValidationError("API 地址不能超过 500 个字符")
 		}
@@ -401,6 +437,12 @@ func applyPhotographyIntegrationEnabled(config *models.PhotographyIntegrationCon
 	}
 	if payload.TideEnabled != nil {
 		config.TideEnabled = *payload.TideEnabled
+	}
+	if payload.CMAEnabled != nil {
+		config.CMAEnabled = *payload.CMAEnabled
+	}
+	if payload.ShenzhenWeatherEnabled != nil {
+		config.ShenzhenWeatherEnabled = *payload.ShenzhenWeatherEnabled
 	}
 }
 
@@ -440,11 +482,16 @@ func applyPhotographyIntegrationConfig(config *models.PhotographyIntegrationConf
 		if err := updateEncryptedSecret(&config.QWeatherKeyEncrypted, payload.QWeatherKey, payload.ClearQWeatherKey); err != nil {
 			return err
 		}
+		if err := updateEncryptedSecret(&config.ShenzhenWeatherKeyEncrypted, payload.ShenzhenWeatherKey, payload.ClearShenzhenWeatherKey); err != nil {
+			return err
+		}
 		if err := applyPhotographyIntegrationCredentialType(config, payload); err != nil {
 			return err
 		}
 		config.OpenMeteoHost = strings.TrimSpace(payload.OpenMeteoHost)
 		config.QWeatherHost = strings.TrimSpace(payload.QWeatherHost)
+		config.CMAHost = strings.TrimSpace(payload.CMAHost)
+		config.ShenzhenWeatherHost = strings.TrimSpace(payload.ShenzhenWeatherHost)
 	}
 
 	if applyTide {
@@ -467,8 +514,10 @@ func applyPhotographyIntegrationConfig(config *models.PhotographyIntegrationConf
 		switch section {
 		case photographyIntegrationSectionWeather:
 			applyPhotographyIntegrationEnabled(config, PhotographyIntegrationConfigPayload{
-				OpenMeteoEnabled: payload.OpenMeteoEnabled,
-				QWeatherEnabled:  payload.QWeatherEnabled,
+				OpenMeteoEnabled:       payload.OpenMeteoEnabled,
+				QWeatherEnabled:        payload.QWeatherEnabled,
+				CMAEnabled:             payload.CMAEnabled,
+				ShenzhenWeatherEnabled: payload.ShenzhenWeatherEnabled,
 			})
 		case photographyIntegrationSectionTide:
 			applyPhotographyIntegrationEnabled(config, PhotographyIntegrationConfigPayload{TideEnabled: payload.TideEnabled})
@@ -493,7 +542,7 @@ func SavePhotographyIntegrationConfig(payload PhotographyIntegrationConfigPayloa
 	newRecord := strings.TrimSpace(config.ID) == ""
 	config.ID = photographyIntegrationConfigID
 	if newRecord {
-		config.OpenMeteoEnabled, config.NOAAEnabled, config.TideEnabled = true, true, true
+		config.OpenMeteoEnabled, config.NOAAEnabled, config.TideEnabled, config.CMAEnabled = true, true, true, true
 	}
 	if err := applyPhotographyIntegrationConfig(config, payload); err != nil {
 		return err

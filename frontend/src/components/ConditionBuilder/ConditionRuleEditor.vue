@@ -157,7 +157,66 @@
           </div>
         </div>
 
-        <template v-if="draft.type === 'linkage'">
+        <template v-if="draft.type === 'operator_limit'">
+          <div class="cre-form__section">运算符限定（当命中时）</div>
+          <div class="cre-form__row">
+            <span class="cre-form__label">目标变量</span>
+            <el-select
+              :model-value="draft.operatorField"
+              class="cre-form__control"
+              placeholder="选择被限定的变量"
+              @update:model-value="setOperatorField"
+            >
+              <template v-if="fieldSelectOptionGroups.length">
+                <el-option-group
+                  v-for="group in fieldSelectOptionGroups"
+                  :key="group.label"
+                  :label="group.label"
+                >
+                  <el-option
+                    v-for="option in group.options"
+                    :key="option.value"
+                    :label="option.label"
+                    :value="option.value"
+                  />
+                </el-option-group>
+              </template>
+              <template v-else>
+                <el-option
+                  v-for="option in fieldSelectOptions"
+                  :key="option.value"
+                  :label="option.label"
+                  :value="option.value"
+                />
+              </template>
+            </el-select>
+          </div>
+          <div class="cre-form__row">
+            <span class="cre-form__label">可用运算符</span>
+            <el-select
+              :model-value="draft.operatorValues"
+              class="cre-form__control"
+              multiple
+              collapse-tags
+              collapse-tags-tooltip
+              placeholder="至少选择一个运算符"
+              :disabled="!draft.operatorField"
+              @update:model-value="setOperatorValues"
+            >
+              <el-option
+                v-for="option in limitedOperatorOptions"
+                :key="option.value"
+                :label="option.label"
+                :value="option.value"
+              />
+            </el-select>
+          </div>
+          <div class="cre-form__hint">
+            命中触发条件后，目标变量只能使用所选运算符；条件里已用其他运算符时会自动改为第一个允许运算符。
+          </div>
+        </template>
+
+        <template v-else-if="draft.type === 'linkage'">
           <div class="cre-form__section">联动约束（当命中时）</div>
           <div class="cre-form__row">
             <span class="cre-form__label">目标变量</span>
@@ -404,12 +463,27 @@ const linkageOperatorOptions = computed<RuleSelectOption[]>(() =>
   operatorOptionsFor(draft.linkageField).filter((option) => option.value !== ''),
 )
 
+const limitedOperatorOptions = computed<RuleSelectOption[]>(() =>
+  operatorOptionsFor(draft.operatorField).filter((option) => option.value !== ''),
+)
+
 function fieldOf(fieldValue: string): ConditionFieldOption | undefined {
   return props.fieldOptions.find((option) => option.value === fieldValue)
 }
 
 function setLinkageValueText(value: string): void {
   draft.linkageValues = splitConditionValues(value)
+}
+
+function setOperatorField(value: unknown): void {
+  draft.operatorField = toText(value)
+  const supported = operatorValuesFor(draft.operatorField)
+  draft.operatorValues = draft.operatorValues.filter((operator) => supported.includes(operator))
+}
+
+function setOperatorValues(value: unknown): void {
+  if (!Array.isArray(value)) return
+  draft.operatorValues = value.map((entry) => toText(entry) as ConditionOperator)
 }
 
 const linkageNeedsValue = computed(
@@ -446,9 +520,10 @@ function typeLabel(type: ConditionRuleType): string {
   return CONDITION_RULE_TYPE_LABELS[type]
 }
 
-function typeColor(type: ConditionRuleType): 'danger' | 'warning' | 'primary' {
+function typeColor(type: ConditionRuleType): 'danger' | 'warning' | 'primary' | 'success' {
   if (type === 'mutual_exclusive') return 'danger'
   if (type === 'prerequisite') return 'warning'
+  if (type === 'operator_limit') return 'success'
   return 'primary'
 }
 
@@ -528,6 +603,12 @@ function validate(): string {
     if (conditionOperatorNeedsValue(draft.linkageOperator) && !draft.linkageValues.length) {
       return '请至少填写一个约束取值'
     }
+    return ''
+  }
+
+  if (draft.type === 'operator_limit') {
+    if (!draft.operatorField) return '请选择运算符限定的目标变量'
+    if (!draft.operatorValues.length) return '请至少选择一个可用运算符'
     return ''
   }
 
@@ -699,6 +780,12 @@ function toggleActive(rule: ConditionRule, value: boolean | string | number): vo
   color: #1d1d1f;
   padding-bottom: 4px;
   border-bottom: 1px dashed #e5e5ea;
+}
+
+.cre-form__hint {
+  font-size: 12px;
+  line-height: 1.6;
+  color: #86868b;
 }
 
 .cre-form__target {
